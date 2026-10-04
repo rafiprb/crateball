@@ -1,4 +1,4 @@
-import type { BlastKind } from '@crateball/sim';
+import type { ArenaKind, BlastKind } from '@crateball/sim';
 import type { GameEvent } from './events';
 
 /**
@@ -9,6 +9,8 @@ export interface Sound {
   readonly muted: boolean;
   setMuted(m: boolean): void;
   play(e: GameEvent): void;
+  /** Background bed for the arena (rain, volcano rumble, wind); null = silence. */
+  setAmbient(kind: ArenaKind | null): void;
   /** For the debug panel: audio state and how many effects played. */
   debug(): { state: string; played: number; muted: boolean };
 }
@@ -79,6 +81,7 @@ export function createSound(): Sound {
     item: (kind: BlastKind) => {
       switch (kind) {
         case 'mine':
+        case 'erupt':
           noise(0.8, 1, 'lowpass', 700);
           tone('sine', 130, 28, 0.6, 1);
           noise(0.25, 0.5, 'highpass', 1500);
@@ -104,7 +107,56 @@ export function createSound(): Sound {
     },
   };
 
+  // Arena ambience: one looping, filtered noise bed per arena, cross-faded on change.
+  let ambientKind: ArenaKind | null = null;
+  let ambient: { src: AudioBufferSourceNode; gain: GainNode; lfo?: OscillatorNode } | null = null;
+  const AMBIENT: Partial<
+    Record<ArenaKind, { type: BiquadFilterType; freq: number; q: number; vol: number; lfo?: number }>
+  > = {
+    rain: { type: 'bandpass', freq: 1800, q: 0.4, vol: 0.12 },
+    volcano: { type: 'lowpass', freq: 140, q: 0.7, vol: 0.35, lfo: 0.15 },
+    wind: { type: 'bandpass', freq: 520, q: 1.2, vol: 0.14, lfo: 0.2 },
+  };
+  const setAmbient = (kind: ArenaKind | null) => {
+    if (kind === ambientKind || !ctx || !master || !noiseBuf) return;
+    ambientKind = kind;
+    const t = ctx.currentTime;
+    if (ambient) {
+      const old = ambient;
+      old.gain.gain.setTargetAtTime(0, t, 0.4);
+      old.src.stop(t + 2);
+      old.lfo?.stop(t + 2);
+      ambient = null;
+    }
+    const spec = kind ? AMBIENT[kind] : undefined;
+    if (!spec) return;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = spec.type;
+    f.frequency.value = spec.freq;
+    f.Q.value = spec.q;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.gain.setTargetAtTime(spec.vol, t, 0.6);
+    src.connect(f).connect(gain).connect(master);
+    let lfo: OscillatorNode | undefined;
+    if (spec.lfo) {
+      // Slow swell: gusts of wind, the volcano breathing.
+      lfo = ctx.createOscillator();
+      lfo.frequency.value = spec.lfo;
+      const depth = ctx.createGain();
+      depth.gain.value = spec.vol * 0.6;
+      lfo.connect(depth).connect(gain.gain);
+      lfo.start(t);
+    }
+    src.start(t);
+    ambient = { src, gain, lfo };
+  };
+
   return {
+    setAmbient,
     get muted() {
       return muted;
     },
@@ -150,6 +202,21 @@ export function createSound(): Sound {
           break;
         case 'whistle':
           sfx.whistle(e.long);
+          break;
+        case 'warn':
+          // A rising rumble during the 1.5 s warning.
+          tone('sawtooth', 50, 120, 1.4, 0.25);
+          noise(1.4, 0.25, 'lowpass', 220);
+          break;
+        case 'splash':
+          noise(0.18, e.mine ? 0.5 : 0.25, 'bandpass', 1100);
+          noise(0.1, e.mine ? 0.3 : 0.15, 'highpass', 3500, 0.03);
+          break;
+        case 'sizzle':
+          noise(0.35, e.mine ? 0.4 : 0.2, 'highpass', 4500);
+          break;
+        case 'scrape':
+          noise(0.16, 0.12, 'highpass', 5000);
           break;
       }
     },

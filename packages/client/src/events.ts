@@ -1,4 +1,4 @@
-import { ITEMS, type BlastKind, type Game, type Team } from '@crateball/sim';
+import { ITEMS, inHotLava, inPuddle, type BlastKind, type Game, type Team } from '@crateball/sim';
 
 const KICK_WINDOW = 45;
 const SEEN_TTL_TICKS = 180;
@@ -9,17 +9,26 @@ export type GameEvent =
   | { type: 'hit'; x: number; y: number; team: Team; killed: boolean }
   | { type: 'item'; x: number; y: number; kind: BlastKind }
   | { type: 'goal'; team: Team; x: number; y: number }
-  | { type: 'whistle'; long: boolean };
+  | { type: 'whistle'; long: boolean }
+  /** Volcano: a warning circle just appeared (the eruption follows). */
+  | { type: 'warn'; x: number; y: number }
+  /** A player stepped into a puddle / onto hot lava. */
+  | { type: 'splash'; x: number; y: number; mine: boolean }
+  | { type: 'sizzle'; x: number; y: number; mine: boolean }
+  /** Our own player skating fast on ice. */
+  | { type: 'scrape' };
 
 /**
  * Turns successive predicted states into one-shot events (sounds, particles). Rollback re-simulation
  * replays the same ticks; tick stamps and growing ids keep each event from firing twice.
  */
-export function createEventTracker() {
+export function createEventTracker(me: () => string | null = () => null) {
   let lastTick = -1;
   let lastPhase = '';
   let lastScore = '';
   let maxBullet = 0;
+  let lastWarn = '';
+  const ground = new Map<string, boolean>();
   const kickSeen = new Map<string, number>();
   const hp = new Map<string, { hp: number; x: number; y: number }>();
   /** Blast key → tick first seen. Kept across frames so a blast that a rollback removes and a later
@@ -44,7 +53,32 @@ export function createEventTracker() {
     } else if (g.phase === 'kickoff') out.push({ type: 'whistle', long: false });
     lastScore = score;
     lastPhase = g.phase;
+    const w = g.arena.warn;
+    const warnKey = w ? `${w.x}:${w.y}` : '';
+    if (!fresh && w && warnKey !== lastWarn) out.push({ type: 'warn', x: w.x, y: w.y });
+    lastWarn = warnKey;
     for (const p of g.players) {
+      // Stepping into a puddle or onto hot lava (edge-triggered per player).
+      if (p.dead === 0 && (g.arena.kind === 'rain' || g.arena.kind === 'volcano')) {
+        const wet = g.arena.kind === 'rain' ? inPuddle(g, p) : inHotLava(g, p);
+        if (!fresh && wet && !ground.get(p.id))
+          out.push({
+            type: g.arena.kind === 'rain' ? 'splash' : 'sizzle',
+            x: p.x,
+            y: p.y,
+            mine: p.id === me(),
+          });
+        ground.set(p.id, wet);
+      }
+      if (
+        !fresh &&
+        g.arena.kind === 'ice' &&
+        p.id === me() &&
+        p.dead === 0 &&
+        g.tick % 14 === 0 &&
+        Math.hypot(p.vx, p.vy) > 1.6
+      )
+        out.push({ type: 'scrape' });
       const seen = kickSeen.get(p.id) ?? -1;
       // Someone else's kick reaches us about a ping late, so accept kicks up to ~0.75 s old;
       // the per-player tick stamp still plays each kick once.
@@ -79,6 +113,7 @@ export function createEventTracker() {
       const ids = new Set(g.players.map((p) => p.id));
       for (const id of kickSeen.keys()) if (!ids.has(id)) kickSeen.delete(id);
       for (const id of hp.keys()) if (!ids.has(id)) hp.delete(id);
+      for (const id of ground.keys()) if (!ids.has(id)) ground.delete(id);
     }
     return out;
   };

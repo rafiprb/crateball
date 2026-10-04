@@ -1,6 +1,6 @@
-import type { Game, Role, Settings, Team } from '@crateball/sim';
+import type { ArenaKind, Game, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 /** 4 letters, no look-alikes (I/O). */
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
@@ -80,6 +80,8 @@ export interface RoomInfo {
   host: string;
   state: 'lobby' | 'playing';
   settings: Settings;
+  /** Arena for each kickoff of the next match, in order. */
+  arenaPlan: ArenaKind[];
   players: RoomPlayer[];
 }
 

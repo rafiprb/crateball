@@ -10,7 +10,7 @@ type State = {
     players: Array<{ id: string; name: string; team: string; bot: boolean }>;
   } | null;
   screen: string;
-  net: { clientId: string | null };
+  net: { clientId: string | null; rtt: number };
   pred: { pending: number; corrections: number };
   sim: {
     tick: number;
@@ -64,7 +64,9 @@ test('iki oyuncu aynı odada; gecikmeli istemcide kendi hareketi RTT beklemeden 
   const c0 = (await state(b)).pred.corrections;
   await b.waitForTimeout(1500);
   const s = await state(b);
-  expect(s.pred.pending).toBeGreaterThan(3); // really running ahead of the server
+  // The latency really applies (~120 ms round trip). Pending inputs are no longer a measure of it:
+  // a starved server counts stand-in ticks against the client's sequence numbers.
+  expect(s.net.rtt).toBeGreaterThan(100);
   expect(s.pred.corrections - c0).toBeLessThan(40);
 });
 

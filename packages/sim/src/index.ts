@@ -2,6 +2,7 @@ export * from './content/rules';
 export * from './types';
 export { hashState } from './hash';
 export { nextRandom } from './rng';
+export { inHotLava, inPuddle, lavaHeat, puddleScale } from './arena';
 export {
   addPlayer,
   cloneGame,
@@ -11,6 +12,7 @@ export {
   openCrate,
   setRole,
   removePlayer,
+  newArenaPlan,
   restartMatch,
   step,
   teamCount,

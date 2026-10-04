@@ -1,4 +1,4 @@
-import type { BlastKind, Role, Settings } from './content/rules';
+import type { ArenaKind, BlastKind, Role, Settings } from './content/rules';
 
 export type Team = 'red' | 'blue';
 export type Phase = 'kickoff' | 'play' | 'goal' | 'over';
@@ -94,4 +94,55 @@ export interface Game {
   crates: Crate[];
   bullets: Bullet[];
   blasts: Blast[];
+  /** Pitch and weather for the current kickoff (changes after every goal). */
+  arena: Arena;
+  /** Arena for each kickoff of the match, fixed before it starts (shown in the lobby). */
+  arenaPlan: ArenaKind[];
+  /** Kickoffs played so far in this match (index into arenaPlan). */
+  kickoffs: number;
+}
+
+/** A rain puddle: overlapping circles that form, last and dry out (all in ticks). */
+export interface Puddle {
+  x: number;
+  y: number;
+  parts: Array<{ dx: number; dy: number; r: number }>;
+  born: number;
+  life: number;
+}
+
+/** A point of a lava channel; it is hot when young and cools with age. */
+export interface LavaPoint {
+  x: number;
+  y: number;
+  born: number;
+}
+
+/** A lava creek: a head that meanders downwards, leaving channel points behind. */
+export interface LavaStream {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  turn: number;
+  /** Still flowing (false once the head has run off the bottom). */
+  flowing: boolean;
+  /** Ticks since the last channel point. */
+  sinceStep?: number;
+  points: LavaPoint[];
+}
+
+export interface Arena {
+  kind: ArenaKind;
+  puddles: Puddle[];
+  streams: LavaStream[];
+  /** Unit vector; zero unless the arena is windy. */
+  wind: { x: number; y: number };
+  windTurn: number;
+  /** Next puddle / stream spawn. */
+  nextSpawn: number;
+  /** Next eruption step (warning, then the blast). */
+  nextEvent: number;
+  /** Where the next eruption will hit (shown as a warning). */
+  warn: { x: number; y: number } | null;
 }

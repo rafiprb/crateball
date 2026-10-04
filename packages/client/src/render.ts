@@ -8,6 +8,10 @@ import {
   TICK_HZ,
   kickDirection,
   type Game,
+  ARENAS,
+  type ArenaKind,
+  lavaHeat,
+  puddleScale,
   type BlastKind,
   type Role,
   type Team,
@@ -39,6 +43,54 @@ const ITEM_STYLE: Record<BlastKind, [string, string]> = {
   power: ['#FFA94D', 'POWER KICK!'],
   teleport: ['#C77DFF', 'TELEPORT!'],
   warp: ['#C77DFF', ''],
+  erupt: ['#FF6A3D', 'ERUPTION!'],
+};
+
+/** Ground colours and the line shown at kickoff for each arena. */
+const ARENA_LOOK: Record<
+  ArenaKind,
+  { outside: string; grassA: string; grassB: string; line: string; name: string; hint: string }
+> = {
+  classic: {
+    outside: '#4A7A3A',
+    grassA: '#5E9A48',
+    grassB: '#588F43',
+    line: 'rgba(255,255,255,.85)',
+    name: 'Classic',
+    hint: 'A normal pitch',
+  },
+  rain: {
+    outside: '#3A5A3A',
+    grassA: '#4C7A47',
+    grassB: '#46713F',
+    line: 'rgba(235,245,255,.75)',
+    name: 'Rain',
+    hint: 'Wet and slippery — puddles slow you and the ball',
+  },
+  volcano: {
+    outside: '#211915',
+    grassA: '#3B2F2A',
+    grassB: '#342923',
+    line: 'rgba(255,205,170,.6)',
+    name: 'Volcano',
+    hint: 'Lava slows you down — and it erupts',
+  },
+  ice: {
+    outside: '#8FB9CF',
+    grassA: '#D3EAF5',
+    grassB: '#C6E2F0',
+    line: 'rgba(40,90,140,.75)',
+    name: 'Ice',
+    hint: 'Hard to stop — the ball barely slows down',
+  },
+  wind: {
+    outside: '#4F8540',
+    grassA: '#69A653',
+    grassB: '#629C4C',
+    line: 'rgba(255,255,255,.85)',
+    name: 'Wind',
+    hint: 'The wind pushes the ball — watch the arrow',
+  },
 };
 
 const ROLE_STYLE: Record<Role, [string, string]> = {
@@ -62,27 +114,30 @@ export interface Renderer {
 export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const ctx = canvas.getContext('2d', { alpha: false })!;
   let pitch: HTMLCanvasElement | null = null;
+  let pitchKind: ArenaKind | null = null;
   let scale = 1;
   let cx = 0;
   let cy = 0;
   let dpr = 1;
   let shake = 0;
 
-  const buildPitch = () => {
+  const buildPitch = (kind: ArenaKind) => {
+    const look = ARENA_LOOK[kind];
+    pitchKind = kind;
     const c = document.createElement('canvas');
     c.width = canvas.width;
     c.height = canvas.height;
     const g = c.getContext('2d')!;
-    g.fillStyle = COLORS.outside;
+    g.fillStyle = look.outside;
     g.fillRect(0, 0, c.width, c.height);
     g.setTransform(scale, 0, 0, scale, cx, cy);
     const { halfW, halfH, goalHalf, goalDepth, centerRadius, postRadius } = FIELD;
     const stripe = (halfW * 2) / 12;
     for (let i = 0; i < 12; i++) {
-      g.fillStyle = i % 2 ? COLORS.grassA : COLORS.grassB;
+      g.fillStyle = i % 2 ? look.grassA : look.grassB;
       g.fillRect(-halfW + i * stripe, -halfH, stripe + 0.5, halfH * 2);
     }
-    g.strokeStyle = COLORS.line;
+    g.strokeStyle = look.line;
     g.lineWidth = 3;
     g.strokeRect(-halfW, -halfH, halfW * 2, halfH * 2);
     g.beginPath();
@@ -93,7 +148,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     g.arc(0, 0, centerRadius, 0, Math.PI * 2);
     g.stroke();
     for (const s of [-1, 1]) {
-      g.strokeStyle = COLORS.line;
+      g.strokeStyle = look.line;
       g.lineWidth = 3;
       g.strokeRect(s > 0 ? halfW - 90 : -halfW, -130, 90, 260);
       // Net
@@ -107,7 +162,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         g.lineTo(s * (halfW + goalDepth), y);
         g.stroke();
       }
-      g.strokeStyle = COLORS.line;
+      g.strokeStyle = look.line;
       g.lineWidth = 3;
       g.strokeRect(s > 0 ? halfW : -halfW - goalDepth, -goalHalf, goalDepth, goalHalf * 2);
       for (const sy of [-1, 1]) {
@@ -146,7 +201,109 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.fillText(s, x, y);
   };
 
+  /** Puddles and lava are unions of circles, drawn on a layer so their overlaps do not darken. */
+  const layer = document.createElement('canvas');
+  const freshLayer = () => {
+    if (layer.width !== canvas.width || layer.height !== canvas.height) {
+      layer.width = canvas.width;
+      layer.height = canvas.height;
+    }
+    const l = layer.getContext('2d')!;
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.clearRect(0, 0, layer.width, layer.height);
+    l.setTransform(ctx.getTransform());
+    return l;
+  };
+  const blitLayer = (alpha: number) => {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(layer, 0, 0);
+    ctx.restore();
+  };
+  const fillCircles = (l: CanvasRenderingContext2D, list: Array<[number, number, number]>, fill: string) => {
+    l.fillStyle = fill;
+    for (const [x, y, r] of list) {
+      if (r <= 0) continue;
+      l.beginPath();
+      l.arc(x, y, r, 0, Math.PI * 2);
+      l.fill();
+    }
+  };
+
+  const drawArena = (g: Game, now: number) => {
+    const a = g.arena;
+    if (a.kind === 'rain' && a.puddles.length) {
+      const l = freshLayer();
+      const parts: Array<[number, number, number]> = [];
+      for (const p of a.puddles) {
+        const k = puddleScale(g, p);
+        for (const q of p.parts) parts.push([p.x + q.dx, p.y + q.dy, q.r * k]);
+      }
+      fillCircles(
+        l,
+        parts.map(([x, y, r]) => [x, y, r > 0 ? r + 2.5 : 0]),
+        'rgb(205,232,255)',
+      );
+      fillCircles(l, parts, 'rgb(70,128,205)');
+      l.fillStyle = 'rgba(255,255,255,.35)';
+      for (const p of a.puddles) {
+        const k = puddleScale(g, p);
+        const q = p.parts[0];
+        if (!q || k <= 0) continue;
+        l.beginPath();
+        l.ellipse(
+          p.x + q.dx - q.r * 0.3 * k,
+          p.y + q.dy - q.r * 0.35 * k,
+          q.r * 0.35 * k,
+          q.r * 0.15 * k,
+          -0.4,
+          0,
+          Math.PI * 2,
+        );
+        l.fill();
+      }
+      blitLayer(0.55);
+    }
+    if (a.kind === 'volcano' && a.streams.length) {
+      const l = freshLayer();
+      const v = ARENAS.volcano;
+      const gone = v.coolTicks + v.fadeTicks;
+      // Cooling crust underneath (dark red → black, then fading), hot core on top.
+      for (const st of a.streams)
+        for (const pt of st.points) {
+          const h = lavaHeat(g, pt.born);
+          const fade = Math.min(1, (gone - (g.tick - pt.born)) / v.fadeTicks);
+          l.fillStyle = `rgba(${Math.round(40 + 140 * h)},${Math.round(25 + 20 * h)},20,${fade})`;
+          l.beginPath();
+          l.arc(pt.x, pt.y, v.lavaRadius + 3, 0, Math.PI * 2);
+          l.fill();
+        }
+      for (const st of a.streams)
+        for (const pt of st.points) {
+          const h = lavaHeat(g, pt.born);
+          if (h <= 0) continue;
+          const pulse = 0.85 + Math.sin(now / 250 + pt.x * 0.05) * 0.15;
+          l.fillStyle = `rgba(255,${Math.round(90 + 120 * h * pulse)},${Math.round(30 + 60 * h)},${Math.min(1, h * 1.6)})`;
+          l.beginPath();
+          l.arc(pt.x, pt.y, v.lavaRadius * (0.55 + 0.4 * h), 0, Math.PI * 2);
+          l.fill();
+        }
+      blitLayer(1);
+      for (const st of a.streams) if (st.flowing) circle(st.x, st.y, 9, 'rgba(255,230,140,.9)');
+    }
+    const w = g.arena.warn;
+    if (w) {
+      const k = (now / 120) % 2 < 1;
+      ctx.setLineDash([10, 8]);
+      circle(w.x, w.y, ARENAS.volcano.eruptRadius, 'rgba(255,80,40,.12)', k ? '#FF5A3D' : '#FFB760', 3);
+      ctx.setLineDash([]);
+      text('!', w.x, w.y, 34, '#FF5A3D', 800);
+    }
+  };
+
   const drawWorld = (g: Game, pr: Predictor, alpha: number, now: number, fx: Particles) => {
+    drawArena(g, now);
     for (const c of g.crates) {
       const r = CRATES.radius;
       const bob = Math.sin(now / 300 + c.id) * 1.5;
@@ -326,6 +483,38 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const why = g.clock === 0 ? 'FULL TIME' : `FIRST TO ${g.settings.scoreLimit}`;
       text(`${why}  ·  ${g.score[0]} – ${g.score[1]}`, mid, h / 2 + 56, 26, '#FFF4E0', 800);
     }
+    if (g.arena.kind === 'wind') {
+      // Wind indicator under the scoreboard.
+      const ax = mid;
+      const ay = HUD_H + 18;
+      ctx.fillStyle = 'rgba(20,24,40,.82)';
+      ctx.beginPath();
+      ctx.roundRect(ax - 52, ay - 14, 104, 28, 10);
+      ctx.fill();
+      text('WIND', ax - 20, ay + 1, 13, '#FFF4E0', 800);
+      ctx.save();
+      ctx.translate(ax + 26, ay);
+      ctx.rotate(Math.atan2(g.arena.wind.y, g.arena.wind.x));
+      ctx.strokeStyle = '#FFE066';
+      ctx.fillStyle = '#FFE066';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-10, 0);
+      ctx.lineTo(6, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(4, -6);
+      ctx.lineTo(4, 6);
+      ctx.fill();
+      ctx.restore();
+    }
+    if (g.phase === 'kickoff') {
+      // Which arena this kickoff is played on.
+      const look = ARENA_LOOK[g.arena.kind];
+      text(look.name.toUpperCase(), mid, h / 2 - 150, 40, '#FFF4E0', 800);
+      text(look.hint, mid, h / 2 - 118, 18, '#FFF4E0', 700);
+    }
     if (banner) text(banner, mid, h / 2, 72, color, 800);
     else if (g.phase === 'play' && g.clock > 0 && secs <= 10) {
       // Final countdown, big and fading in the middle of the pitch.
@@ -337,7 +526,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       g.score[0] + g.score[1] === 0 &&
       g.clock === g.settings.minutes * 60 * TICK_HZ
     )
-      text(`First to ${g.settings.scoreLimit}`, mid, h / 2 - 60, 28, '#FFF4E0', 800);
+      text(`First to ${g.settings.scoreLimit}`, mid, h / 2 - 82, 24, '#FFF4E0', 800);
   };
 
   const drawPing = (rtt: number | null, w: number) => {
@@ -372,8 +561,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     },
     draw(pr, alpha, fx, hudInfo) {
       const now = performance.now();
-      if (!pitch) buildPitch();
       const g = pr.game;
+      const kind = g?.arena.kind ?? 'classic';
+      if (!pitch || pitchKind !== kind) buildPitch(kind);
       shake = Math.max(shake, fx.takeShake());
       shake *= 0.88;
       const sx = shake > 0.3 ? (Math.random() - 0.5) * shake * dpr : 0;

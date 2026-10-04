@@ -14,6 +14,7 @@ import {
   addPlayer,
   createGame,
   freeRole,
+  newArenaPlan,
   removePlayer,
   restartMatch,
   setRole,
@@ -141,6 +142,7 @@ export function info(room: Room): RoomInfo {
     host: room.host,
     state: room.state,
     settings: room.game.settings,
+    arenaPlan: room.game.arenaPlan,
     players: room.game.players.map((p) => ({
       id: p.id,
       name: p.name,
@@ -180,6 +182,7 @@ export function createRooms(
     const g = room.game;
     if (g.phase === 'over' && g.phaseT >= MATCH.overPause) {
       room.state = 'lobby';
+      newArenaPlan(g); // a fresh arena order for the next match, shown in the lobby
       log.info({ room: room.code, score: g.score }, 'maç bitti, lobiye dönüldü');
       announce(room);
       return;
@@ -393,6 +396,7 @@ export function createRooms(
         emptySince: null,
         stepMsMax: 0,
       };
+      newArenaPlan(room.game);
       rooms.set(code, room);
       log.info({ room: code, isPublic }, 'oda kuruldu');
       ensureTimer();
@@ -453,7 +457,9 @@ export function createRooms(
       if (!room) return 'room_not_found';
       if (room.host !== id) return 'not_host';
       if (room.state !== 'lobby') return 'bad_message';
+      const limitChanged = room.game.settings.scoreLimit !== settings.scoreLimit;
       room.game.settings = { ...settings };
+      if (limitChanged) newArenaPlan(room.game); // plan length follows the score limit
       rebalance(room);
       announce(room);
       return null;

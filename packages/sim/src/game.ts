@@ -18,6 +18,15 @@ import {
 import { nextRandom } from './rng';
 import { DOWN, KICK, LEFT, RIGHT, UP, USE, type Body, type Game, type Player, type Team } from './types';
 import { botInput } from './bot';
+import {
+  arenaAccel,
+  ballDamping,
+  classicArena,
+  makeArena,
+  planArenas,
+  playerDamping,
+  updateArena,
+} from './arena';
 
 export function createGame(seed: number, settings: Settings = DEFAULT_SETTINGS): Game {
   return {
@@ -37,6 +46,9 @@ export function createGame(seed: number, settings: Settings = DEFAULT_SETTINGS):
     crates: [],
     bullets: [],
     blasts: [],
+    arena: classicArena(),
+    arenaPlan: [],
+    kickoffs: 0,
   };
 }
 
@@ -50,6 +62,14 @@ export function cloneGame(g: Game): Game {
     crates: g.crates.map((c) => ({ ...c })),
     bullets: g.bullets.map((b) => ({ ...b })),
     blasts: g.blasts.map((b) => ({ ...b })),
+    arena: {
+      ...g.arena,
+      puddles: g.arena.puddles.map((p) => ({ ...p, parts: p.parts.map((q) => ({ ...q })) })),
+      streams: g.arena.streams.map((st) => ({ ...st, points: st.points.map((pt) => ({ ...pt })) })),
+      wind: { ...g.arena.wind },
+      warn: g.arena.warn && { ...g.arena.warn },
+    },
+    arenaPlan: [...g.arenaPlan],
   };
 }
 
@@ -141,6 +161,11 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
   g.blasts = [];
   g.crates = [];
   g.nextCrate = g.tick + CRATES.firstAfter;
+  // The arena for this kickoff comes from the plan fixed before the match.
+  if (!g.arenaPlan.length) newArenaPlan(g);
+  const kind = g.arenaPlan[g.kickoffs % g.arenaPlan.length] ?? 'classic';
+  g.kickoffs++;
+  g.arena = makeArena(g, kind, () => rand(g));
   const slots = { red: 0, blue: 0 };
   for (const p of g.players) {
     Object.assign(p, { hp: PLAYER.maxHp, dead: 0, frozen: 0, slow: 0, boost: 0, cooldown: 0 });
@@ -156,8 +181,14 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
   }
 }
 
+/** Draw the arena order for the next match (at most 2 × scoreLimit kickoffs). */
+export function newArenaPlan(g: Game): void {
+  g.arenaPlan = planArenas(() => rand(g), 2 * g.settings.scoreLimit);
+}
+
 export function restartMatch(g: Game): void {
   g.score = [0, 0];
+  g.kickoffs = 0;
   g.clock = g.settings.minutes * 60 * TICK_HZ;
   for (const p of g.players) p.goals = 0;
   resetKickoff(g, 'red');
@@ -183,6 +214,11 @@ export function step(g: Game, inputs?: ReadonlyMap<string, number>): void {
   collide(g);
   updateBullets(g);
   updateCrates(g);
+  updateArena(
+    g,
+    () => rand(g),
+    (p, n, kx, ky) => damage(g, p, n, kx, ky),
+  );
   g.blasts = g.blasts.filter((b) => --b.t > 0);
   rules(g);
 }
@@ -231,6 +267,7 @@ function controlPlayer(g: Game, p: Player): void {
     if (p.slow > 0) a *= ITEMS.slowMul;
     a *= accelMul(p);
     if (p.bot) a *= BOT.accelMul;
+    a *= arenaAccel(g, p);
     if (p.boost > 0) a *= ITEMS.boostMul;
     p.vx += dx * a;
     p.vy += dy * a;
@@ -367,8 +404,9 @@ function integrate(g: Game): void {
     if (p.dead > 0) continue;
     p.x += p.vx;
     p.y += p.vy;
-    p.vx *= PLAYER.damping;
-    p.vy *= PLAYER.damping;
+    const pd = playerDamping(g);
+    p.vx *= pd;
+    p.vy *= pd;
   }
   // The ball moves in sub-steps no longer than its radius, checking the walls after each one, so a
   // very fast ball cannot skip over the goal line beside the goal and land inside the net.
@@ -380,8 +418,9 @@ function integrate(g: Game): void {
     b.y += b.vy / steps;
     confineBall(b);
   }
-  b.vx *= BALL.damping;
-  b.vy *= BALL.damping;
+  const bd = ballDamping(g, BALL.damping);
+  b.vx *= bd;
+  b.vy *= bd;
 }
 
 /** Elastic-ish circle contact, haxball style (bounce = product of both coefficients). */

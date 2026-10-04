@@ -45,7 +45,7 @@ export const MATCH = {
 
 export type ItemKind = 'gun' | 'mine' | 'ice' | 'boost' | 'shield' | 'power' | 'teleport';
 /** What a blast marker shows: a crate opening, or a teleport's departure/arrival flash. */
-export type BlastKind = ItemKind | 'warp';
+export type BlastKind = ItemKind | 'warp' | 'erupt';
 
 export const CRATES = {
   radius: 14,
@@ -164,4 +164,68 @@ export const BOT = {
   shootCos: 0.97,
   /** Blink (teleport) toward where the bot wants to be once it is at least this far away. */
   blinkFrom: 200,
+};
+
+export type ArenaKind = 'classic' | 'rain' | 'volcano' | 'ice' | 'wind';
+
+/**
+ * Arenas: a new one at every kickoff, in an order fixed before the match (shown in the lobby).
+ * Every block of five kickoffs contains all five arenas; never the same one twice in a row.
+ */
+export const ARENAS = {
+  kinds: ['classic', 'rain', 'volcano', 'ice', 'wind'] as readonly ArenaKind[],
+  /** Normal pitch values, for reference: ball 0.99, player 0.96. */
+  rain: {
+    ballDamping: 0.994,
+    playerDamping: 0.972,
+    /** Wet ground: everyone is a bit slower; in a puddle much slower. */
+    accel: 0.85,
+    puddleAccel: 0.55,
+    puddleBallDamping: 0.94,
+    /** Puddles are 3–5 overlapping circles; they form, last, dry out and new ones appear. */
+    minPuddles: 3,
+    maxPuddles: 5,
+    partMinR: 22,
+    partMaxR: 38,
+    partSpread: 34,
+    formTicks: sec(2.5),
+    dryTicks: sec(4),
+    minLife: sec(9),
+    maxLife: sec(14),
+    spawnMinGap: sec(2),
+    spawnMaxGap: sec(4),
+  },
+  ice: { ballDamping: 0.996, playerDamping: 0.986, accel: 0.55 },
+  volcano: {
+    /** Lava streams run from the top edge down to the bottom like creeks. */
+    maxStreams: 2,
+    streamMinGap: sec(3),
+    streamMaxGap: sec(6),
+    /** Pixels per tick, and a channel point every N ticks. */
+    streamSpeed: 0.9,
+    pointEvery: 13,
+    lavaRadius: 17,
+    /** How long a stretch stays hot, then it has cooled (harmless) and fades. */
+    coolTicks: sec(10),
+    fadeTicks: sec(1.5),
+    /** Hot lava: no damage, but you wade through it. */
+    lavaAccel: 0.5,
+    /** Meander: random walk of the turn rate; past this |dx| it is steered back downwards. */
+    maxTurn: 0.02,
+    turnJitter: 0.003,
+    maxSideways: 0.75,
+    /** Eruptions happen only on hot lava. */
+    eruptMinGap: sec(6),
+    eruptMaxGap: sec(10),
+    warning: sec(1.5),
+    eruptRadius: 90,
+    eruptPush: 7,
+    eruptDamageRadius: 45,
+  },
+  /** The wind turns smoothly through all directions; its turn rate wanders. */
+  wind: { force: 0.022, maxTurn: 0.006, turnJitter: 0.0004 },
+  /** Puddles keep clear of the centre circle and the goal boxes. */
+  keepClearCenter: 150,
+  keepClearBoxDepth: 170,
+  keepClearBoxHalf: 180,
 };

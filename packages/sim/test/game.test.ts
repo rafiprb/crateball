@@ -10,6 +10,11 @@ import {
   PLAYER,
   RIGHT,
   USE,
+  ARENAS,
+  ITEM_KINDS,
+  newArenaPlan,
+  restartMatch,
+  inHotLava,
   addPlayer,
   cloneGame,
   createGame,
@@ -409,5 +414,115 @@ describe('kutu içeriği ayarı', () => {
       a.teleport = false;
       a.x = 9999;
     }
+  });
+});
+
+describe('sahalar', () => {
+  const arenaGame = (seed = 1, scoreLimit = 5) => {
+    const g = createGame(seed, { minutes: 3, scoreLimit, crates: 'off', loot: [...ITEM_KINDS], bots: false });
+    addPlayer(g, 'a', 'A', 'red');
+    return g;
+  };
+
+  it('sıra: gol limitinin iki katı uzunlukta, her 5 santrada 5 sahanın hepsi, üst üste aynı saha yok', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const g = arenaGame(seed, 7);
+      newArenaPlan(g);
+      expect(g.arenaPlan).toHaveLength(14);
+      expect(new Set(g.arenaPlan.slice(0, 5)).size).toBe(5);
+      expect(new Set(g.arenaPlan.slice(5, 10)).size).toBe(5);
+      for (let i = 1; i < g.arenaPlan.length; i++) expect(g.arenaPlan[i]).not.toBe(g.arenaPlan[i - 1]);
+    }
+  });
+
+  it('her santrada plandaki sıradaki sahaya geçilir', () => {
+    const g = arenaGame();
+    newArenaPlan(g);
+    restartMatch(g);
+    expect(g.arena.kind).toBe(g.arenaPlan[0]);
+    g.phase = 'play';
+    g.ball = { x: FIELD.halfW - 5, y: 0, vx: 6, vy: 0 };
+    run(g, 10);
+    expect(g.phase).toBe('goal');
+    run(g, 160);
+    expect(g.arena.kind).toBe(g.arenaPlan[1]);
+  });
+
+  const onArena = (kind: (typeof ARENAS.kinds)[number], seed = 1) => {
+    const g = arenaGame(seed);
+    g.arenaPlan = [kind];
+    restartMatch(g);
+    g.phase = 'play';
+    return g;
+  };
+
+  it('yağmur: herkes biraz, birikintide çok yavaşlar; birikintiler oluşup kurur', () => {
+    const speed = (kind: 'classic' | 'rain') => {
+      const g = onArena(kind);
+      g.arena.puddles = [];
+      g.arena.nextSpawn = 1e9;
+      const p = g.players[0]!;
+      Object.assign(p, { x: -300, y: 150, vx: 0, vy: 0 });
+      run(g, 30, new Map([['a', RIGHT]]));
+      return p.x + 300;
+    };
+    expect(speed('rain')).toBeLessThan(speed('classic') * 0.95);
+    const g = onArena('rain');
+    expect(g.arena.puddles.length).toBeGreaterThanOrEqual(3);
+    const first = g.arena.puddles[0]!;
+    run(g, first.life + 10);
+    expect(g.arena.puddles.includes(first)).toBe(false);
+    expect(g.arena.puddles.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('volkan: lav yukarıdan aşağı akar, yavaşlatır ama can götürmez; patlama sadece lavın üstünde', () => {
+    const g = onArena('volcano', 4);
+    const p = g.players[0]!;
+    run(g, 60 * 8);
+    const s = g.arena.streams[0]!;
+    expect(s.points.length).toBeGreaterThan(5);
+    const ys = s.points.map((pt) => pt.y);
+    expect(ys.at(-1)!).toBeGreaterThan(ys[0]!);
+    // stand in the hottest lava: slowed, no damage
+    const hot = s.points.at(-1)!;
+    Object.assign(p, { x: hot.x, y: hot.y, vx: 0, vy: 0, hp: PLAYER.maxHp });
+    expect(inHotLava(g, p)).toBe(true);
+    let erupted = false;
+    for (let t = 0; t < 60 * 30; t++) {
+      const warn = g.arena.warn;
+      step(g);
+      if (warn && !g.arena.warn) {
+        erupted = true;
+        const onLava = g.arena.streams.some((st) =>
+          st.points.some((pt) => pt.x === warn.x && pt.y === warn.y),
+        );
+        expect(onLava).toBe(true);
+      }
+    }
+    expect(erupted).toBe(true);
+  });
+
+  it('rüzgâr: yönü zamanla döner ve topu iter', () => {
+    const g = onArena('wind', 2);
+    const w0 = { ...g.arena.wind };
+    g.ball = { x: 0, y: 0, vx: 0, vy: 0 };
+    run(g, 120);
+    expect(Math.hypot(g.ball.x, g.ball.y)).toBeGreaterThan(5);
+    run(g, 60 * 20);
+    const w1 = g.arena.wind;
+    expect(Math.hypot(w1.x, w1.y)).toBeCloseTo(1, 6);
+    expect(Math.abs(w1.x - w0.x) + Math.abs(w1.y - w0.y)).toBeGreaterThan(0.1);
+  });
+
+  it('sahalarla birlikte de deterministik', () => {
+    const play = () => {
+      const g = arenaGame(9);
+      addPlayer(g, 'b', 'B', 'blue', true);
+      newArenaPlan(g);
+      restartMatch(g);
+      for (let t = 0; t < 60 * 90; t++) step(g, new Map([['a', (t * 13) % 64]]));
+      return hashState(g);
+    };
+    expect(play()).toBe(play());
   });
 });

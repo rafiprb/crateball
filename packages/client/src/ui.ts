@@ -34,6 +34,34 @@ const ITEM_LABEL: Record<ItemKind, string> = {
   teleport: 'Teleport',
 };
 
+const ARENA_CHIP: Record<string, [string, string]> = {
+  classic: ['Classic', '#5E9A48'],
+  rain: ['Rain', '#4C7AA8'],
+  volcano: ['Volcano', '#D0502A'],
+  ice: ['Ice', '#8FC3E3'],
+  wind: ['Wind', '#9AB86A'],
+};
+
+/** The arena for each kickoff of the next match, in order (the first block of five has them all). */
+function arenaOrder(plan: readonly string[]) {
+  if (!plan.length) return null;
+  return h(
+    'div',
+    { class: 'arena-order' },
+    h('span', { class: 'label' }, 'Arenas, kickoff by kickoff'),
+    h(
+      'ol',
+      {},
+      ...plan.map((k) => {
+        const [name, color] = ARENA_CHIP[k] ?? [k, '#666'];
+        const li = h('li', {}, name);
+        li.style.setProperty('--chip', color);
+        return li;
+      }),
+    ),
+  );
+}
+
 export const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DF', mid: 'MF', fwd: 'FW' };
 const ROLE_NAME: Record<Role, string> = {
   gk: 'Goalkeeper',
@@ -360,6 +388,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         roles,
         mine && h('div', { class: 'hint' }, `${ROLE_NAME[mine.role]}: ${ROLE_HINT[mine.role]}`),
         settingsForm(room.settings, isHost, act.settings),
+        arenaOrder(room.arenaPlan ?? []),
         publicBox(),
         isHost
           ? button('Start Game', act.start, 'primary')

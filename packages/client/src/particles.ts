@@ -1,4 +1,4 @@
-import { ITEMS, type BlastKind, type Game } from '@crateball/sim';
+import { ITEMS, lavaHeat, puddleScale, type BlastKind, type Game } from '@crateball/sim';
 import type { GameEvent } from './events';
 
 /** Cosmetic only (client-side, Math.random is fine here). Fixed pool, no allocation per frame. */
@@ -31,6 +31,7 @@ const ITEM_COLORS: Record<BlastKind, string[]> = {
   power: ['#FFA94D', '#FFE066'],
   teleport: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
   warp: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
+  erupt: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
 };
 const TEAM = { red: ['#E8574A', '#FFB0A8', '#FFF4E0'], blue: ['#4A7DE8', '#A8C4FF', '#FFF4E0'] };
 const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)]!;
@@ -98,6 +99,133 @@ export function createParticles(): Particles {
   const ring = (x: number, y: number, color: string, size: number, life: number) =>
     add({ x, y, shape: 3, size, grow: size * 4, life, color, drag: 0 });
 
+  /** Arena weather: rain streaks, ice glints, lava embers, wind streaks (world coordinates). */
+  const W = 470;
+  const Hh = 250;
+  const weather = (g: Game, pos: (id: string) => { x: number; y: number } | null) => {
+    const a = g.arena;
+    switch (a.kind) {
+      case 'rain': {
+        for (let i = 0; i < 5; i++)
+          add({
+            x: rnd(-W, W),
+            y: rnd(-Hh, Hh),
+            vx: -60,
+            vy: 420,
+            shape: 1,
+            size: 1.2,
+            life: 0.18,
+            drag: 0,
+            color: 'rgba(200,225,255,.55)',
+          });
+        // Raindrop rings on the puddles.
+        const p = a.puddles[Math.floor(Math.random() * a.puddles.length)];
+        const k = p ? puddleScale(g, p) : 0;
+        const q = p?.parts[Math.floor(Math.random() * p.parts.length)];
+        if (p && q && k > 0.3 && Math.random() < 0.5)
+          add({
+            x: p.x + q.dx + rnd(-q.r, q.r) * 0.5 * k,
+            y: p.y + q.dy + rnd(-q.r, q.r) * 0.5 * k,
+            shape: 3,
+            size: 1.5,
+            grow: 14,
+            life: 0.45,
+            drag: 0,
+            color: 'rgba(225,242,255,.7)',
+            ground: true,
+          });
+        break;
+      }
+      case 'ice':
+        if (Math.random() < 0.35)
+          add({
+            x: rnd(-W, W),
+            y: rnd(-Hh, Hh),
+            shape: 2,
+            size: 3,
+            life: 0.6,
+            spin: 6,
+            color: '#FFFFFF',
+            ground: true,
+          });
+        // Ice shavings kicked up by running players; more when moving fast.
+        for (const pl of g.players) {
+          if (pl.dead > 0) continue;
+          const at = pos(pl.id);
+          const v = Math.hypot(pl.vx, pl.vy);
+          if (!at || v < 0.5) continue;
+          const back = 14 / v;
+          for (let n = 0; n < (v > 1.8 ? 2 : 1); n++)
+            add({
+              x: at.x - pl.vx * back + rnd(-6, 6),
+              y: at.y - pl.vy * back + rnd(-6, 6),
+              vx: -pl.vx * rnd(15, 40) + rnd(-35, 35),
+              vy: -pl.vy * rnd(15, 40) + rnd(-35, 35),
+              shape: 2,
+              size: rnd(3, 5.5),
+              life: rnd(0.35, 0.7),
+              drag: 4,
+              spin: rnd(-12, 12),
+              color: pick(['#FFFFFF', '#8FC3E3', '#5E9FCB', '#B5DCF2']),
+              ground: true,
+            });
+        }
+        break;
+      case 'volcano':
+        for (const st of a.streams) {
+          if (st.flowing && Math.random() < 0.6)
+            add({
+              x: st.x + rnd(-8, 8),
+              y: st.y + rnd(-8, 8),
+              vy: -55,
+              vx: rnd(-20, 20),
+              size: 2.4,
+              life: 0.9,
+              drag: 0.5,
+              color: pick(['#FFB760', '#FF6A3D', '#FFE066']),
+            });
+          const pt = st.points[Math.floor(Math.random() * st.points.length)];
+          if (pt && lavaHeat(g, pt.born) > 0.4 && Math.random() < 0.3)
+            add({
+              x: pt.x + rnd(-9, 9),
+              y: pt.y + rnd(-9, 9),
+              vy: -35,
+              vx: rnd(-10, 10),
+              size: 1.8,
+              life: 0.8,
+              drag: 0.5,
+              color: '#FFB760',
+            });
+        }
+        if (Math.random() < 0.3)
+          add({
+            x: rnd(-W, W),
+            y: rnd(-Hh, Hh),
+            vy: -25,
+            size: 1.6,
+            life: 1.2,
+            drag: 0,
+            color: 'rgba(255,150,80,.7)',
+          });
+        break;
+      case 'wind':
+        for (let i = 0; i < 2; i++)
+          add({
+            x: rnd(-W, W) - a.wind.x * 200,
+            y: rnd(-Hh, Hh) - a.wind.y * 200,
+            vx: a.wind.x * 380,
+            vy: a.wind.y * 380,
+            shape: 1,
+            size: 1.4,
+            life: 0.6,
+            drag: 0,
+            color: 'rgba(255,255,255,.35)',
+            ground: true,
+          });
+        break;
+    }
+  };
+
   return {
     get count() {
       return pool.length;
@@ -164,6 +292,19 @@ export function createParticles(): Particles {
             ring(e.x, e.y, colors[0]!, 16, 0.35);
             break;
           }
+          if (e.kind === 'erupt') {
+            burst(e.x, e.y, 50, [120, 460], colors, { size: 6, grow: -6, life: 0.8, drag: 4 });
+            burst(e.x, e.y, 22, [20, 100], ['#2A211C', '#4A3E36', '#6A5E50'], {
+              size: 12,
+              grow: 16,
+              life: 1.4,
+              drag: 2,
+              ground: true,
+            });
+            ring(e.x, e.y, '#FF6A3D', 22, 0.4);
+            shake = Math.max(shake, 14);
+            break;
+          }
           // Crate splinters for every opening.
           burst(e.x, e.y, 10, [60, 200], ['#C88A4A', '#7A4E22', '#E0B080'], {
             shape: 2,
@@ -211,6 +352,20 @@ export function createParticles(): Particles {
           break;
         }
         case 'whistle':
+        case 'warn':
+        case 'scrape':
+          break;
+        case 'splash':
+          burst(e.x, e.y, 10, [40, 140], ['#CDE8FF', '#8FC3E3', '#FFFFFF'], {
+            size: 2,
+            life: 0.35,
+            drag: 5,
+            ground: true,
+          });
+          ring(e.x, e.y, 'rgba(220,240,255,.8)', 8, 0.3);
+          break;
+        case 'sizzle':
+          burst(e.x, e.y, 8, [20, 80], ['#FFB760', '#FF6A3D', '#5A4A3A'], { size: 2.5, life: 0.5, drag: 3 });
           break;
       }
     },
@@ -219,6 +374,7 @@ export function createParticles(): Particles {
       const tick = trailAcc >= 1 / 60;
       if (!tick) return;
       trailAcc = 0;
+      weather(g, pos);
       const b = pos('ball');
       const speed = Math.hypot(g.ball.vx, g.ball.vy);
       if (b && speed > 3)

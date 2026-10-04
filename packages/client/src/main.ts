@@ -33,7 +33,7 @@ resize();
 const pred = createPredictor();
 const fx = createParticles();
 const sound = createSound();
-const track = createEventTracker();
+const track = createEventTracker(() => pred.me);
 let mutedPref = false;
 try {
   mutedPref = localStorage.getItem('muted') === '1';
@@ -277,6 +277,7 @@ function loop(now: number) {
     if (seq !== null) conn.send({ t: 'in', s: seq, b: bits });
   }
   const t0 = performance.now();
+  sound.setAmbient(room?.state === 'playing' ? (pred.game?.arena.kind ?? null) : null);
   for (const e of track(pred.game)) {
     sound.play(e);
     fx.emit(e);

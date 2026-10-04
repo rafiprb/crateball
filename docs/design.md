@@ -27,6 +27,23 @@ oyuncu kutuya değince açılır.
   vuruş yönünü gösteren ok çizilir; pas yardımı devredeyse sarı olur ve alıcıyı halkayla gösterir.
 - Botlar takımları eşitler (tek kişi gelirse 1v1 bot); mevkilerini korurlar.
 
+## Sahalar
+
+Her santrada (maç başı ve her gol sonrası) saha değişir. Sıra maçtan önce çekilir ve lobide görünür:
+en fazla 2 × gol limiti santra; her 5 santrada beş sahanın hepsi, aynı saha üst üste gelmez.
+
+- **Classic:** normal saha.
+- **Rain:** kaygan ve ağır zemin (top daha uzağa yuvarlanır, oyuncular kayar, ivme ×0.85). Düzensiz
+  su birikintileri oluşur, 9–14 sn kalır, kurur; yenileri çıkar (3–5 tane). Birikintide oyuncu ×0.55,
+  top hızla yavaşlar.
+- **Volcano:** üst kenardan aşağı kıvrılarak akan lav dereleri (en fazla 2). Sıcak lav can götürmez,
+  yavaşlatır (×0.5); ~10 sn'de soğur. Patlamalar yalnızca sıcak lavın üstünde: 1.5 sn uyarı, sonra
+  merkezde 1 hasar ve 90 px içinde herkesi ve topu savurur.
+- **Ice:** çok kaygan (ivme ×0.55, top neredeyse yavaşlamaz); koşanların ayağından buz kırıntıları.
+- **Wind:** topa hafif rüzgâr kuvveti; yön 360° yumuşakça döner (skorun altında ok).
+- Sesler: yağmur/volkan/rüzgâr uğultusu, birikintide şıpırtı, lavda cızırtı, patlama öncesi
+  gümbürtü, buzda kayma.
+
 ## Menü ve lobi
 
 - Ana menü: takma ad → **Create Room** (ad, herkese açık/özel, ayarlar) / **Find Room** (`GET /rooms`,
