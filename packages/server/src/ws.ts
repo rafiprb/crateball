@@ -214,6 +214,9 @@ export function attachWebSocket(
         case 'start':
           fail(rooms.start(clientId));
           break;
+        case 'meta':
+          fail(rooms.setMeta(clientId, msg.name, msg.public));
+          break;
         case 'move':
           fail(rooms.move(clientId, msg.id, msg.team));
           break;

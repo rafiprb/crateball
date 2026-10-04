@@ -94,6 +94,7 @@ export interface Rooms {
   swap(by: string, a: string, b: string): ErrorCode | null;
   setRole(id: string, role: Role): void;
   setSettings(id: string, settings: Settings): ErrorCode | null;
+  setMeta(id: string, name: string, isPublic: boolean): ErrorCode | null;
   start(id: string): ErrorCode | null;
   list(): RoomListing[];
   /** For /health: lets a deploy wait until no match is running. */
@@ -454,6 +455,15 @@ export function createRooms(
       if (room.state !== 'lobby') return 'bad_message';
       room.game.settings = { ...settings };
       rebalance(room);
+      announce(room);
+      return null;
+    },
+    setMeta(id, name, isPublic) {
+      const room = byClient.get(id);
+      if (!room) return 'room_not_found';
+      if (room.host !== id) return 'not_host';
+      room.name = name;
+      room.isPublic = isPublic;
       announce(room);
       return null;
     },

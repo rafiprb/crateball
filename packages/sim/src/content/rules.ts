@@ -110,25 +110,25 @@ export interface Settings {
   minutes: number;
   scoreLimit: number;
   crates: 'off' | 'normal' | 'chaos';
-  /** What crates contain: the normal weighted mix, or always one kind (fun modes, and for testing). */
-  loot: Loot;
+  /** Which items crates may contain (weighted as usual among them). All of them = the normal mix;
+   * one = a fun mode, also handy for trying a new item. Never empty. */
+  loot: ItemKind[];
   bots: boolean;
 }
 
-export type Loot = 'mixed' | ItemKind;
+export const ITEM_KINDS: readonly ItemKind[] = ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'];
 
 export const SETTING_CHOICES = {
   minutes: [2, 3, 5, 10],
   scoreLimit: [3, 5, 7, 10],
   crates: ['off', 'normal', 'chaos'],
-  loot: ['mixed', 'gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'],
 } as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   minutes: 3,
   scoreLimit: 5,
   crates: 'normal',
-  loot: 'mixed',
+  loot: [...ITEM_KINDS],
   bots: true,
 };
 

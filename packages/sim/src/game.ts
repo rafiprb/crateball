@@ -572,13 +572,14 @@ function spawnCrate(g: Game): void {
 }
 
 function rollLoot(g: Game): ItemKind {
-  if (g.settings.loot && g.settings.loot !== 'mixed') return g.settings.loot;
-  const total = CRATES.loot.reduce((s, [, w]) => s + w, 0);
+  const allowed = g.settings.loot?.length ? g.settings.loot : null;
+  const table = allowed ? CRATES.loot.filter(([kind]) => allowed.includes(kind)) : CRATES.loot;
+  const total = table.reduce((s, [, w]) => s + w, 0);
   let r = rand(g) * total;
-  for (const [kind, w] of CRATES.loot) {
+  for (const [kind, w] of table) {
     if ((r -= w) < 0) return kind;
   }
-  return 'gun';
+  return table[0]?.[0] ?? 'gun';
 }
 
 export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKind): void {

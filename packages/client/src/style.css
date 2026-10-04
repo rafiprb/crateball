@@ -65,8 +65,7 @@ canvas#game {
   gap: 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
-#screen-menu,
-#screen-create {
+#screen-menu {
   width: min(380px, 100%);
 }
 .panel h1 {
@@ -386,4 +385,31 @@ ul.rooms li.empty {
   border: 2px solid #e8574a;
   font-weight: 700;
   font-size: 14px;
+}
+
+fieldset.loot,
+.settings > label.check {
+  grid-column: 1 / -1;
+}
+fieldset.loot {
+  border: 2px solid #3a4470;
+  border-radius: 12px;
+  margin: 0;
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+fieldset.loot legend {
+  padding: 0 4px;
+  font-weight: 700;
+}
+.panel input.room-name {
+  flex: 1;
+  min-width: 0;
+  font:
+    800 24px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  padding: 2px 10px;
 }

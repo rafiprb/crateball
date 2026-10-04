@@ -377,7 +377,7 @@ describe('inceleme düzeltmeleri (sim)', () => {
 
 describe('kutu içeriği ayarı', () => {
   it('tek tür seçilince her kutudan o çıkar', () => {
-    const g = createGame(3, { minutes: 3, scoreLimit: 5, crates: 'chaos', loot: 'teleport', bots: false });
+    const g = createGame(3, { minutes: 3, scoreLimit: 5, crates: 'chaos', loot: ['teleport'], bots: false });
     const a = addPlayer(g, 'a', 'A', 'red');
     g.phase = 'play';
     a.x = 9999;

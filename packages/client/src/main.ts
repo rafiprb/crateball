@@ -194,8 +194,9 @@ function onRoom(r: RoomInfo) {
 const ui = createUi(
   $<HTMLDivElement>('#ui'),
   {
-    create: (roomName, isPublic, settings) =>
-      conn.send({ t: 'create', name: ui.name, roomName, public: isPublic, settings }),
+    create: (roomName, isPublic) =>
+      conn.send({ t: 'create', name: ui.name, roomName, public: isPublic, settings: DEFAULT_SETTINGS }),
+    meta: (roomName, isPublic) => conn.send({ t: 'meta', name: roomName, public: isPublic }),
     join: (c) => conn.send({ t: 'join', code: c, name: ui.name }),
     leave: () => {
       conn.send({ t: 'leave' });

@@ -3,6 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 type State = {
   room: {
     code: string;
+    name: string;
+    settings: { loot: string[] };
     state: string;
     host: string;
     players: Array<{ id: string; name: string; team: string; bot: boolean }>;
@@ -73,9 +75,13 @@ test('lobi: oda kur, Find Room ile bul, host sürükleyerek yer değiştirir, me
   const b = await browser.newPage();
   await a.goto('/?name=Host');
   await a.getByRole('button', { name: 'Create Room' }).click();
-  await a.locator('#screen-create input').first().fill('E2E lobby');
-  await a.getByRole('button', { name: 'Create', exact: true }).click();
+  // Straight into the lobby; the host renames the room there and picks crate contents.
   await expect(a.locator('#room-code')).toHaveText(/^[A-Z]{4}$/);
+  await a.locator('#room-name').fill('E2E lobby');
+  await a.locator('#room-name').press('Enter');
+  await expect.poll(async () => (await state(a)).room?.name).toBe('E2E lobby');
+  await a.locator('input[data-loot=gun]').uncheck();
+  await expect.poll(async () => (await state(a)).room?.settings.loot.includes('gun')).toBe(false);
   const code = await a.locator('#room-code').innerText();
 
   await b.goto('/?name=Guest');

@@ -11,6 +11,7 @@ import {
   encode,
   type ServerMessage,
 } from '@crateball/protocol';
+import { ITEM_KINDS, type Settings } from '@crateball/sim';
 import { createLogger, loadConfig, startServer, type RunningServer, type ServerConfig } from '../src/app';
 
 const silent = new Writable({ write: (_c, _e, cb) => cb() });
@@ -264,7 +265,13 @@ describe('WebSocket', () => {
       c.socket.send(encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION }));
       await c.next();
     }
-    const settings = { minutes: 2, scoreLimit: 3, crates: 'chaos', loot: 'mixed', bots: true } as const;
+    const settings: Settings = {
+      minutes: 2,
+      scoreLimit: 3,
+      crates: 'chaos',
+      loot: [...ITEM_KINDS],
+      bots: true,
+    };
     host.socket.send(encode({ t: 'create', name: 'Ayşe', roomName: 'Pazar maçı', public: true, settings }));
     const until = async <T extends ServerMessage['t']>(c: ReturnType<typeof client>, t: T) => {
       for (;;) {
@@ -322,7 +329,7 @@ describe('girdi kuyruğu', () => {
       'A',
       'R',
       false,
-      { minutes: 3, scoreLimit: 5, crates: 'off', loot: 'mixed', bots: false },
+      { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: false },
       (r) => sent.push(r),
     );
     if (typeof room === 'string') throw new Error(room);
@@ -345,7 +352,7 @@ describe('girdi kuyruğu', () => {
 });
 
 describe('inceleme düzeltmeleri (sunucu)', () => {
-  const settings = { minutes: 3, scoreLimit: 5, crates: 'off', loot: 'mixed', bots: true } as const;
+  const settings: Settings = { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: true };
   const make = async () => {
     const { createRooms } = await import('../src/rooms');
     return createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
@@ -456,7 +463,7 @@ describe('WebSocket sınırları', () => {
         name: 'Host',
         roomName: 'R',
         public: false,
-        settings: { minutes: 3, scoreLimit: 5, crates: 'off', loot: 'mixed', bots: true },
+        settings: { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: true },
       }),
     );
     const { code } = await until(a, 'joined');

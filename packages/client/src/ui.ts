@@ -1,5 +1,12 @@
 import type { RoomInfo, RoomListing, RoomPlayer } from '@crateball/protocol';
-import { DEFAULT_SETTINGS, SETTING_CHOICES, type Role, type Settings, type Team } from '@crateball/sim';
+import {
+  ITEM_KINDS,
+  SETTING_CHOICES,
+  type ItemKind,
+  type Role,
+  type Settings,
+  type Team,
+} from '@crateball/sim';
 
 /** Tiny DOM helper: text always goes through textContent (player names are untrusted). */
 type Child = Node | string | null | false | undefined;
@@ -17,15 +24,14 @@ function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
-const LOOT_LABEL: Record<string, string> = {
-  mixed: 'Mixed',
-  gun: 'Guns only',
-  mine: 'Mines only',
-  ice: 'Ice only',
-  boost: 'Speed only',
-  shield: 'Shields only',
-  power: 'Power kicks only',
-  teleport: 'Teleports only',
+const ITEM_LABEL: Record<ItemKind, string> = {
+  gun: 'Gun',
+  mine: 'Mine',
+  ice: 'Ice',
+  boost: 'Speed',
+  shield: 'Shield',
+  power: 'Power kick',
+  teleport: 'Teleport',
 };
 
 export const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DF', mid: 'MF', fwd: 'FW' };
@@ -43,7 +49,8 @@ const ROLE_HINT: Record<Role, string> = {
 };
 
 export interface UiActions {
-  create(roomName: string, isPublic: boolean, settings: Settings): void;
+  create(roomName: string, isPublic: boolean): void;
+  meta(roomName: string, isPublic: boolean): void;
   join(code: string): void;
   leave(): void;
   team(team: Team): void;
@@ -125,7 +132,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
     h('button', { type: 'button', class: cls, onclick }, text);
 
   const settingsForm = (s: Settings, editable: boolean, onChange: (s: Settings) => void) => {
-    const select = <K extends 'minutes' | 'scoreLimit' | 'crates' | 'loot'>(
+    const select = <K extends 'minutes' | 'scoreLimit' | 'crates'>(
       key: K,
       label: string,
       fmt: (v: Settings[K]) => string,
@@ -136,11 +143,35 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
       }
       sel.addEventListener('change', () => {
         const raw = sel.value;
-        const v = (key === 'crates' || key === 'loot' ? raw : Number(raw)) as Settings[K];
+        const v = (key === 'crates' ? raw : Number(raw)) as Settings[K];
         onChange({ ...s, [key]: v });
       });
       return h('label', {}, label, sel);
     };
+    // Which items crates may contain; at least one stays ticked.
+    const lootBoxes = () =>
+      h(
+        'fieldset',
+        { class: 'loot' },
+        h('legend', {}, 'Crate contents'),
+        ...ITEM_KINDS.map((kind) => {
+          const box = h('input', {
+            type: 'checkbox',
+            checked: s.loot.includes(kind),
+            disabled: !editable,
+            data: { loot: kind },
+          });
+          box.addEventListener('change', () => {
+            const next = box.checked ? [...s.loot, kind] : s.loot.filter((k) => k !== kind);
+            if (next.length === 0) {
+              box.checked = true;
+              return;
+            }
+            onChange({ ...s, loot: ITEM_KINDS.filter((k) => next.includes(k)) });
+          });
+          return h('label', { class: 'check' }, box, ITEM_LABEL[kind]);
+        }),
+      );
     const bots = h('input', { type: 'checkbox', checked: s.bots, disabled: !editable });
     bots.addEventListener('change', () => onChange({ ...s, bots: bots.checked }));
     return h(
@@ -153,7 +184,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         'Crates',
         (v) => ({ off: 'Off', normal: 'Normal', chaos: 'Chaos' })[v as string] ?? '',
       ),
-      select('loot', 'Crate contents', (v) => LOOT_LABEL[v as string] ?? String(v)),
+      lootBoxes(),
       h('label', { class: 'check' }, bots, 'Fill with bots'),
     );
   };
@@ -210,6 +241,32 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
     },
     lobby(room, me) {
       const isHost = room.host === me;
+      const roomNameInput = (r: RoomInfo) => {
+        const input = h('input', {
+          id: 'room-name',
+          maxLength: 24,
+          value: r.name,
+          autocomplete: 'off',
+          class: 'room-name',
+        });
+        const commit = () => {
+          const v = input.value.trim();
+          if (v && v !== r.name) act.meta(v, r.public);
+        };
+        input.addEventListener('change', commit);
+        input.addEventListener('keydown', (e) => e.key === 'Enter' && input.blur());
+        return input;
+      };
+      const publicBox = () => {
+        const box = h('input', {
+          type: 'checkbox',
+          checked: room.public,
+          disabled: !isHost,
+          id: 'room-public',
+        });
+        box.addEventListener('change', () => act.meta(room.name, box.checked));
+        return h('label', { class: 'check' }, box, 'Public (shows up in Find Room)');
+      };
       const mine = room.players.find((p) => p.id === me);
       const link = `${location.origin}/r/${room.code}`;
       const copy = button('Copy link', () => {
@@ -294,7 +351,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         h(
           'div',
           { class: 'head' },
-          h('h2', {}, room.name),
+          isHost ? roomNameInput(room) : h('h2', {}, room.name),
           h('span', { class: 'code', id: 'room-code' }, room.code),
           copy,
         ),
@@ -303,6 +360,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         roles,
         mine && h('div', { class: 'hint' }, `${ROLE_NAME[mine.role]}: ${ROLE_HINT[mine.role]}`),
         settingsForm(room.settings, isHost, act.settings),
+        publicBox(),
         isHost
           ? button('Start Game', act.start, 'primary')
           : h('p', { class: 'hint' }, 'Waiting for the host to start…'),
@@ -311,22 +369,9 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
     },
   };
 
+  /** Create Room goes straight to the lobby; name, visibility and rules are edited there. */
   function create() {
-    let settings = { ...DEFAULT_SETTINGS };
-    const roomName = h('input', { maxLength: 24, value: `${name}'s room`, autocomplete: 'off' });
-    const pub = h('input', { type: 'checkbox', checked: true });
-    const form = h('div', {});
-    const draw = () => form.replaceChildren(settingsForm(settings, true, (s) => ((settings = s), draw())));
-    draw();
-    show(
-      'create',
-      h('h2', {}, 'Create Room'),
-      h('label', {}, 'Room name', roomName),
-      h('label', { class: 'check' }, pub, 'Public (shows up in Find Room)'),
-      form,
-      button('Create', () => act.create(roomName.value, pub.checked, settings), 'primary'),
-      button('Back', () => ui.menu()),
-    );
+    act.create(`${name || 'Player'}'s room`, true);
   }
 
   function find() {

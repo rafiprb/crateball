@@ -13,6 +13,8 @@ export type ClientMessage =
   | { t: 'join'; code: string; name: string }
   | { t: 'leave' }
   | { t: 'settings'; settings: Settings }
+  /** Host: rename the room or make it public/private. */
+  | { t: 'meta'; name: string; public: boolean }
   | { t: 'start' }
   /** Host: swap two players (team + role). */
   | { t: 'swap'; a: string; b: string }
@@ -137,14 +139,17 @@ function cleanText(v: unknown, max: number): string | null {
   return s || null;
 }
 
-const LOOT: readonly string[] = ['mixed', 'gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'];
+const ITEMS: readonly string[] = ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'];
 
 export function decodeSettings(v: unknown): Settings | null {
   if (!isObj(v)) return null;
   const { minutes, scoreLimit, crates, bots } = v;
-  // Optional for older clients: missing means the normal mix.
-  const loot = v.loot ?? 'mixed';
-  if (!LOOT.includes(loot as string)) return null;
+  // Older clients send nothing ('mixed') or a single kind; newer ones a list of kinds.
+  const raw = v.loot ?? 'mixed';
+  const list = raw === 'mixed' ? ITEMS : typeof raw === 'string' ? [raw] : raw;
+  if (!Array.isArray(list) || list.length === 0 || list.length > ITEMS.length) return null;
+  if (!list.every((k) => typeof k === 'string' && ITEMS.includes(k))) return null;
+  const loot = ITEMS.filter((k) => (list as string[]).includes(k)) as Settings['loot'];
   if (![2, 3, 5, 10].includes(minutes as number) || ![3, 5, 7, 10].includes(scoreLimit as number))
     return null;
   if (crates !== 'off' && crates !== 'normal' && crates !== 'chaos') return null;
@@ -203,6 +208,10 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
       if (recent.some((r) => r === null)) return null;
       return { t: 'report', note: cleanText(m.note, 200) ?? '', recent: recent as ClientStats[] };
     }
+    case 'meta':
+      return typeof m.public === 'boolean'
+        ? { t: 'meta', name: cleanText(m.name, 24) ?? 'Room', public: m.public }
+        : null;
     case 'settings': {
       const settings = decodeSettings(m.settings);
       return settings ? { t: 'settings', settings } : null;
