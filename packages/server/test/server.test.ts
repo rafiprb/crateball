@@ -264,7 +264,7 @@ describe('WebSocket', () => {
       c.socket.send(encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION }));
       await c.next();
     }
-    const settings = { minutes: 2, scoreLimit: 3, crates: 'chaos', bots: true } as const;
+    const settings = { minutes: 2, scoreLimit: 3, crates: 'chaos', loot: 'mixed', bots: true } as const;
     host.socket.send(encode({ t: 'create', name: 'Ayşe', roomName: 'Pazar maçı', public: true, settings }));
     const until = async <T extends ServerMessage['t']>(c: ReturnType<typeof client>, t: T) => {
       for (;;) {
@@ -322,7 +322,7 @@ describe('girdi kuyruğu', () => {
       'A',
       'R',
       false,
-      { minutes: 3, scoreLimit: 5, crates: 'off', bots: false },
+      { minutes: 3, scoreLimit: 5, crates: 'off', loot: 'mixed', bots: false },
       (r) => sent.push(r),
     );
     if (typeof room === 'string') throw new Error(room);
@@ -345,7 +345,7 @@ describe('girdi kuyruğu', () => {
 });
 
 describe('inceleme düzeltmeleri (sunucu)', () => {
-  const settings = { minutes: 3, scoreLimit: 5, crates: 'off', bots: true } as const;
+  const settings = { minutes: 3, scoreLimit: 5, crates: 'off', loot: 'mixed', bots: true } as const;
   const make = async () => {
     const { createRooms } = await import('../src/rooms');
     return createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
@@ -456,7 +456,7 @@ describe('WebSocket sınırları', () => {
         name: 'Host',
         roomName: 'R',
         public: false,
-        settings: { minutes: 3, scoreLimit: 5, crates: 'off', bots: true },
+        settings: { minutes: 3, scoreLimit: 5, crates: 'off', loot: 'mixed', bots: true },
       }),
     );
     const { code } = await until(a, 'joined');

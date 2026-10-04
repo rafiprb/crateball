@@ -69,9 +69,13 @@ describe('oyun mesajları', () => {
       name: 'A',
       roomName: "A's room",
       public: true,
-      settings: ok,
+      settings: { ...ok, loot: 'mixed' },
     });
     expect(decodeClientMessage(raw({ ...ok, minutes: 999 }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, loot: 'teleport' }))).toMatchObject({
+      settings: { loot: 'teleport' },
+    });
+    expect(decodeClientMessage(raw({ ...ok, loot: 'nuke' }))).toBeNull();
   });
   it('girdi baytı 0..63 aralığında', () => {
     expect(decodeClientMessage('{"t":"in","s":5,"b":17}')).toEqual({ t: 'in', s: 5, b: 17 });

@@ -572,6 +572,7 @@ function spawnCrate(g: Game): void {
 }
 
 function rollLoot(g: Game): ItemKind {
+  if (g.settings.loot && g.settings.loot !== 'mixed') return g.settings.loot;
   const total = CRATES.loot.reduce((s, [, w]) => s + w, 0);
   let r = rand(g) * total;
   for (const [kind, w] of CRATES.loot) {

@@ -374,3 +374,23 @@ describe('inceleme düzeltmeleri (sim)', () => {
     expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(PLAYER.radius * 2 - 1);
   });
 });
+
+describe('kutu içeriği ayarı', () => {
+  it('tek tür seçilince her kutudan o çıkar', () => {
+    const g = createGame(3, { minutes: 3, scoreLimit: 5, crates: 'chaos', loot: 'teleport', bots: false });
+    const a = addPlayer(g, 'a', 'A', 'red');
+    g.phase = 'play';
+    a.x = 9999;
+    for (let i = 0; i < 5; i++) {
+      run(g, 60 * 6);
+      const c = g.crates[0];
+      if (!c) continue;
+      a.x = c.x;
+      a.y = c.y;
+      step(g);
+      expect(a.teleport).toBe(true);
+      a.teleport = false;
+      a.x = 9999;
+    }
+  });
+});

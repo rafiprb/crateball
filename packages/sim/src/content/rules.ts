@@ -110,16 +110,27 @@ export interface Settings {
   minutes: number;
   scoreLimit: number;
   crates: 'off' | 'normal' | 'chaos';
+  /** What crates contain: the normal weighted mix, or always one kind (fun modes, and for testing). */
+  loot: Loot;
   bots: boolean;
 }
+
+export type Loot = 'mixed' | ItemKind;
 
 export const SETTING_CHOICES = {
   minutes: [2, 3, 5, 10],
   scoreLimit: [3, 5, 7, 10],
   crates: ['off', 'normal', 'chaos'],
+  loot: ['mixed', 'gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'],
 } as const;
 
-export const DEFAULT_SETTINGS: Settings = { minutes: 3, scoreLimit: 5, crates: 'normal', bots: true };
+export const DEFAULT_SETTINGS: Settings = {
+  minutes: 3,
+  scoreLimit: 5,
+  crates: 'normal',
+  loot: 'mixed',
+  bots: true,
+};
 
 /** Chaos: more crates, more often. */
 export const CHAOS = { max: 6, gapMul: 0.4 };

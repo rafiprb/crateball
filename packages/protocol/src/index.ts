@@ -137,14 +137,25 @@ function cleanText(v: unknown, max: number): string | null {
   return s || null;
 }
 
+const LOOT: readonly string[] = ['mixed', 'gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'];
+
 export function decodeSettings(v: unknown): Settings | null {
   if (!isObj(v)) return null;
   const { minutes, scoreLimit, crates, bots } = v;
+  // Optional for older clients: missing means the normal mix.
+  const loot = v.loot ?? 'mixed';
+  if (!LOOT.includes(loot as string)) return null;
   if (![2, 3, 5, 10].includes(minutes as number) || ![3, 5, 7, 10].includes(scoreLimit as number))
     return null;
   if (crates !== 'off' && crates !== 'normal' && crates !== 'chaos') return null;
   if (typeof bots !== 'boolean') return null;
-  return { minutes: minutes as number, scoreLimit: scoreLimit as number, crates, bots };
+  return {
+    minutes: minutes as number,
+    scoreLimit: scoreLimit as number,
+    crates,
+    loot: loot as Settings['loot'],
+    bots,
+  };
 }
 
 /** Güvenilmeyen girdi: doğrular ve yalnızca bilinen alanlarla yeni nesne döner. */

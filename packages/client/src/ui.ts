@@ -17,6 +17,17 @@ function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+const LOOT_LABEL: Record<string, string> = {
+  mixed: 'Mixed',
+  gun: 'Guns only',
+  mine: 'Mines only',
+  ice: 'Ice only',
+  boost: 'Speed only',
+  shield: 'Shields only',
+  power: 'Power kicks only',
+  teleport: 'Teleports only',
+};
+
 export const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DF', mid: 'MF', fwd: 'FW' };
 const ROLE_NAME: Record<Role, string> = {
   gk: 'Goalkeeper',
@@ -114,7 +125,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
     h('button', { type: 'button', class: cls, onclick }, text);
 
   const settingsForm = (s: Settings, editable: boolean, onChange: (s: Settings) => void) => {
-    const select = <K extends 'minutes' | 'scoreLimit' | 'crates'>(
+    const select = <K extends 'minutes' | 'scoreLimit' | 'crates' | 'loot'>(
       key: K,
       label: string,
       fmt: (v: Settings[K]) => string,
@@ -125,7 +136,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
       }
       sel.addEventListener('change', () => {
         const raw = sel.value;
-        const v = (key === 'crates' ? raw : Number(raw)) as Settings[K];
+        const v = (key === 'crates' || key === 'loot' ? raw : Number(raw)) as Settings[K];
         onChange({ ...s, [key]: v });
       });
       return h('label', {}, label, sel);
@@ -142,6 +153,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         'Crates',
         (v) => ({ off: 'Off', normal: 'Normal', chaos: 'Chaos' })[v as string] ?? '',
       ),
+      select('loot', 'Crate contents', (v) => LOOT_LABEL[v as string] ?? String(v)),
       h('label', { class: 'check' }, bots, 'Fill with bots'),
     );
   };
