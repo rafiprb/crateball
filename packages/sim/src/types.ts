@@ -1,4 +1,4 @@
-import type { ItemKind, Role, Settings } from './content/rules';
+import type { BlastKind, Role, Settings } from './content/rules';
 
 export type Team = 'red' | 'blue';
 export type Phase = 'kickoff' | 'play' | 'goal' | 'over';
@@ -40,6 +40,9 @@ export interface Player {
   shield: boolean;
   power: boolean;
   gun: number;
+  /** Holding a teleport: USE sends you back in front of your own goal. One held item at a time
+   * (gun or teleport), a new crate replaces the old one. */
+  teleport: boolean;
   cooldown: number;
   goals: number;
   /** Tick of the last kick (client plays the sound once per value). */
@@ -70,7 +73,7 @@ export interface Bullet extends Body {
 export interface Blast {
   x: number;
   y: number;
-  kind: ItemKind;
+  kind: BlastKind;
   t: number;
 }
 

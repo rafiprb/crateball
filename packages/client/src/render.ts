@@ -8,7 +8,7 @@ import {
   TICK_HZ,
   kickDirection,
   type Game,
-  type ItemKind,
+  type BlastKind,
   type Role,
   type Team,
 } from '@crateball/sim';
@@ -30,13 +30,15 @@ export const COLORS = {
   ice: 'rgba(170,225,255,.65)',
 };
 
-const ITEM_STYLE: Record<ItemKind, [string, string]> = {
+const ITEM_STYLE: Record<BlastKind, [string, string]> = {
   gun: ['#FFE066', 'GUN!'],
   mine: ['#FF6A3D', 'BOOM!'],
   ice: ['#9BE3FF', 'FROZEN!'],
   boost: ['#7CFF7A', 'SPEED!'],
   shield: ['#7AF0FF', 'SHIELD!'],
   power: ['#FFA94D', 'POWER KICK!'],
+  teleport: ['#C77DFF', 'TELEPORT!'],
+  warp: ['#C77DFF', ''],
 };
 
 const ROLE_STYLE: Record<Role, [string, string]> = {
@@ -195,6 +197,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         ctx.fillRect(r - 4, -3, 14, 6);
         ctx.restore();
       }
+      if (p.teleport) {
+        // A small purple orb circling the player.
+        const a = now / 250;
+        circle(pos.x + Math.cos(a) * (r + 6), pos.y + Math.sin(a) * (r + 6), 3.5, '#C77DFF', '#F2E0FF', 1.5);
+      }
       if (p.shield) {
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, r + 5, 0, Math.PI * 2);
@@ -254,12 +261,13 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const k = 1 - b.t / ITEMS.blastShow;
       ctx.globalAlpha = 1 - k;
       if (b.kind === 'mine') circle(b.x, b.y, ITEMS.blastRadius * (0.3 + k * 0.7), 'rgba(255,106,61,.35)');
+      if (b.kind === 'warp') circle(b.x, b.y, PLAYER.radius + 6 * (1 - k), 'rgba(199,125,255,.4)');
       ctx.beginPath();
       ctx.arc(b.x, b.y, 10 + k * 40, 0, Math.PI * 2);
       ctx.strokeStyle = color;
       ctx.lineWidth = 3;
       ctx.stroke();
-      text(label, b.x, b.y - 24 - k * 24, 16, color, 800);
+      if (label) text(label, b.x, b.y - 24 - k * 24, 16, color, 800);
       ctx.globalAlpha = 1;
     }
     fx.draw(ctx, false);
@@ -287,6 +295,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       bits.push(`${ROLE_STYLE[me.role][1]}${me.buff ? ' ✓' : ''}`);
       if (me.dead > 0) bits.push(`Respawn in ${Math.ceil(me.dead / TICK_HZ)}…`);
       if (me.gun > 0) bits.push(`Gun ×${me.gun} [E]`);
+      if (me.teleport) bits.push('Teleport home [E]');
       if (me.power) bits.push('Power kick ready');
       if (me.shield) bits.push('Shield');
       if (me.boost > 0) bits.push('Speed');
@@ -299,7 +308,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.font = '600 12px Nunito, system-ui, sans-serif';
     ctx.fillStyle = '#FFF4E0';
     ctx.fillText(
-      'Move: WASD/Arrows · Kick: Space/X · Shoot: E/Shift · Team: T · Role: 1 GK 2 DF 3 MF 4 FW · Report a glitch: R',
+      'Move: WASD/Arrows · Kick: Space/X · Shoot/Teleport: E/Shift · Team: T · Role: 1 GK 2 DF 3 MF 4 FW · Report a glitch: R',
       12,
       h - 14,
     );

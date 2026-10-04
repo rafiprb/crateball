@@ -105,6 +105,7 @@ export function addPlayer(g: Game, id: string, name: string, team: Team, bot = f
     shield: false,
     power: false,
     gun: 0,
+    teleport: false,
     cooldown: 0,
     goals: 0,
     kickTick: -1,
@@ -143,7 +144,14 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
   const slots = { red: 0, blue: 0 };
   for (const p of g.players) {
     Object.assign(p, { hp: PLAYER.maxHp, dead: 0, frozen: 0, slow: 0, boost: 0, cooldown: 0 });
-    Object.assign(p, { shield: false, power: false, gun: 0, kickArmed: true, useArmed: true });
+    Object.assign(p, {
+      shield: false,
+      power: false,
+      gun: 0,
+      teleport: false,
+      kickArmed: true,
+      useArmed: true,
+    });
     placeAtSpawn(g, p, slots[p.team]++);
   }
 }
@@ -229,8 +237,13 @@ function controlPlayer(g: Game, p: Player): void {
   }
   if (!kickHeld) p.kickArmed = true;
   else if (p.kickArmed) tryKick(g, p);
+  // The gun fires for as long as USE is held; a teleport takes a fresh press.
   if (!useHeld) p.useArmed = true;
-  else if (p.gun > 0 && p.cooldown === 0) fire(g, p);
+  else {
+    if (p.teleport && p.useArmed) teleportHome(g, p);
+    else if (p.gun > 0 && p.cooldown === 0) fire(g, p);
+    p.useArmed = false;
+  }
 }
 
 /** Distance along the attack direction: negative = own half. */
@@ -333,6 +346,19 @@ function fire(g: Game, p: Player): void {
     vy: p.fy * ITEMS.bulletSpeed,
     life: ITEMS.bulletLife,
   });
+}
+
+/** Straight back in front of your own goal, standing still; the ball stays where it was. */
+function teleportHome(g: Game, p: Player): void {
+  p.teleport = false;
+  g.blasts.push({ x: p.x, y: p.y, kind: 'warp', t: ITEMS.blastShow });
+  p.x = side(p.team) * (FIELD.halfW - ITEMS.teleportInset);
+  p.y = 0;
+  p.vx = 0;
+  p.vy = 0;
+  p.fx = -side(p.team);
+  p.fy = 0;
+  g.blasts.push({ x: p.x, y: p.y, kind: 'warp', t: ITEMS.blastShow });
 }
 
 function integrate(g: Game): void {
@@ -476,6 +502,7 @@ function damage(g: Game, p: Player, amount: number, kx: number, ky: number): voi
     p.hp = 0;
     p.dead = PLAYER.respawn;
     p.gun = 0;
+    p.teleport = false;
     p.frozen = 0;
     p.slow = 0;
     p.boost = 0;
@@ -558,6 +585,11 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
   switch (kind) {
     case 'gun':
       p.gun = ITEMS.gunAmmo;
+      p.teleport = false;
+      break;
+    case 'teleport':
+      p.teleport = true;
+      p.gun = 0;
       break;
     case 'ice':
       p.frozen = ITEMS.iceFreeze;

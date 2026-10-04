@@ -1,4 +1,4 @@
-import { ITEMS, type Game, type ItemKind, type Team } from '@crateball/sim';
+import { ITEMS, type BlastKind, type Game, type Team } from '@crateball/sim';
 
 const KICK_WINDOW = 45;
 const SEEN_TTL_TICKS = 180;
@@ -7,7 +7,7 @@ export type GameEvent =
   | { type: 'kick'; x: number; y: number; power: boolean }
   | { type: 'shot'; x: number; y: number; vx: number; vy: number }
   | { type: 'hit'; x: number; y: number; team: Team; killed: boolean }
-  | { type: 'item'; x: number; y: number; kind: ItemKind }
+  | { type: 'item'; x: number; y: number; kind: BlastKind }
   | { type: 'goal'; team: Team; x: number; y: number }
   | { type: 'whistle'; long: boolean };
 

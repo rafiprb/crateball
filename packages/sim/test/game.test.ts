@@ -233,6 +233,85 @@ describe('pas', () => {
   });
 });
 
+describe('ışınlanma', () => {
+  const setup = () => {
+    const g = createGame(1);
+    const a = addPlayer(g, 'a', 'A', 'red');
+    const b = addPlayer(g, 'b', 'B', 'blue');
+    g.phase = 'play';
+    Object.assign(a, { x: 250, y: 120, vx: 3, vy: -2 });
+    return { g, a, b };
+  };
+
+  it('kutudan çıkınca elde tutulur, tuşa basınca kendi kalesinin önüne ışınlar', () => {
+    const { g, a } = setup();
+    openCrate(g, a, a.x, a.y, 'teleport');
+    expect(a.teleport).toBe(true);
+    step(g);
+    expect(a.x).toBeGreaterThan(200);
+    step(g, new Map([['a', USE]]));
+    expect(a.teleport).toBe(false);
+    expect(a.x).toBeCloseTo(-(FIELD.halfW - ITEMS.teleportInset));
+    expect(a.y).toBeCloseTo(0);
+    expect(Math.abs(a.vx) + Math.abs(a.vy)).toBeLessThan(0.01);
+    expect(g.blasts.filter((b) => b.kind === 'warp')).toHaveLength(2);
+  });
+
+  it('mavi takım kendi (sağ) kalesine ışınlanır; top yerinde kalır', () => {
+    const { g, b } = setup();
+    Object.assign(b, { x: -250, y: -100, teleport: true });
+    g.ball = { x: -200, y: 50, vx: 0, vy: 0 };
+    step(g, new Map([['b', USE]]));
+    expect(b.x).toBeCloseTo(FIELD.halfW - ITEMS.teleportInset);
+    expect(g.ball.x).toBeCloseTo(-200);
+  });
+
+  it('tuşu basılı tutarken kutu açılırsa ışınlanmak için yeniden basmak gerekir', () => {
+    const { g, a } = setup();
+    step(g, new Map([['a', USE]]));
+    openCrate(g, a, a.x, a.y, 'teleport');
+    run(g, 5, new Map([['a', USE]]));
+    expect(a.teleport).toBe(true);
+    expect(a.x).toBeGreaterThan(200);
+    step(g, new Map([['a', 0]]));
+    step(g, new Map([['a', USE]]));
+    expect(a.teleport).toBe(false);
+  });
+
+  it('elde tek eşya: silah ışınlanmanın, ışınlanma silahın yerini alır', () => {
+    const { g, a } = setup();
+    openCrate(g, a, a.x, a.y, 'teleport');
+    openCrate(g, a, a.x, a.y, 'gun');
+    expect(a).toMatchObject({ teleport: false, gun: ITEMS.gunAmmo });
+    openCrate(g, a, a.x, a.y, 'teleport');
+    expect(a).toMatchObject({ teleport: true, gun: 0 });
+  });
+
+  it('donmuşken kullanılamaz, ölünce kaybolur', () => {
+    const { g, a } = setup();
+    Object.assign(a, { teleport: true, frozen: 30 });
+    step(g, new Map([['a', USE]]));
+    expect(a.teleport).toBe(true);
+    expect(a.x).toBeGreaterThan(200);
+    Object.assign(a, { frozen: 0, hp: 1 });
+    openCrate(g, a, a.x, a.y, 'mine');
+    expect(a.dead).toBeGreaterThan(0);
+    expect(a.teleport).toBe(false);
+  });
+
+  it('bot, top kendi yarısının derinindeyken ileride kaldıysa ışınlanır', () => {
+    const g = createGame(1);
+    const bot = addPlayer(g, 'bot', 'Bot', 'red', true);
+    addPlayer(g, 'b', 'B', 'blue');
+    g.phase = 'play';
+    Object.assign(bot, { x: 250, y: 0, teleport: true });
+    g.ball = { x: -330, y: 0, vx: -1, vy: 0 };
+    run(g, 10);
+    expect(bot.teleport).toBe(false);
+    expect(bot.x).toBeLessThan(0);
+  });
+});
+
 describe('gol sonrası ve yeniden doğma', () => {
   it('gol sonrası santrada her şey sıfırlanır: can, silah, etkiler, ölüler, kutular', () => {
     const g = createGame(1);
@@ -240,7 +319,7 @@ describe('gol sonrası ve yeniden doğma', () => {
     const b = addPlayer(g, 'b', 'B', 'blue');
     g.phase = 'play';
     Object.assign(a, { hp: 1, gun: 4, shield: true, power: true, slow: 100, boost: 50 });
-    Object.assign(b, { hp: 0, dead: 120, frozen: 30 });
+    Object.assign(b, { hp: 0, dead: 120, frozen: 30, teleport: true });
     g.crates = [{ id: 99, x: 100, y: 100 }];
     g.ball = { x: FIELD.halfW - 5, y: 0, vx: 6, vy: 0 };
     run(g, 10);
@@ -252,6 +331,7 @@ describe('gol sonrası ve yeniden doğma', () => {
         hp: PLAYER.maxHp,
         dead: 0,
         gun: 0,
+        teleport: false,
         shield: false,
         power: false,
         slow: 0,

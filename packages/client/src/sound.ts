@@ -1,4 +1,4 @@
-import type { ItemKind } from '@crateball/sim';
+import type { BlastKind } from '@crateball/sim';
 import type { GameEvent } from './events';
 
 /**
@@ -76,7 +76,7 @@ export function createSound(): Sound {
       noise(0.08, 0.4, 'bandpass', 700);
       if (killed) tone('sine', 300, 40, 0.5, 0.6, 0.08);
     },
-    item: (kind: ItemKind) => {
+    item: (kind: BlastKind) => {
       switch (kind) {
         case 'mine':
           noise(0.8, 1, 'lowpass', 700);
@@ -92,6 +92,11 @@ export function createSound(): Sound {
           noise(0.05, 0.6, 'bandpass', 3000);
           noise(0.05, 0.6, 'bandpass', 2000, 0.08);
           tone('square', 220, 180, 0.06, 0.15, 0.08);
+          break;
+        case 'warp':
+          // Rising whoosh.
+          tone('sine', 300, 1400, 0.22, 0.35);
+          noise(0.18, 0.3, 'bandpass', 2500);
           break;
         default:
           [440, 554, 659, 880].forEach((f, i) => tone('triangle', f, f, 0.12, 0.25, i * 0.05));

@@ -32,6 +32,9 @@ export function botInput(g: Game, p: Player): number {
     }
   }
 
+  // Counter-attack against us and we are stranded up front: jump back to defend.
+  if (p.teleport && b.x * own > BOT.teleportBallDepth && p.x * own < -BOT.teleportFrom) bits |= USE;
+
   const mates = g.players.filter((o) => o.team === p.team && o.dead === 0 && o.role !== 'gk');
   const chaser = mates.reduce<Player | null>(
     (best, o) => (!best || d2(o.x, o.y, b.x, b.y) < d2(best.x, best.y, b.x, b.y) ? o : best),

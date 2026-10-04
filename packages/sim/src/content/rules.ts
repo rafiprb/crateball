@@ -43,7 +43,9 @@ export const MATCH = {
   overPause: sec(6),
 };
 
-export type ItemKind = 'gun' | 'mine' | 'ice' | 'boost' | 'shield' | 'power';
+export type ItemKind = 'gun' | 'mine' | 'ice' | 'boost' | 'shield' | 'power' | 'teleport';
+/** What a blast marker shows: a crate opening, or a teleport's departure/arrival flash. */
+export type BlastKind = ItemKind | 'warp';
 
 export const CRATES = {
   radius: 14,
@@ -59,6 +61,7 @@ export const CRATES = {
     ['boost', 10],
     ['shield', 8],
     ['power', 8],
+    ['teleport', 8],
   ] as ReadonlyArray<readonly [ItemKind, number]>,
 };
 
@@ -79,6 +82,8 @@ export const ITEMS = {
   iceFreeze: sec(2.5),
   boost: sec(5),
   boostMul: 1.6,
+  /** Teleport lands you this far in front of your own goal line, centred on the goal. */
+  teleportInset: 60,
 };
 
 export type Role = 'gk' | 'def' | 'mid' | 'fwd';
@@ -146,4 +151,7 @@ export const BOT = {
   /** Only shoot this close and this well aimed (cosine of the angle). */
   shootRange: 200,
   shootCos: 0.97,
+  /** Teleport home once the ball is this deep in our half while the bot is this far up the pitch. */
+  teleportBallDepth: 150,
+  teleportFrom: 100,
 };

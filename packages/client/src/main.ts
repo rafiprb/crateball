@@ -1,6 +1,6 @@
 import './style.css';
 import { CODE_RE, PROTOCOL_VERSION, type RoomInfo } from '@crateball/protocol';
-import { DEFAULT_SETTINGS, TICK_HZ, type Role } from '@crateball/sim';
+import { DEFAULT_SETTINGS, TICK_HZ, type BlastKind, type Role } from '@crateball/sim';
 import { createEventTracker } from './events';
 import { createKeyboard } from './input';
 import { connect, type NetStatus } from './net';
@@ -354,7 +354,7 @@ if (import.meta.env.DEV) {
       fx.emit(
         kind === 'goal'
           ? { type: 'goal', team: me.team, x: 420, y: 0 }
-          : { type: 'item', x: me.x, y: me.y, kind: kind as 'mine' },
+          : { type: 'item', x: me.x, y: me.y, kind: kind as BlastKind },
       );
     return fx.count;
   });

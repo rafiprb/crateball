@@ -1,4 +1,4 @@
-import { ITEMS, type Game, type ItemKind } from '@crateball/sim';
+import { ITEMS, type BlastKind, type Game } from '@crateball/sim';
 import type { GameEvent } from './events';
 
 /** Cosmetic only (client-side, Math.random is fine here). Fixed pool, no allocation per frame. */
@@ -22,13 +22,15 @@ interface P {
   ground: boolean;
 }
 
-const ITEM_COLORS: Record<ItemKind, string[]> = {
+const ITEM_COLORS: Record<BlastKind, string[]> = {
   gun: ['#FFE066', '#FFF4E0', '#C88A4A'],
   mine: ['#FF6A3D', '#FFB760', '#FFE066', '#5A4A3A'],
   ice: ['#9BE3FF', '#E8F8FF', '#5FC8FF'],
   boost: ['#7CFF7A', '#D8FFD0'],
   shield: ['#7AF0FF', '#E0FDFF'],
   power: ['#FFA94D', '#FFE066'],
+  teleport: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
+  warp: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
 };
 const TEAM = { red: ['#E8574A', '#FFB0A8', '#FFF4E0'], blue: ['#4A7DE8', '#A8C4FF', '#FFF4E0'] };
 const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)]!;
@@ -156,6 +158,12 @@ export function createParticles(): Particles {
           break;
         case 'item': {
           const colors = ITEM_COLORS[e.kind];
+          if (e.kind === 'warp') {
+            // Teleport departure/arrival: a purple swirl, no crate involved.
+            burst(e.x, e.y, 24, [40, 180], colors, { shape: 1, size: 2.5, life: 0.5, drag: 5 });
+            ring(e.x, e.y, colors[0]!, 16, 0.35);
+            break;
+          }
           // Crate splinters for every opening.
           burst(e.x, e.y, 10, [60, 200], ['#C88A4A', '#7A4E22', '#E0B080'], {
             shape: 2,

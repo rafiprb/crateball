@@ -1,6 +1,6 @@
 import type { Game, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 /** 4 letters, no look-alikes (I/O). */
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
