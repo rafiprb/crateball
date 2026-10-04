@@ -198,9 +198,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         ctx.restore();
       }
       if (p.teleport) {
-        // A small purple orb circling the player.
-        const a = now / 250;
-        circle(pos.x + Math.cos(a) * (r + 6), pos.y + Math.sin(a) * (r + 6), 3.5, '#C77DFF', '#F2E0FF', 1.5);
+        // A small orb on the side the blink will go (the direction you are pressing / last moved).
+        circle(pos.x + p.fx * (r + 7), pos.y + p.fy * (r + 7), 4, '#C77DFF', '#F2E0FF', 1.5);
       }
       if (p.shield) {
         ctx.beginPath();
