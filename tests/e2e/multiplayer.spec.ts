@@ -53,13 +53,17 @@ test('iki oyuncu aynı odada; gecikmeli istemcide kendi hareketi RTT beklemeden 
 
   // Local response: the lagged client sees its own movement within a couple of frames, not after RTT.
   await b.bringToFront();
+  // A page that was in the background has its frames paused; let it run a moment before timing.
+  await b.waitForTimeout(500);
   const before = (await state(b)).sim!.me!;
   const dir = before.team === 'red' ? 'ArrowRight' : 'ArrowLeft';
   await b.keyboard.down(dir);
-  await b.waitForTimeout(50); // < RTT
+  // Well under the ~120 ms round trip. The first kickoff may be on ice or rain (slow acceleration),
+  // so ask only for a clear start of movement, which the server could not have confirmed yet.
+  await b.waitForTimeout(90);
   const moved = (await state(b)).sim!.me!;
   await b.keyboard.up(dir);
-  expect(Math.abs(moved.x - before.x)).toBeGreaterThan(0.5);
+  expect(Math.abs(moved.x - before.x)).toBeGreaterThan(0.2);
   // Prediction stays in agreement with the server: corrections stay rare while idle.
   const c0 = (await state(b)).pred.corrections;
   await b.waitForTimeout(1500);

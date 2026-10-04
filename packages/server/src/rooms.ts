@@ -31,6 +31,8 @@ export const SNAP_EVERY = 2;
 /** Input queue: beyond this a client is too far ahead; trim back to KEEP to cap latency. */
 const QUEUE_MAX = 10;
 const QUEUE_KEEP = 4;
+/** Stand-in inputs cover at most this many silent ticks (network jitter); longer silences pause. */
+const STAND_IN_TICKS = 6;
 const TICK_MS = 1000 / TICK_HZ;
 const MAX_CATCHUP = 5;
 /** A room stats log line every 5 s of play. */
@@ -45,6 +47,8 @@ interface Member {
   ack: number;
   /** Ticks played with a stand-in input since the last stats line. */
   starved: number;
+  /** Consecutive ticks without a fresh input. */
+  gap: number;
   /** Last input applied; stands in when the queue runs dry. */
   last: number;
   /** Set while the socket is gone: the player keeps their slot (and host role) until it fires. */
@@ -194,14 +198,21 @@ export function createRooms(
       if (next) {
         m.ack = next[0];
         m.last = next[1];
+        m.gap = 0;
         inputs.set(m.id, next[1]);
-      } else if (m.ack > 0) {
+      } else if (m.ack > 0 && ++m.gap <= STAND_IN_TICKS) {
         // Starved by network jitter: play the last input AND count it as the client's next sequence
         // number. Server and client stay on the same timeline, so the only possible misprediction is a
         // key change landing exactly on this tick. (Waiting instead would shift the whole world by a
         // tick: measured 3× more own-player correction at 40 ms jitter.)
         m.ack++;
         m.starved++;
+        inputs.set(m.id, m.last);
+      } else if (m.ack > 0) {
+        // Silent for longer than jitter explains (tab in the background, connection stalled): stop
+        // counting, or every input after the client wakes up would arrive "late" and its own
+        // prediction would be thrown away. The keys count as released until it is heard from again.
+        if (m.gap === STAND_IN_TICKS + 1) m.last = 0;
         inputs.set(m.id, m.last);
       }
     }
@@ -295,7 +306,7 @@ export function createRooms(
     const blue = teamCount(g, 'blue', false);
     const team: Team = blue < red ? 'blue' : 'red';
     addPlayer(g, id, name, team);
-    room.members.set(id, { id, send, queue: [], ack: 0, starved: 0, last: 0, awayTimer: null });
+    room.members.set(id, { id, send, queue: [], ack: 0, starved: 0, gap: 0, last: 0, awayTimer: null });
     room.emptySince = null;
     byClient.set(id, room);
     rebalance(room);

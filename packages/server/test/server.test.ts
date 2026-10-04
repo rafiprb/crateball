@@ -483,3 +483,37 @@ describe('WebSocket sınırları', () => {
     b.socket.close();
   });
 });
+
+describe('uzun sessizlik', () => {
+  it('sekme arka plandayken sayaç kısa süre sonra durur; dönen istemcinin girdileri geç sayılmaz', async () => {
+    const { createRooms } = await import('../src/rooms');
+    const log = createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent });
+    const rooms = createRooms(log);
+    const sent: string[] = [];
+    const settings: Settings = {
+      minutes: 3,
+      scoreLimit: 5,
+      crates: 'off',
+      loot: [...ITEM_KINDS],
+      bots: false,
+    };
+    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.push(r));
+    if (typeof room === 'string') throw new Error(room);
+    rooms.start('a');
+    const ack = () =>
+      (JSON.parse(sent.filter((r) => r.startsWith('{"t":"snap"')).at(-1)!) as { ack: number }).ack;
+    rooms.input('a', 1, 8);
+    rooms.tickAll();
+    for (let i = 0; i < 120; i++) rooms.tickAll(); // 2 s silence
+    expect(ack()).toBeLessThanOrEqual(1 + 6);
+    expect(room.game.players[0]?.input).toBe(0); // keys released
+    // Waking up: its next inputs are ahead of the server count again, so they are queued and used.
+    const next = ack() + 1;
+    rooms.input('a', next, 4);
+    rooms.tickAll();
+    rooms.tickAll();
+    expect(ack()).toBe(next);
+    expect(room.game.players[0]?.input).toBe(4);
+    rooms.stop();
+  });
+});
