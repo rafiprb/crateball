@@ -223,7 +223,7 @@ export const ARENAS = {
     eruptDamageRadius: 45,
   },
   /** The wind turns smoothly through all directions; its turn rate wanders. */
-  wind: { force: 0.022, maxTurn: 0.006, turnJitter: 0.0004 },
+  wind: { force: 0.012, maxTurn: 0.006, turnJitter: 0.0004 },
   /** Puddles keep clear of the centre circle and the goal boxes. */
   keepClearCenter: 150,
   keepClearBoxDepth: 170,
