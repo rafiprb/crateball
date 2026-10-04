@@ -15,19 +15,25 @@ export const classicArena = (): Arena => ({
 });
 
 /**
- * Arena for each kickoff of a match. Every block of five holds all five arenas in a shuffled order,
- * and a block never starts with the arena the previous one ended on. A match has at most
+ * Arena for each kickoff of a match. Every block holds each arena of the pool once in a shuffled
+ * order, and a block never starts with the arena the previous one ended on. A match has at most
  * 2 × scoreLimit kickoffs (the first plus one after each goal; the last goal ends it).
  */
-export function planArenas(rand: Rand, kickoffs: number): ArenaKind[] {
+export function planArenas(
+  rand: Rand,
+  kickoffs: number,
+  pool: readonly ArenaKind[] = ARENAS.kinds,
+): ArenaKind[] {
+  const kinds = ARENAS.kinds.filter((k) => pool.includes(k));
+  if (!kinds.length) kinds.push('classic');
   const plan: ArenaKind[] = [];
   while (plan.length < kickoffs) {
-    const block = [...ARENAS.kinds];
+    const block = [...kinds];
     for (let i = block.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
       [block[i], block[j]] = [block[j]!, block[i]!];
     }
-    if (block[0] === plan.at(-1)) [block[0], block[1]] = [block[1]!, block[0]!];
+    if (block.length > 1 && block[0] === plan.at(-1)) [block[0], block[1]] = [block[1]!, block[0]!];
     plan.push(...block);
   }
   return plan.slice(0, kickoffs);

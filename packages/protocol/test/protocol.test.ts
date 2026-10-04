@@ -69,7 +69,11 @@ describe('oyun mesajları', () => {
       name: 'A',
       roomName: "A's room",
       public: true,
-      settings: { ...ok, loot: ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'] },
+      settings: {
+        ...ok,
+        loot: ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport', 'bazooka'],
+        arenas: ['classic', 'rain', 'volcano', 'ice', 'wind'],
+      },
     });
     expect(decodeClientMessage(raw({ ...ok, minutes: 999 }))).toBeNull();
     expect(decodeClientMessage(raw({ ...ok, loot: 'teleport' }))).toMatchObject({
@@ -79,6 +83,17 @@ describe('oyun mesajları', () => {
       settings: { loot: ['gun', 'teleport'] },
     });
     expect(decodeClientMessage(raw({ ...ok, loot: [] }))).toBeNull();
+    // Arenas: missing = all, a list is sorted and de-duplicated, empty or unknown is refused.
+    expect(decodeClientMessage(raw(ok))).toMatchObject({
+      settings: { arenas: ['classic', 'rain', 'volcano', 'ice', 'wind'] },
+    });
+    expect(decodeClientMessage(raw({ ...ok, arenas: ['wind', 'ice', 'ice'] }))).toMatchObject({
+      settings: { arenas: ['ice', 'wind'] },
+    });
+    expect(decodeClientMessage(raw({ ...ok, arenas: [] }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, arenas: ['moon'] }))).toBeNull();
+    expect(decodeClientMessage(JSON.stringify({ t: 'kick', id: 'x' }))).toEqual({ t: 'kick', id: 'x' });
+    expect(decodeClientMessage(JSON.stringify({ t: 'kick', id: 5 }))).toBeNull();
     expect(decodeClientMessage(raw({ ...ok, loot: 'nuke' }))).toBeNull();
   });
   it('girdi baytı 0..63 aralığında', () => {

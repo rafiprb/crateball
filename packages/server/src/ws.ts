@@ -44,6 +44,7 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
   not_host: 'Only the host can do that',
   server_full: 'The server is full right now — try again in a minute',
   rate_limited: 'Slow down a little',
+  kicked: 'The host removed you from this room',
 };
 
 /** Behind Caddy the client address is in X-Forwarded-For (Caddy sets it; it does not trust incoming ones). */
@@ -219,6 +220,9 @@ export function attachWebSocket(
           break;
         case 'move':
           fail(rooms.move(clientId, msg.id, msg.team));
+          break;
+        case 'kick':
+          fail(rooms.kick(clientId, msg.id));
           break;
         case 'swap':
           fail(rooms.swap(clientId, msg.a, msg.b));

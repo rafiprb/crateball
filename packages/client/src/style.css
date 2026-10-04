@@ -414,39 +414,29 @@ fieldset.loot legend {
   padding: 2px 10px;
 }
 
-.arena-order {
-  display: grid;
-  gap: 6px;
-}
-.arena-order .label {
-  font-weight: 700;
-}
-.arena-order ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  counter-reset: kickoff;
-}
-.arena-order li {
-  counter-increment: kickoff;
+.arenas .chip {
   font:
     700 13px 'Baloo 2',
     system-ui,
     sans-serif;
-  padding: 2px 10px 2px 6px;
+  padding: 0 10px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--chip) 35%, #1b2347);
   border: 2px solid var(--chip);
 }
-.arena-order li::before {
-  content: counter(kickoff);
-  display: inline-block;
-  min-width: 16px;
-  margin-right: 5px;
-  text-align: center;
+li > button.kick {
+  margin-left: auto;
+  padding: 0 7px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 20px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.3);
+  background: transparent;
+  border: 2px solid #e8574a;
+  color: #e8574a;
+  box-shadow: none;
+}
+li > button.kick:hover {
+  background: #e8574a;
+  color: #fff;
 }

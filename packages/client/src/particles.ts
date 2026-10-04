@@ -30,6 +30,8 @@ const ITEM_COLORS: Record<BlastKind, string[]> = {
   shield: ['#7AF0FF', '#E0FDFF'],
   power: ['#FFA94D', '#FFE066'],
   teleport: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
+  bazooka: ['#7A8B5A', '#B8C890', '#FF9A3D'],
+  rocket: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
   warp: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
   erupt: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
 };
@@ -292,7 +294,7 @@ export function createParticles(): Particles {
             ring(e.x, e.y, colors[0]!, 16, 0.35);
             break;
           }
-          if (e.kind === 'erupt') {
+          if (e.kind === 'erupt' || e.kind === 'rocket') {
             burst(e.x, e.y, 50, [120, 460], colors, { size: 6, grow: -6, life: 0.8, drag: 4 });
             burst(e.x, e.y, 22, [20, 100], ['#2A211C', '#4A3E36', '#6A5E50'], {
               size: 12,
@@ -448,7 +450,12 @@ export function createParticles(): Particles {
           });
       }
       for (const bl of g.bullets)
-        if (Math.random() < 0.6)
+        if (bl.rocket) {
+          // Rocket: a fat smoke trail with sparks.
+          add({ x: bl.x, y: bl.y, size: 5, grow: 14, life: 0.6, color: 'rgba(120,110,100,.45)', drag: 1 });
+          if (Math.random() < 0.7)
+            add({ x: bl.x, y: bl.y, size: 3, life: 0.2, color: pick(['#FF9A3D', '#FFE066']), drag: 0 });
+        } else if (Math.random() < 0.6)
           add({ x: bl.x, y: bl.y, size: 2, life: 0.15, color: 'rgba(255,224,102,.6)', drag: 0 });
     },
     update(dt) {

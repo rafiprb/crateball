@@ -127,6 +127,7 @@ export function addPlayer(g: Game, id: string, name: string, team: Team, bot = f
     power: false,
     gun: 0,
     teleport: false,
+    bazooka: false,
     cooldown: 0,
     goals: 0,
     kickTick: -1,
@@ -175,6 +176,7 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
       power: false,
       gun: 0,
       teleport: false,
+      bazooka: false,
       kickArmed: true,
       useArmed: true,
     });
@@ -182,9 +184,9 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
   }
 }
 
-/** Draw the arena order for the next match (at most 2 × scoreLimit kickoffs). */
+/** Draw the arena order for the next match (at most 2 × scoreLimit kickoffs) from the chosen pool. */
 export function newArenaPlan(g: Game): void {
-  g.arenaPlan = planArenas(() => rand(g), 2 * g.settings.scoreLimit);
+  g.arenaPlan = planArenas(() => rand(g), 2 * g.settings.scoreLimit, g.settings.arenas);
 }
 
 export function restartMatch(g: Game): void {
@@ -275,10 +277,11 @@ function controlPlayer(g: Game, p: Player): void {
   }
   if (!kickHeld) p.kickArmed = true;
   else if (p.kickArmed) tryKick(g, p);
-  // The gun fires for as long as USE is held; a teleport takes a fresh press.
+  // The gun fires for as long as USE is held; a teleport or the bazooka takes a fresh press.
   if (!useHeld) p.useArmed = true;
   else {
     if (p.teleport && p.useArmed) blink(g, p);
+    else if (p.bazooka && p.useArmed) fireRocket(g, p);
     else if (p.gun > 0 && p.cooldown === 0) fire(g, p);
     p.useArmed = false;
   }
@@ -393,6 +396,23 @@ function fire(g: Game, p: Player): void {
     vx: dx * ITEMS.bulletSpeed,
     vy: dy * ITEMS.bulletSpeed,
     life: ITEMS.bulletLife,
+  });
+}
+
+/** The bazooka's one rocket goes straight the way you press (fx/fy come from the keys: 8 directions). */
+function fireRocket(g: Game, p: Player): void {
+  p.bazooka = false;
+  const r = p.r + ITEMS.rocketRadius + 1;
+  g.bullets.push({
+    id: g.nextId++,
+    owner: p.id,
+    team: p.team,
+    x: p.x + p.fx * r,
+    y: p.y + p.fy * r,
+    vx: p.fx * ITEMS.rocketSpeed,
+    vy: p.fy * ITEMS.rocketSpeed,
+    life: ITEMS.rocketLife,
+    rocket: true,
   });
 }
 
@@ -554,6 +574,7 @@ function damage(g: Game, p: Player, amount: number, kx: number, ky: number): voi
     p.dead = PLAYER.respawn;
     p.gun = 0;
     p.teleport = false;
+    p.bazooka = false;
     p.frozen = 0;
     p.slow = 0;
     p.boost = 0;
@@ -571,16 +592,20 @@ function updateBullets(g: Game): void {
     b.x += b.vx;
     b.y += b.vy;
     if (--b.life <= 0 || Math.abs(b.x) > lw || Math.abs(b.y) > lh) return false;
+    const radius = b.rocket ? ITEMS.rocketRadius : ITEMS.bulletRadius;
+    const speed = b.rocket ? ITEMS.rocketSpeed : ITEMS.bulletSpeed;
     for (const p of g.players) {
       if (p.dead > 0 || p.team === b.team) continue;
-      if (dist2(p, b) < (p.r + ITEMS.bulletRadius) ** 2) {
-        const s = ITEMS.bulletKnock / ITEMS.bulletSpeed;
-        damage(g, p, 1, b.vx * s, b.vy * s);
+      if (dist2(p, b) < (p.r + radius) ** 2) {
+        const s = (b.rocket ? ITEMS.rocketKnock : ITEMS.bulletKnock) / speed;
+        if (b.rocket) g.blasts.push({ x: b.x, y: b.y, kind: 'rocket', t: ITEMS.blastShow });
+        damage(g, p, b.rocket ? ITEMS.rocketDamage : 1, b.vx * s, b.vy * s);
         return false;
       }
     }
-    if (dist2(g.ball, b) < (BALL.radius + ITEMS.bulletRadius) ** 2) {
-      const s = ITEMS.bulletBallPush / ITEMS.bulletSpeed;
+    if (dist2(g.ball, b) < (BALL.radius + radius) ** 2) {
+      const s = (b.rocket ? ITEMS.rocketBallPush : ITEMS.bulletBallPush) / speed;
+      if (b.rocket) g.blasts.push({ x: b.x, y: b.y, kind: 'rocket', t: ITEMS.blastShow });
       g.ball.vx += b.vx * s;
       g.ball.vy += b.vy * s;
       return false;
@@ -639,10 +664,17 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
     case 'gun':
       p.gun = ITEMS.gunAmmo;
       p.teleport = false;
+      p.bazooka = false;
       break;
     case 'teleport':
       p.teleport = true;
       p.gun = 0;
+      p.bazooka = false;
+      break;
+    case 'bazooka':
+      p.bazooka = true;
+      p.gun = 0;
+      p.teleport = false;
       break;
     case 'ice':
       p.frozen = ITEMS.iceFreeze;

@@ -1,5 +1,6 @@
 import type { RoomInfo, RoomListing, RoomPlayer } from '@crateball/protocol';
 import {
+  ARENAS,
   ITEM_KINDS,
   SETTING_CHOICES,
   type ItemKind,
@@ -32,6 +33,7 @@ const ITEM_LABEL: Record<ItemKind, string> = {
   shield: 'Shield',
   power: 'Power kick',
   teleport: 'Teleport',
+  bazooka: 'Bazooka',
 };
 
 const ARENA_CHIP: Record<string, [string, string]> = {
@@ -41,26 +43,6 @@ const ARENA_CHIP: Record<string, [string, string]> = {
   ice: ['Ice', '#8FC3E3'],
   wind: ['Wind', '#9AB86A'],
 };
-
-/** The arena for each kickoff of the next match, in order (the first block of five has them all). */
-function arenaOrder(plan: readonly string[]) {
-  if (!plan.length) return null;
-  return h(
-    'div',
-    { class: 'arena-order' },
-    h('span', { class: 'label' }, 'Arenas, kickoff by kickoff'),
-    h(
-      'ol',
-      {},
-      ...plan.map((k) => {
-        const [name, color] = ARENA_CHIP[k] ?? [k, '#666'];
-        const li = h('li', {}, name);
-        li.style.setProperty('--chip', color);
-        return li;
-      }),
-    ),
-  );
-}
 
 export const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DF', mid: 'MF', fwd: 'FW' };
 const ROLE_NAME: Record<Role, string> = {
@@ -84,6 +66,7 @@ export interface UiActions {
   team(team: Team): void;
   move(id: string, team: Team): void;
   swap(a: string, b: string): void;
+  kick(id: string): void;
   role(role: Role): void;
   settings(s: Settings): void;
   start(): void;
@@ -200,6 +183,35 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
           return h('label', { class: 'check' }, box, ITEM_LABEL[kind]);
         }),
       );
+    // Which arenas the match draws from (a new one each kickoff); at least one stays ticked.
+    const arenaBoxes = () => {
+      const pool = s.arenas ?? ARENAS.kinds;
+      return h(
+        'fieldset',
+        { class: 'loot arenas' },
+        h('legend', {}, 'Arenas'),
+        ...ARENAS.kinds.map((kind) => {
+          const box = h('input', {
+            type: 'checkbox',
+            checked: pool.includes(kind),
+            disabled: !editable,
+            data: { arena: kind },
+          });
+          box.addEventListener('change', () => {
+            const next = box.checked ? [...pool, kind] : pool.filter((k) => k !== kind);
+            if (next.length === 0) {
+              box.checked = true;
+              return;
+            }
+            onChange({ ...s, arenas: ARENAS.kinds.filter((k) => next.includes(k)) });
+          });
+          const [label, color] = ARENA_CHIP[kind] ?? [kind, '#666'];
+          const chip = h('span', { class: 'chip' }, label);
+          chip.style.setProperty('--chip', color);
+          return h('label', { class: 'check' }, box, chip);
+        }),
+      );
+    };
     const bots = h('input', { type: 'checkbox', checked: s.bots, disabled: !editable });
     bots.addEventListener('change', () => onChange({ ...s, bots: bots.checked }));
     return h(
@@ -213,6 +225,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         (v) => ({ off: 'Off', normal: 'Normal', chaos: 'Chaos' })[v as string] ?? '',
       ),
       lootBoxes(),
+      arenaBoxes(),
       h('label', { class: 'check' }, bots, 'Fill with bots'),
     );
   };
@@ -312,6 +325,14 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
           h('span', { class: 'rname' }, ROLE_NAME[p.role]),
           p.id === room.host && h('span', { class: 'tag' }, 'HOST'),
           p.bot && h('span', { class: 'tag' }, 'BOT'),
+          isHost &&
+            !p.bot &&
+            p.id !== me &&
+            h(
+              'button',
+              { class: 'kick', title: `Remove ${p.name} from the room`, onclick: () => act.kick(p.id) },
+              '✕',
+            ),
         );
         li.addEventListener('dragstart', (e) => {
           e.dataTransfer?.setData('text/plain', p.id);
@@ -388,7 +409,6 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         roles,
         mine && h('div', { class: 'hint' }, `${ROLE_NAME[mine.role]}: ${ROLE_HINT[mine.role]}`),
         settingsForm(room.settings, isHost, act.settings),
-        arenaOrder(room.arenaPlan ?? []),
         publicBox(),
         isHost
           ? button('Start Game', act.start, 'primary')

@@ -5,7 +5,7 @@ const SEEN_TTL_TICKS = 180;
 
 export type GameEvent =
   | { type: 'kick'; x: number; y: number; power: boolean }
-  | { type: 'shot'; x: number; y: number; vx: number; vy: number }
+  | { type: 'shot'; x: number; y: number; vx: number; vy: number; rocket: boolean }
   | { type: 'hit'; x: number; y: number; team: Team; killed: boolean }
   | { type: 'item'; x: number; y: number; kind: BlastKind }
   | { type: 'goal'; team: Team; x: number; y: number }
@@ -104,7 +104,7 @@ export function createEventTracker(me: () => string | null = () => null) {
     }
     for (const b of g.bullets) {
       if (b.id > maxBullet) {
-        if (!fresh) out.push({ type: 'shot', x: b.x, y: b.y, vx: b.vx, vy: b.vy });
+        if (!fresh) out.push({ type: 'shot', x: b.x, y: b.y, vx: b.vx, vy: b.vy, rocket: !!b.rocket });
         maxBullet = b.id;
       }
     }

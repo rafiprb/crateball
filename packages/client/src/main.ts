@@ -169,7 +169,7 @@ const conn = connect({
         break;
       case 'error':
         showError(m.message);
-        if (m.code === 'room_not_found') toMenu();
+        if (m.code === 'room_not_found' || m.code === 'kicked') toMenu();
         break;
     }
   },
@@ -205,6 +205,7 @@ const ui = createUi(
     team: (team) => pred.me && conn.send({ t: 'move', id: pred.me, team }),
     move: (id, team) => conn.send({ t: 'move', id, team }),
     swap: (a, b) => conn.send({ t: 'swap', a, b }),
+    kick: (id) => conn.send({ t: 'kick', id }),
     role: (role) => conn.send({ t: 'role', role }),
     settings: (settings) => conn.send({ t: 'settings', settings }),
     start: () => conn.send({ t: 'start' }),
@@ -336,7 +337,15 @@ function getState() {
       score: g.score,
       clock: g.clock,
       players: g.players.map((p) => ({ id: p.id, name: p.name, team: p.team, bot: p.bot, role: p.role })),
-      me: me && { x: me.x, y: me.y, team: me.team, hp: me.hp, gun: me.gun, role: me.role },
+      me: me && {
+        x: me.x,
+        y: me.y,
+        team: me.team,
+        hp: me.hp,
+        gun: me.gun,
+        bazooka: me.bazooka,
+        role: me.role,
+      },
       ball: g.ball,
       crates: g.crates.map((c) => ({ x: c.x, y: c.y })),
     },

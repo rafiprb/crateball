@@ -13,9 +13,13 @@ oyuncu kutuya değince açılır.
   açana 1 hasar + 4 sn yavaşlama, çevredekileri ve topu iter), **Ice** (2.5 sn donma), **Speed**,
   **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
   ile o an basılan yön tuşlarının yönüne sabit 150 px sıçratır, tuşa basılmıyorsa son hareket yönüne;
-  hız korunur, saha sınırında durur; donmuşken kullanılamaz, ölünce/santrada kaybolur).
-- Elde tek eşya: Gun ile Teleport aynı tuşu kullanır, yeni gelen eskisinin yerini alır. Silah tuş
-  basılıyken ateşler; ışınlanma yeni bir basış ister. Botlar gitmek istedikleri yere uzak kalınca
+  hız korunur, saha sınırında durur; donmuşken kullanılamaz, ölünce/santrada kaybolur), **Bazooka**
+  (tek roket; nişan otomatik değil, basılan yön tuşlarıyla 8 yönden birine düz gider; isabet 3 can
+  götürür yani öldürür, kalkan bir kez durdurur; menzil ~850 px; takım arkadaşlarının içinden geçer,
+  topa çarparsa sertçe iter; sahibi kesik çizgiyle gidiş yolunu görür).
+- Elde tek eşya: Gun, Teleport ve Bazooka aynı tuşu (E/F/Shift) kullanır, yeni gelen eskisinin yerini
+  alır. Silah tuş basılıyken ateşler; ışınlanma ve bazuka yeni bir basış ister. Bazukalı bot, bir
+  rakip 8 yönden birinin hizasına girince o yöne dönüp ateşler. Botlar gitmek istedikleri yere uzak kalınca
   (200 px+) o yöne sıçrar.
 - Mevkiler (herkes topa koşmasın diye; bonus yalnızca kendi bölgesinde):
   GK kendi ceza sahasında büyük (r 22), DF kendi yarısında ağır + hızlı, MF orta bölgede uzun
@@ -29,8 +33,9 @@ oyuncu kutuya değince açılır.
 
 ## Sahalar
 
-Her santrada (maç başı ve her gol sonrası) saha değişir. Sıra maçtan önce çekilir ve lobide görünür:
-en fazla 2 × gol limiti santra; her 5 santrada beş sahanın hepsi, aynı saha üst üste gelmez.
+Her santrada (maç başı ve her gol sonrası) saha değişir. Host lobide hangi sahaların dönüşte olacağını
+seçer (en az biri). Sıra maç başlarken bu havuzdan çekilir: en fazla 2 × gol limiti santra; her turda
+havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha seçiliyse hep o).
 
 - **Classic:** normal saha.
 - **Rain:** kaygan ve ağır zemin (top daha uzağa yuvarlanır, oyuncular kayar, ivme ×0.85). Düzensiz
@@ -51,7 +56,8 @@ en fazla 2 × gol limiti santra; her 5 santrada beş sahanın hepsi, aynı saha 
 - Lobi: iki takım sütunu, herkes kendi mevkisini seçer (GK/DF/MF/FW), "Join Red/Blue". Host
   sürükle-bırak ile oyuncuyu başka oyuncunun üstüne bırakırsa ikisi takım+mevki takası yapar,
   takım sütununa bırakırsa taşır. Ayarlar (süre 2/3/5/10 dk, gol limiti 3/5/7/10, kutular
-  kapalı/normal/kaos, botlarla doldur) yalnızca host'ta düzenlenir; **Start Game** yalnızca host.
+  kapalı/normal/kaos, kutu içerikleri, sahalar, botlarla doldur) yalnızca host'ta düzenlenir; **Start Game**
+  yalnızca host. Host bir oyuncuyu ✕ ile odadan atabilir; atılan aynı kimlikle o odaya geri giremez.
 - Maç bitince 6 sn sonra oda lobiye döner. Host çıkarsa host'luk sıradakine geçer; boş oda 2 dk yaşar.
 
 ## Ses ve efektler

@@ -64,6 +64,8 @@ export interface Room {
   game: Game;
   members: Map<string, Member>;
   bots: number;
+  /** Players the host kicked: they cannot come back to this room. */
+  banned: Set<string>;
   emptySince: number | null;
   /** Slowest tick (step + snapshot) since the last stats line. */
   stepMsMax: number;
@@ -100,6 +102,8 @@ export interface Rooms {
   setRole(id: string, role: Role): void;
   setSettings(id: string, settings: Settings): ErrorCode | null;
   setMeta(id: string, name: string, isPublic: boolean): ErrorCode | null;
+  /** Host: remove a player from the room for good. */
+  kick(by: string, id: string): ErrorCode | null;
   start(id: string): ErrorCode | null;
   list(): RoomListing[];
   /** For /health: lets a deploy wait until no match is running. */
@@ -404,10 +408,10 @@ export function createRooms(
         game: createGame(seed(), settings),
         members: new Map(),
         bots: 0,
+        banned: new Set(),
         emptySince: null,
         stepMsMax: 0,
       };
-      newArenaPlan(room.game);
       rooms.set(code, room);
       log.info({ room: code, isPublic }, 'oda kuruldu');
       ensureTimer();
@@ -420,6 +424,7 @@ export function createRooms(
       // Already in this very room (a reconnect that kept its slot): just take the new socket.
       const current = byClient.get(id);
       if (current === room) return reattach(id, send) ?? 'room_not_found';
+      if (room.banned.has(id)) return 'kicked';
       if (room.members.size >= MAX_PLAYERS) return 'room_full';
       // Only now leave the old room: a wrong code must not throw you out of the one you are in.
       leave(id);
@@ -468,11 +473,21 @@ export function createRooms(
       if (!room) return 'room_not_found';
       if (room.host !== id) return 'not_host';
       if (room.state !== 'lobby') return 'bad_message';
-      const limitChanged = room.game.settings.scoreLimit !== settings.scoreLimit;
       room.game.settings = { ...settings };
-      if (limitChanged) newArenaPlan(room.game); // plan length follows the score limit
       rebalance(room);
       announce(room);
+      return null;
+    },
+    kick(by, id) {
+      const room = byClient.get(by);
+      if (!room) return 'room_not_found';
+      if (room.host !== by) return 'not_host';
+      if (id === by || !room.members.has(id)) return 'bad_message';
+      const target = room.members.get(id);
+      room.banned.add(id);
+      target?.send(encode({ t: 'error', code: 'kicked', message: 'The host removed you from this room' }));
+      log.info({ room: room.code, id }, 'oyuncu atıldı');
+      leave(id);
       return null;
     },
     setMeta(id, name, isPublic) {
@@ -489,6 +504,8 @@ export function createRooms(
       if (!room) return 'room_not_found';
       if (room.host !== id) return 'not_host';
       if (room.state === 'playing') return null;
+      // The arena order is drawn as the match starts, from the pool the host picked.
+      newArenaPlan(room.game);
       restartMatch(room.game);
       room.state = 'playing';
       for (const m of room.members.values()) m.queue = [];

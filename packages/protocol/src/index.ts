@@ -1,6 +1,6 @@
 import type { ArenaKind, Game, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 /** 4 letters, no look-alikes (I/O). */
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
@@ -16,6 +16,8 @@ export type ClientMessage =
   /** Host: rename the room or make it public/private. */
   | { t: 'meta'; name: string; public: boolean }
   | { t: 'start' }
+  /** Host: remove a player from the room (they cannot rejoin it). */
+  | { t: 'kick'; id: string }
   /** Host: swap two players (team + role). */
   | { t: 'swap'; a: string; b: string }
   /** Host (anyone) or self: move a player to a team. */
@@ -63,7 +65,8 @@ export type ErrorCode =
   | 'room_not_found'
   | 'not_host'
   | 'server_full'
-  | 'rate_limited';
+  | 'rate_limited'
+  | 'kicked';
 
 export interface RoomPlayer {
   id: string;
@@ -80,7 +83,7 @@ export interface RoomInfo {
   host: string;
   state: 'lobby' | 'playing';
   settings: Settings;
-  /** Arena for each kickoff of the next match, in order. */
+  /** Arena for each kickoff of the current match, in order (drawn when it starts). */
   arenaPlan: ArenaKind[];
   players: RoomPlayer[];
 }
@@ -112,6 +115,7 @@ const ERROR_CODES: readonly string[] = [
   'not_host',
   'server_full',
   'rate_limited',
+  'kicked',
 ];
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isUint = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
@@ -141,7 +145,8 @@ function cleanText(v: unknown, max: number): string | null {
   return s || null;
 }
 
-const ITEMS: readonly string[] = ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'];
+const ARENA_KINDS: readonly string[] = ['classic', 'rain', 'volcano', 'ice', 'wind'];
+const ITEMS: readonly string[] = ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport', 'bazooka'];
 
 export function decodeSettings(v: unknown): Settings | null {
   if (!isObj(v)) return null;
@@ -156,11 +161,18 @@ export function decodeSettings(v: unknown): Settings | null {
     return null;
   if (crates !== 'off' && crates !== 'normal' && crates !== 'chaos') return null;
   if (typeof bots !== 'boolean') return null;
+  // Missing = every arena (older clients); otherwise a non-empty list of known kinds.
+  const arenaList = v.arenas ?? ARENA_KINDS;
+  if (!Array.isArray(arenaList) || arenaList.length === 0 || arenaList.length > ARENA_KINDS.length)
+    return null;
+  if (!arenaList.every((k) => typeof k === 'string' && ARENA_KINDS.includes(k))) return null;
+  const arenas = ARENA_KINDS.filter((k) => (arenaList as string[]).includes(k)) as ArenaKind[];
   return {
     minutes: minutes as number,
     scoreLimit: scoreLimit as number,
     crates,
     loot: loot as Settings['loot'],
+    arenas,
     bots,
   };
 }
@@ -194,6 +206,8 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
       return { t: 'leave' };
     case 'start':
       return { t: 'start' };
+    case 'kick':
+      return isStr(m.id, 64) ? { t: 'kick', id: m.id } : null;
     case 'swap':
       return isStr(m.a, 64) && isStr(m.b, 64) && m.a !== m.b ? { t: 'swap', a: m.a, b: m.b } : null;
     case 'move':

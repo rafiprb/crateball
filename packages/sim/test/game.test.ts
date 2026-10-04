@@ -25,6 +25,7 @@ import {
   openCrate,
   setRole,
   step,
+  botInput,
   type Game,
 } from '../src';
 
@@ -398,6 +399,65 @@ describe('inceleme düzeltmeleri (sim)', () => {
   });
 });
 
+describe('bazuka', () => {
+  const setup = () => {
+    const g = createGame(1);
+    const a = addPlayer(g, 'a', 'A', 'red');
+    const m = addPlayer(g, 'm', 'M', 'red');
+    const b = addPlayer(g, 'b', 'B', 'blue');
+    g.phase = 'play';
+    Object.assign(a, { x: -300, y: 0, vx: 0, vy: 0 });
+    Object.assign(m, { x: -200, y: 0 });
+    Object.assign(b, { x: 250, y: 0 });
+    g.ball = { x: 0, y: 150, vx: 0, vy: 0 };
+    openCrate(g, a, a.x, a.y, 'bazooka');
+    return { g, a, m, b };
+  };
+
+  it('tek roket: basılan yöne gider, takım arkadaşından geçer, uzaktaki rakibi tek vuruşta öldürür', () => {
+    const { g, a, m, b } = setup();
+    expect(a).toMatchObject({ bazooka: true, gun: 0, teleport: false });
+    step(g, new Map([['a', RIGHT | USE]]));
+    expect(a.bazooka).toBe(false);
+    expect(g.bullets).toHaveLength(1);
+    expect(g.bullets[0]).toMatchObject({ rocket: true, vy: 0 });
+    expect(g.bullets[0]!.vx).toBeCloseTo(ITEMS.rocketSpeed);
+    // Holding USE does not fire again.
+    run(g, 120, new Map([['a', USE]]));
+    expect(m.hp).toBe(PLAYER.maxHp);
+    expect(b.dead).toBeGreaterThan(0);
+    expect(g.bullets).toHaveLength(0);
+  });
+
+  it('çapraz basınca 45° gider; kalkan roketi bir kez durdurur', () => {
+    const { g, b } = setup();
+    Object.assign(b, { x: -100, y: -200, shield: true });
+    step(g, new Map([['a', RIGHT | UP | USE]]));
+    const r = g.bullets[0]!;
+    expect(r.vx).toBeCloseTo(ITEMS.rocketSpeed / Math.SQRT2);
+    expect(r.vy).toBeCloseTo(-ITEMS.rocketSpeed / Math.SQRT2);
+    run(g, 60);
+    expect(b).toMatchObject({ shield: false, dead: 0, hp: PLAYER.maxHp });
+  });
+
+  it('menzil uzun: sahanın büyük kısmını geçer', () => {
+    expect(ITEMS.rocketSpeed * ITEMS.rocketLife).toBeGreaterThan(FIELD.halfW * 1.5);
+  });
+
+  it('bot, 8 yönden birinde hizalı rakibe döner ve ateşler', () => {
+    const { g, a, b } = setup();
+    a.bot = true;
+    Object.assign(b, { x: -100, y: 200 });
+    let bits = 0;
+    for (let t = 0; t < 30 && !(bits & USE); t++) {
+      g.tick++;
+      bits = botInput(g, a);
+    }
+    expect(bits & USE).toBe(USE);
+    expect(bits & (RIGHT | DOWN)).toBe(RIGHT | DOWN);
+  });
+});
+
 describe('kutu içeriği ayarı', () => {
   it('tek tür seçilince her kutudan o çıkar', () => {
     const g = createGame(3, { minutes: 3, scoreLimit: 5, crates: 'chaos', loot: ['teleport'], bots: false });
@@ -434,6 +494,21 @@ describe('sahalar', () => {
       expect(new Set(g.arenaPlan.slice(5, 10)).size).toBe(5);
       for (let i = 1; i < g.arenaPlan.length; i++) expect(g.arenaPlan[i]).not.toBe(g.arenaPlan[i - 1]);
     }
+  });
+
+  it('sıra yalnızca seçilen sahalardan; tek saha seçiliyse hep o', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = arenaGame(seed, 5);
+      g.settings.arenas = ['rain', 'volcano', 'wind'];
+      newArenaPlan(g);
+      expect(g.arenaPlan).toHaveLength(10);
+      expect(new Set(g.arenaPlan.slice(0, 3))).toEqual(new Set(['rain', 'volcano', 'wind']));
+      for (let i = 1; i < g.arenaPlan.length; i++) expect(g.arenaPlan[i]).not.toBe(g.arenaPlan[i - 1]);
+    }
+    const g = arenaGame(1, 3);
+    g.settings.arenas = ['ice'];
+    newArenaPlan(g);
+    expect(g.arenaPlan).toEqual(Array(6).fill('ice'));
   });
 
   it('her santrada plandaki sıradaki sahaya geçilir', () => {

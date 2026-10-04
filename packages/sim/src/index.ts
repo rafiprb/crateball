@@ -3,6 +3,7 @@ export * from './types';
 export { hashState } from './hash';
 export { nextRandom } from './rng';
 export { gunTarget } from './aim';
+export { botInput } from './bot';
 export { inHotLava, inPuddle, lavaHeat, puddleScale } from './arena';
 export {
   addPlayer,

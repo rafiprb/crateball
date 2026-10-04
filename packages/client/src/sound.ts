@@ -69,7 +69,13 @@ export function createSound(): Sound {
       tone('triangle', 784, 784, 0.18, 0.12, 0.25);
       tone('triangle', 1047, 1047, 0.3, 0.12, 0.38);
     },
-    shot: () => {
+    shot: (rocket = false) => {
+      if (rocket) {
+        // Launch thump, then a hissing whoosh.
+        tone('sine', 140, 50, 0.25, 0.7);
+        noise(0.7, 0.4, 'bandpass', 1800);
+        return;
+      }
       noise(0.09, 0.7, 'highpass', 1100);
       tone('square', 950, 110, 0.09, 0.22);
     },
@@ -82,6 +88,7 @@ export function createSound(): Sound {
       switch (kind) {
         case 'mine':
         case 'erupt':
+        case 'rocket':
           noise(0.8, 1, 'lowpass', 700);
           tone('sine', 130, 28, 0.6, 1);
           noise(0.25, 0.5, 'highpass', 1500);
@@ -95,6 +102,11 @@ export function createSound(): Sound {
           noise(0.05, 0.6, 'bandpass', 3000);
           noise(0.05, 0.6, 'bandpass', 2000, 0.08);
           tone('square', 220, 180, 0.06, 0.15, 0.08);
+          break;
+        case 'bazooka':
+          // Heavy metal clunk.
+          tone('square', 160, 120, 0.12, 0.3);
+          noise(0.08, 0.5, 'bandpass', 900, 0.1);
           break;
         case 'warp':
           // Rising whoosh.
@@ -189,7 +201,7 @@ export function createSound(): Sound {
           sfx.kick(e.power);
           break;
         case 'shot':
-          sfx.shot();
+          sfx.shot(e.rocket);
           break;
         case 'hit':
           sfx.hit(e.killed);

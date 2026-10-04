@@ -43,9 +43,9 @@ export const MATCH = {
   overPause: sec(6),
 };
 
-export type ItemKind = 'gun' | 'mine' | 'ice' | 'boost' | 'shield' | 'power' | 'teleport';
+export type ItemKind = 'gun' | 'mine' | 'ice' | 'boost' | 'shield' | 'power' | 'teleport' | 'bazooka';
 /** What a blast marker shows: a crate opening, or a teleport's departure/arrival flash. */
-export type BlastKind = ItemKind | 'warp' | 'erupt';
+export type BlastKind = ItemKind | 'warp' | 'erupt' | 'rocket';
 
 export const CRATES = {
   radius: 14,
@@ -62,6 +62,7 @@ export const CRATES = {
     ['shield', 8],
     ['power', 8],
     ['teleport', 8],
+    ['bazooka', 6],
   ] as ReadonlyArray<readonly [ItemKind, number]>,
 };
 
@@ -73,6 +74,13 @@ export const ITEMS = {
   bulletRadius: 4,
   bulletKnock: 3,
   bulletBallPush: 1.6,
+  /** Bazooka: one rocket, fired straight along one of the 8 key directions; a hit takes all 3 hp. */
+  rocketSpeed: 7.5,
+  rocketLife: sec(1.9),
+  rocketRadius: 6,
+  rocketDamage: 3,
+  rocketKnock: 9,
+  rocketBallPush: 5,
   mineDamage: 1,
   mineSlow: sec(4),
   slowMul: 0.5,
@@ -113,10 +121,21 @@ export interface Settings {
   /** Which items crates may contain (weighted as usual among them). All of them = the normal mix;
    * one = a fun mode, also handy for trying a new item. Never empty. */
   loot: ItemKind[];
+  /** Arenas the match draws from (missing = all of them). Never empty. */
+  arenas?: ArenaKind[];
   bots: boolean;
 }
 
-export const ITEM_KINDS: readonly ItemKind[] = ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport'];
+export const ITEM_KINDS: readonly ItemKind[] = [
+  'gun',
+  'mine',
+  'ice',
+  'boost',
+  'shield',
+  'power',
+  'teleport',
+  'bazooka',
+];
 
 export const SETTING_CHOICES = {
   minutes: [2, 3, 5, 10],

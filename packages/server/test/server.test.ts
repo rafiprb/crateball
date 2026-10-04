@@ -270,6 +270,7 @@ describe('WebSocket', () => {
       scoreLimit: 3,
       crates: 'chaos',
       loot: [...ITEM_KINDS],
+      arenas: ['ice', 'wind'],
       bots: true,
     };
     host.socket.send(encode({ t: 'create', name: 'Ayşe', roomName: 'Pazar maçı', public: true, settings }));
@@ -311,6 +312,9 @@ describe('WebSocket', () => {
     let snap = await until(host, 'snap');
     while (snap.ack < 5) snap = await until(host, 'snap');
     expect(snap.g.settings).toEqual(settings);
+    // The arena order is drawn at the start, only from the host's pool.
+    expect(snap.g.arenaPlan).toHaveLength(6);
+    expect(new Set(snap.g.arenaPlan)).toEqual(new Set(['ice', 'wind']));
     guest.socket.send(encode({ t: 'join', code: 'ZZZZ', name: 'x' }));
     expect(await until(guest, 'error')).toMatchObject({ code: 'room_not_found' });
     host.socket.close();
@@ -383,6 +387,23 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     const before = teamOf('b');
     expect(rooms.move('b', 'b', before === 'red' ? 'blue' : 'red')).toBeNull();
     expect(teamOf('b')).not.toBe(before);
+    rooms.stop();
+  });
+
+  it('host oyuncuyu odadan atar; atılan geri giremez, başkası atamaz, host kendini atamaz', async () => {
+    const rooms = await make();
+    const got: string[] = [];
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    asRoom(rooms.join(room.code, 'b', 'B', (raw) => got.push(raw)));
+    asRoom(rooms.join(room.code, 'c', 'C', () => {}));
+    expect(rooms.kick('b', 'c')).toBe('not_host');
+    expect(rooms.kick('a', 'a')).toBe('bad_message');
+    expect(rooms.kick('a', 'b')).toBeNull();
+    expect(room.members.has('b')).toBe(false);
+    expect(room.game.players.some((p) => p.id === 'b')).toBe(false);
+    expect(got.some((raw) => raw.includes('"code":"kicked"'))).toBe(true);
+    expect(rooms.join(room.code, 'b', 'B', () => {})).toBe('kicked');
+    expect(rooms.kick('a', 'bot-1')).toBe('bad_message');
     rooms.stop();
   });
 

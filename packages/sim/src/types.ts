@@ -40,9 +40,11 @@ export interface Player {
   shield: boolean;
   power: boolean;
   gun: number;
-  /** Holding a teleport: USE sends you back in front of your own goal. One held item at a time
-   * (gun or teleport), a new crate replaces the old one. */
+  /** Holding a teleport: USE blinks you in the direction you press. One held item at a time
+   * (gun, teleport or bazooka), a new crate replaces the old one. */
   teleport: boolean;
+  /** Holding a bazooka: USE fires its one rocket the way you press (8 directions). */
+  bazooka: boolean;
   cooldown: number;
   goals: number;
   /** Tick of the last kick (client plays the sound once per value). */
@@ -67,6 +69,8 @@ export interface Bullet extends Body {
   owner: string;
   team: Team;
   life: number;
+  /** A bazooka rocket (bigger, slower, takes all 3 hp) rather than a gun bullet. */
+  rocket?: boolean;
 }
 
 /** Short-lived visual marker kept in state so prediction replays it identically. */

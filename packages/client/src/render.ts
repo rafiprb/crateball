@@ -43,6 +43,8 @@ const ITEM_STYLE: Record<BlastKind, [string, string]> = {
   shield: ['#7AF0FF', 'SHIELD!'],
   power: ['#FFA94D', 'POWER KICK!'],
   teleport: ['#C77DFF', 'TELEPORT!'],
+  bazooka: ['#B8C890', 'BAZOOKA!'],
+  rocket: ['#FF6A3D', 'BOOM!'],
   warp: ['#C77DFF', ''],
   erupt: ['#FF6A3D', 'ERUPTION!'],
 };
@@ -327,6 +329,38 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       text('?', c.x, c.y + bob, 18, '#FFF4E0', 800);
     }
     for (const b of g.bullets) {
+      if (b.rocket) {
+        // A fat rocket with a flame at the back.
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(Math.atan2(b.vy, b.vx));
+        ctx.fillStyle = now % 120 < 60 ? '#FFB760' : '#FF6A3D';
+        ctx.beginPath();
+        ctx.moveTo(-ITEMS.rocketRadius - 9, 0);
+        ctx.lineTo(-ITEMS.rocketRadius, -4);
+        ctx.lineTo(-ITEMS.rocketRadius, 4);
+        ctx.fill();
+        ctx.fillStyle = '#5E6B45';
+        ctx.strokeStyle = COLORS.ink;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(
+          -ITEMS.rocketRadius - 2,
+          -ITEMS.rocketRadius * 0.7,
+          ITEMS.rocketRadius * 2 + 2,
+          ITEMS.rocketRadius * 1.4,
+          3,
+        );
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#E8574A';
+        ctx.beginPath();
+        ctx.arc(ITEMS.rocketRadius, 0, ITEMS.rocketRadius * 0.7, -Math.PI / 2, Math.PI / 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
       ctx.strokeStyle = 'rgba(255,224,102,.45)';
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -355,6 +389,32 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         ctx.fillStyle = '#2A2F3A';
         ctx.fillRect(r - 4, -3, 14, 6);
         ctx.restore();
+      }
+      if (p.bazooka) {
+        // A fat tube along the way you press: that is where the rocket goes.
+        ctx.save();
+        ctx.translate(pos.x, pos.y);
+        ctx.rotate(Math.atan2(p.fy, p.fx));
+        ctx.fillStyle = '#5E6B45';
+        ctx.strokeStyle = COLORS.ink;
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(r - 6, -5, 20, 10);
+        ctx.strokeRect(r - 6, -5, 20, 10);
+        ctx.restore();
+        if (me) {
+          // My own aim: a dashed line as long as the rocket flies.
+          const len = ITEMS.rocketSpeed * ITEMS.rocketLife;
+          ctx.save();
+          ctx.setLineDash([8, 8]);
+          ctx.lineDashOffset = -now / 30;
+          ctx.strokeStyle = 'rgba(255,183,96,.55)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(pos.x + p.fx * (r + 16), pos.y + p.fy * (r + 16));
+          ctx.lineTo(pos.x + p.fx * len, pos.y + p.fy * len);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
       if (p.teleport) {
         // A small orb on the side the blink will go (the direction you are pressing / last moved).
@@ -467,6 +527,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const [color, label] = ITEM_STYLE[b.kind];
       const k = 1 - b.t / ITEMS.blastShow;
       ctx.globalAlpha = 1 - k;
+      if (b.kind === 'rocket') circle(b.x, b.y, 40 * (0.3 + k * 0.7), 'rgba(255,106,61,.35)');
       if (b.kind === 'mine') circle(b.x, b.y, ITEMS.blastRadius * (0.3 + k * 0.7), 'rgba(255,106,61,.35)');
       if (b.kind === 'warp') circle(b.x, b.y, PLAYER.radius + 6 * (1 - k), 'rgba(199,125,255,.4)');
       ctx.beginPath();
@@ -501,8 +562,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const bits: string[] = [];
       bits.push(`${ROLE_STYLE[me.role][1]}${me.buff ? ' ✓' : ''}`);
       if (me.dead > 0) bits.push(`Respawn in ${Math.ceil(me.dead / TICK_HZ)}…`);
-      if (me.gun > 0) bits.push(`Gun ×${me.gun} [E]`);
-      if (me.teleport) bits.push('Teleport: blink [E]');
+      if (me.gun > 0) bits.push(`Gun ×${me.gun} [E/Shift]`);
+      if (me.teleport) bits.push('Teleport: blink [E/Shift]');
+      if (me.bazooka) bits.push('Bazooka: aim with keys, fire [E/Shift]');
       if (me.power) bits.push('Power kick ready');
       if (me.shield) bits.push('Shield');
       if (me.boost > 0) bits.push('Speed');
@@ -515,7 +577,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.font = '600 12px Nunito, system-ui, sans-serif';
     ctx.fillStyle = '#FFF4E0';
     ctx.fillText(
-      'Move: WASD/Arrows · Kick: Space/X · Shoot/Teleport: E/Shift · Team: T · Role: 1 GK 2 DF 3 MF 4 FW · Report a glitch: R',
+      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Team: T · Role: 1 GK 2 DF 3 MF 4 FW · Report a glitch: R',
       12,
       h - 14,
     );
