@@ -15,6 +15,7 @@ import {
   newArenaPlan,
   restartMatch,
   inHotLava,
+  gunTarget,
   addPlayer,
   cloneGame,
   createGame,
@@ -524,5 +525,60 @@ describe('sahalar', () => {
       return hashState(g);
     };
     expect(play()).toBe(play());
+  });
+});
+
+describe('silah otomatik nişan', () => {
+  const setup = () => {
+    const g = createGame(1);
+    const a = addPlayer(g, 'a', 'A', 'red');
+    const near = addPlayer(g, 'near', 'N', 'blue');
+    const far = addPlayer(g, 'far', 'F', 'blue');
+    g.phase = 'play';
+    Object.assign(a, { x: 0, y: 0, vx: 0, vy: 0, fx: 0, fy: -1, gun: ITEMS.gunAmmo });
+    Object.assign(near, { x: 150, y: 0, vx: 0, vy: 0 });
+    Object.assign(far, { x: 0, y: 160, vx: 0, vy: 0 });
+    g.ball = { x: -300, y: -150, vx: 0, vy: 0 };
+    return { g, a, near, far };
+  };
+  const bulletDir = (g: ReturnType<typeof createGame>) => {
+    const b = g.bullets.at(-1)!;
+    return { x: b.vx / ITEMS.bulletSpeed, y: b.vy / ITEMS.bulletSpeed };
+  };
+
+  it('en yakın rakibe sıkar, baktığın yöne değil', () => {
+    const { g } = setup();
+    step(g, new Map([['a', USE]]));
+    expect(bulletDir(g).x).toBeCloseTo(1, 3);
+  });
+  it('arada takım arkadaşı varsa sıradaki rakibe sıkar', () => {
+    const { g } = setup();
+    addPlayer(g, 'mate', 'M', 'red');
+    Object.assign(
+      g.players.find((p) => p.id === 'mate')!,
+      { x: 75, y: 0 },
+    );
+    step(g, new Map([['a', USE]]));
+    expect(bulletDir(g).y).toBeCloseTo(1, 3);
+  });
+  it('arada top varsa da atlar', () => {
+    const { g } = setup();
+    g.ball = { x: 0, y: 80, vx: 0, vy: 0 };
+    expect(gunTarget(g, g.players[0]!)?.id).toBe('near');
+    g.ball = { x: 75, y: 0, vx: 0, vy: 0 };
+    expect(gunTarget(g, g.players[0]!)?.id).toBe('far');
+  });
+  it('menzilde kimse yoksa baktığı yöne sıkar', () => {
+    const { g, near, far } = setup();
+    Object.assign(near, { x: 2000 });
+    Object.assign(far, { x: 2000, y: 2000 });
+    step(g, new Map([['a', USE]]));
+    expect(bulletDir(g).y).toBeCloseTo(-1, 3);
+  });
+  it('koşan rakibin önüne nişan alır', () => {
+    const { g, near } = setup();
+    Object.assign(near, { vy: 2 });
+    const t = gunTarget(g, g.players[0]!)!;
+    expect(t.y).toBeGreaterThan(20);
   });
 });

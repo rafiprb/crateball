@@ -159,9 +159,8 @@ export const BOT = {
   accelMul: 0.85,
   /** Share of kick chances actually taken. */
   kickChance: 0.6,
-  /** Only shoot this close and this well aimed (cosine of the angle). */
-  shootRange: 200,
-  shootCos: 0.97,
+  /** Pull the trigger once the auto-aimed target is this close. */
+  shootRange: 260,
   /** Blink (teleport) toward where the bot wants to be once it is at least this far away. */
   blinkFrom: 200,
 };

@@ -1,5 +1,6 @@
 import { BALL, BOT, FIELD, PLAYER } from './content/rules';
 import { DOWN, KICK, LEFT, RIGHT, UP, USE, type Game, type Player } from './types';
+import { gunTarget } from './aim';
 
 const d2 = (ax: number, ay: number, bx: number, by: number) => (ax - bx) ** 2 + (ay - by) ** 2;
 
@@ -22,14 +23,10 @@ export function botInput(g: Game, p: Player): number {
   const b = g.ball;
   let bits = 0;
 
+  // The gun aims itself; bots just pull the trigger when a clear target is close enough.
   if (p.gun > 0 && p.cooldown === 0) {
-    for (const e of g.players) {
-      if (e.team === p.team || e.dead > 0) continue;
-      const dx = e.x - p.x;
-      const dy = e.y - p.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < BOT.shootRange && (dx * p.fx + dy * p.fy) / d > BOT.shootCos) bits |= USE;
-    }
+    const t = gunTarget(g, p);
+    if (t && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < BOT.shootRange ** 2) bits |= USE;
   }
 
   const mates = g.players.filter((o) => o.team === p.team && o.dead === 0 && o.role !== 'gk');

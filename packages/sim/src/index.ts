@@ -2,6 +2,7 @@ export * from './content/rules';
 export * from './types';
 export { hashState } from './hash';
 export { nextRandom } from './rng';
+export { gunTarget } from './aim';
 export { inHotLava, inPuddle, lavaHeat, puddleScale } from './arena';
 export {
   addPlayer,

@@ -18,6 +18,7 @@ import {
 import { nextRandom } from './rng';
 import { DOWN, KICK, LEFT, RIGHT, UP, USE, type Body, type Game, type Player, type Team } from './types';
 import { botInput } from './bot';
+import { gunTarget } from './aim';
 import {
   arenaAccel,
   ballDamping,
@@ -372,15 +373,25 @@ function tryKick(g: Game, p: Player): void {
 function fire(g: Game, p: Player): void {
   p.gun--;
   p.cooldown = ITEMS.gunCooldown;
+  const target = gunTarget(g, p);
+  let dx = p.fx;
+  let dy = p.fy;
+  if (target) {
+    const tx = target.x - p.x;
+    const ty = target.y - p.y;
+    const n = Math.sqrt(tx * tx + ty * ty) || 1;
+    dx = tx / n;
+    dy = ty / n;
+  }
   const r = p.r + ITEMS.bulletRadius + 1;
   g.bullets.push({
     id: g.nextId++,
     owner: p.id,
     team: p.team,
-    x: p.x + p.fx * r,
-    y: p.y + p.fy * r,
-    vx: p.fx * ITEMS.bulletSpeed,
-    vy: p.fy * ITEMS.bulletSpeed,
+    x: p.x + dx * r,
+    y: p.y + dy * r,
+    vx: dx * ITEMS.bulletSpeed,
+    vy: dy * ITEMS.bulletSpeed,
     life: ITEMS.bulletLife,
   });
 }

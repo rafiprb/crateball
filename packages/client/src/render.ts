@@ -6,6 +6,7 @@ import {
   PLAYER,
   KICK,
   TICK_HZ,
+  gunTarget,
   kickDirection,
   type Game,
   ARENAS,
@@ -347,9 +348,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const kicking = (p.input & KICK) !== 0 && p.frozen === 0;
       circle(pos.x, pos.y, r, COLORS[p.team], kicking ? '#FFFFFF' : COLORS.ink, kicking ? 3 : 2);
       if (p.gun > 0) {
+        const aim = gunTarget(g, p);
         ctx.save();
         ctx.translate(pos.x, pos.y);
-        ctx.rotate(Math.atan2(p.fy, p.fx));
+        ctx.rotate(aim ? Math.atan2(aim.y - p.y, aim.x - p.x) : Math.atan2(p.fy, p.fx));
         ctx.fillStyle = '#2A2F3A';
         ctx.fillRect(r - 4, -3, 14, 6);
         ctx.restore();
@@ -381,6 +383,29 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const bp = pr.pos('ball', alpha) ?? g.ball;
     circle(bp.x + 2, bp.y + 3, BALL.radius, 'rgba(0,0,0,.25)');
     circle(bp.x, bp.y, BALL.radius, COLORS.ball, COLORS.ink, 2);
+    // Gun auto-aim: a small crosshair on whoever my next shot will go to.
+    const shooter = g.players.find((p) => p.id === pr.me);
+    const target = shooter && shooter.gun > 0 && shooter.dead === 0 ? gunTarget(g, shooter) : null;
+    const tp = target ? pr.pos(target.id, alpha) : null;
+    if (tp) {
+      const rr = PLAYER.radius + 9 + Math.sin(now / 150) * 1.5;
+      ctx.strokeStyle = '#FFE066';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, rr, 0, Math.PI * 2);
+      ctx.stroke();
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        ctx.beginPath();
+        ctx.moveTo(tp.x + dx * (rr - 4), tp.y + dy * (rr - 4));
+        ctx.lineTo(tp.x + dx * (rr + 5), tp.y + dy * (rr + 5));
+        ctx.stroke();
+      }
+    }
     // Aim arrow: where my kick would send the ball; turns gold and rings the teammate on an assisted pass.
     const mine = g.players.find((p) => p.id === pr.me);
     const aim = mine && mine.dead === 0 && mine.frozen === 0 ? kickDirection(g, mine) : null;
