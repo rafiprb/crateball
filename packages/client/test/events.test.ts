@@ -64,3 +64,27 @@ describe('olaylar (inceleme düzeltmeleri)', () => {
     expect(track(two).filter((e) => e.type === 'item')).toHaveLength(2);
   });
 });
+
+describe('kilitlenme uyarısı', () => {
+  it('silahlı bir rakip (bot dahil) beni hedef alınca bir kez uyarır', () => {
+    let meId = 'me';
+    const track = createEventTracker(() => meId);
+    const g = createGame(1);
+    g.phase = 'play';
+    const me = addPlayer(g, 'me', 'Me', 'red');
+    const bot = addPlayer(g, 'bot', 'Bot', 'blue', true);
+    Object.assign(me, { x: 0, y: 0 });
+    Object.assign(bot, { x: 200, y: 0, gun: 0 });
+    g.ball = { x: 0, y: 150, vx: 0, vy: 0 };
+    g.tick = 10;
+    track(g);
+    const armed = cloneGame(g);
+    armed.tick = 11;
+    armed.players[1]!.gun = 6;
+    expect(track(armed).filter((e) => e.type === 'locked')).toHaveLength(1);
+    const still = cloneGame(armed);
+    still.tick = 12;
+    expect(track(still).filter((e) => e.type === 'locked')).toHaveLength(0);
+    meId = 'nobody';
+  });
+});

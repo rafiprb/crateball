@@ -66,7 +66,7 @@ export const CRATES = {
 };
 
 export const ITEMS = {
-  gunAmmo: 6,
+  gunAmmo: 3,
   gunCooldown: 14,
   bulletSpeed: 9,
   bulletLife: sec(1.1),

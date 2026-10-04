@@ -383,6 +383,32 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const bp = pr.pos('ball', alpha) ?? g.ball;
     circle(bp.x + 2, bp.y + 3, BALL.radius, 'rgba(0,0,0,.25)');
     circle(bp.x, bp.y, BALL.radius, COLORS.ball, COLORS.ink, 2);
+    // Someone has me in their sights: a red warning above my player.
+    const myself = g.players.find((p) => p.id === pr.me);
+    const hunted =
+      myself &&
+      myself.dead === 0 &&
+      g.players.some(
+        (e) => e.team !== myself.team && e.dead === 0 && e.gun > 0 && gunTarget(g, e)?.id === myself.id,
+      );
+    const mp = hunted ? pr.pos(myself.id, alpha) : null;
+    if (mp && myself) {
+      const blink = Math.sin(now / 90) > -0.2;
+      if (blink) {
+        const y = mp.y - myself.r - 26;
+        ctx.fillStyle = '#E8574A';
+        ctx.strokeStyle = '#1B2133';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(mp.x, y - 11);
+        ctx.lineTo(mp.x + 11, y + 8);
+        ctx.lineTo(mp.x - 11, y + 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        text('!', mp.x, y + 1, 15, '#FFF4E0', 800);
+      }
+    }
     // Gun auto-aim: a small crosshair on whoever my next shot will go to.
     const shooter = g.players.find((p) => p.id === pr.me);
     const target = shooter && shooter.gun > 0 && shooter.dead === 0 ? gunTarget(g, shooter) : null;

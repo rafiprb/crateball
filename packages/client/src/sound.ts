@@ -218,6 +218,11 @@ export function createSound(): Sound {
         case 'scrape':
           noise(0.16, 0.12, 'highpass', 5000);
           break;
+        case 'locked':
+          // Two short high beeps: someone has you in their sights.
+          tone('square', 1760, 1760, 0.06, 0.12);
+          tone('square', 1760, 1760, 0.06, 0.12, 0.1);
+          break;
       }
     },
   };

@@ -1,4 +1,4 @@
-import { ITEMS, inHotLava, inPuddle, type BlastKind, type Game, type Team } from '@crateball/sim';
+import { ITEMS, gunTarget, inHotLava, inPuddle, type BlastKind, type Game, type Team } from '@crateball/sim';
 
 const KICK_WINDOW = 45;
 const SEEN_TTL_TICKS = 180;
@@ -16,7 +16,9 @@ export type GameEvent =
   | { type: 'splash'; x: number; y: number; mine: boolean }
   | { type: 'sizzle'; x: number; y: number; mine: boolean }
   /** Our own player skating fast on ice. */
-  | { type: 'scrape' };
+  | { type: 'scrape' }
+  /** An enemy's gun just locked on to our player. */
+  | { type: 'locked' };
 
 /**
  * Turns successive predicted states into one-shot events (sounds, particles). Rollback re-simulation
@@ -28,6 +30,7 @@ export function createEventTracker(me: () => string | null = () => null) {
   let lastScore = '';
   let maxBullet = 0;
   let lastWarn = '';
+  let wasLocked = false;
   const ground = new Map<string, boolean>();
   const kickSeen = new Map<string, number>();
   const hp = new Map<string, { hp: number; x: number; y: number }>();
@@ -53,6 +56,15 @@ export function createEventTracker(me: () => string | null = () => null) {
     } else if (g.phase === 'kickoff') out.push({ type: 'whistle', long: false });
     lastScore = score;
     lastPhase = g.phase;
+    const self = g.players.find((p) => p.id === me());
+    const locked =
+      !!self &&
+      self.dead === 0 &&
+      g.players.some(
+        (e) => e.team !== self.team && e.dead === 0 && e.gun > 0 && gunTarget(g, e)?.id === self.id,
+      );
+    if (!fresh && locked && !wasLocked) out.push({ type: 'locked' });
+    wasLocked = locked;
     const w = g.arena.warn;
     const warnKey = w ? `${w.x}:${w.y}` : '';
     if (!fresh && w && warnKey !== lastWarn) out.push({ type: 'warn', x: w.x, y: w.y });

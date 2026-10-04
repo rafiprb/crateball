@@ -338,7 +338,7 @@ function getState() {
       players: g.players.map((p) => ({ id: p.id, name: p.name, team: p.team, bot: p.bot, role: p.role })),
       me: me && { x: me.x, y: me.y, team: me.team, hp: me.hp, gun: me.gun, role: me.role },
       ball: g.ball,
-      crates: g.crates.length,
+      crates: g.crates.map((c) => ({ x: c.x, y: c.y })),
     },
   };
 }

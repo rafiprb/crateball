@@ -354,6 +354,7 @@ export function createParticles(): Particles {
         case 'whistle':
         case 'warn':
         case 'scrape':
+        case 'locked':
           break;
         case 'splash':
           burst(e.x, e.y, 10, [40, 140], ['#CDE8FF', '#8FC3E3', '#FFFFFF'], {
