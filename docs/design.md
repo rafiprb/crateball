@@ -8,7 +8,7 @@ oyuncu kutuya değince açılır.
 - Saha 840×400 px, 60 tick/sn. Haxball fiziği: daire çarpışmaları, sönümleme, vuruş tuşu basılıyken
   yavaşlama, tuşa her basışta bir vuruş.
 - Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol.
-- Can 3; ölünce 3 sn sonra kendi kalesi önünde doğar.
+- Can 3; ölünce 3 sn sonra orta çizginin üst ucunda, kendi yarısında doğar. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
 - Kutu içerikleri (ağırlıklı): **Gun** (6 mermi, 3 isabet öldürür, topa da çarpar), **Mine** (patlar:
   açana 1 hasar + 4 sn yavaşlama, çevredekileri ve topu iter), **Ice** (2.5 sn donma), **Speed**,
   **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
