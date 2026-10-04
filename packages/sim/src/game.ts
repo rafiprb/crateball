@@ -240,7 +240,7 @@ function controlPlayer(g: Game, p: Player): void {
   // The gun fires for as long as USE is held; a teleport takes a fresh press.
   if (!useHeld) p.useArmed = true;
   else {
-    if (p.teleport && p.useArmed) teleportHome(g, p);
+    if (p.teleport && p.useArmed) blink(g, p);
     else if (p.gun > 0 && p.cooldown === 0) fire(g, p);
     p.useArmed = false;
   }
@@ -348,16 +348,17 @@ function fire(g: Game, p: Player): void {
   });
 }
 
-/** Straight back in front of your own goal, standing still; the ball stays where it was. */
-function teleportHome(g: Game, p: Player): void {
+/**
+ * Blink a fixed distance in the direction you are pressing (fx/fy follow the movement keys; with no
+ * key held it is the last direction you moved). Speed is kept; the pitch edge stops you.
+ */
+function blink(g: Game, p: Player): void {
   p.teleport = false;
   g.blasts.push({ x: p.x, y: p.y, kind: 'warp', t: ITEMS.blastShow });
-  p.x = side(p.team) * (FIELD.halfW - ITEMS.teleportInset);
-  p.y = 0;
-  p.vx = 0;
-  p.vy = 0;
-  p.fx = -side(p.team);
-  p.fy = 0;
+  const mx = FIELD.halfW + FIELD.margin - p.r;
+  const my = FIELD.halfH + FIELD.margin - p.r;
+  p.x = Math.max(-mx, Math.min(mx, p.x + p.fx * ITEMS.blinkDistance));
+  p.y = Math.max(-my, Math.min(my, p.y + p.fy * ITEMS.blinkDistance));
   g.blasts.push({ x: p.x, y: p.y, kind: 'warp', t: ITEMS.blastShow });
 }
 

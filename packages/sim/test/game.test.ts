@@ -4,6 +4,9 @@ import {
   FIELD,
   ITEMS,
   KICK,
+  UP,
+  LEFT,
+  DOWN,
   PLAYER,
   RIGHT,
   USE,
@@ -233,48 +236,64 @@ describe('pas', () => {
   });
 });
 
-describe('ışınlanma', () => {
+describe('ışınlanma (sıçrama)', () => {
   const setup = () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'red');
     const b = addPlayer(g, 'b', 'B', 'blue');
     g.phase = 'play';
-    Object.assign(a, { x: 250, y: 120, vx: 3, vy: -2 });
+    Object.assign(a, { x: 0, y: 0, vx: 0, vy: 0 });
+    Object.assign(b, { x: 0, y: -150 });
     return { g, a, b };
   };
 
-  it('kutudan çıkınca elde tutulur, tuşa basınca kendi kalesinin önüne ışınlar', () => {
+  it('basılan yöne sabit mesafe sıçrar, hız korunur', () => {
     const { g, a } = setup();
     openCrate(g, a, a.x, a.y, 'teleport');
-    expect(a.teleport).toBe(true);
-    step(g);
-    expect(a.x).toBeGreaterThan(200);
-    step(g, new Map([['a', USE]]));
+    run(g, 10, new Map([['a', RIGHT]]));
+    const x0 = a.x;
+    const v0 = a.vx;
+    step(g, new Map([['a', RIGHT | USE]]));
     expect(a.teleport).toBe(false);
-    expect(a.x).toBeCloseTo(-(FIELD.halfW - ITEMS.teleportInset));
-    expect(a.y).toBeCloseTo(0);
-    expect(Math.abs(a.vx) + Math.abs(a.vy)).toBeLessThan(0.01);
-    expect(g.blasts.filter((b) => b.kind === 'warp')).toHaveLength(2);
+    expect(a.x - x0).toBeGreaterThan(ITEMS.blinkDistance);
+    expect(a.x - x0).toBeLessThan(ITEMS.blinkDistance + 5);
+    expect(a.vx).toBeGreaterThan(v0 * 0.9);
+    expect(g.blasts.filter((x) => x.kind === 'warp')).toHaveLength(2);
   });
 
-  it('mavi takım kendi (sağ) kalesine ışınlanır; top yerinde kalır', () => {
-    const { g, b } = setup();
-    Object.assign(b, { x: -250, y: -100, teleport: true });
-    g.ball = { x: -200, y: 50, vx: 0, vy: 0 };
-    step(g, new Map([['b', USE]]));
-    expect(b.x).toBeCloseTo(FIELD.halfW - ITEMS.teleportInset);
-    expect(g.ball.x).toBeCloseTo(-200);
+  it('çapraz basınca çapraz gider, toplam mesafe aynı', () => {
+    const { g, a } = setup();
+    a.teleport = true;
+    step(g, new Map([['a', UP | LEFT | USE]]));
+    expect(a.x).toBeCloseTo(-ITEMS.blinkDistance / Math.SQRT2, 0);
+    expect(a.y).toBeCloseTo(-ITEMS.blinkDistance / Math.SQRT2, 0);
   });
 
-  it('tuşu basılı tutarken kutu açılırsa ışınlanmak için yeniden basmak gerekir', () => {
+  it('yön tuşuna basılmıyorsa son hareket yönüne gider', () => {
+    const { g, a } = setup();
+    a.teleport = true;
+    run(g, 3, new Map([['a', DOWN]]));
+    run(g, 20, new Map([['a', 0]]));
+    const y0 = a.y;
+    step(g, new Map([['a', USE]]));
+    expect(a.y - y0).toBeGreaterThan(ITEMS.blinkDistance - 2);
+  });
+
+  it('saha sınırında durur', () => {
+    const { g, a } = setup();
+    Object.assign(a, { teleport: true, x: 400 });
+    step(g, new Map([['a', RIGHT | USE]]));
+    expect(a.x).toBeLessThanOrEqual(FIELD.halfW + FIELD.margin - PLAYER.radius);
+  });
+
+  it('tuşu basılı tutarken kutu açılırsa sıçramak için yeniden basmak gerekir', () => {
     const { g, a } = setup();
     step(g, new Map([['a', USE]]));
     openCrate(g, a, a.x, a.y, 'teleport');
     run(g, 5, new Map([['a', USE]]));
     expect(a.teleport).toBe(true);
-    expect(a.x).toBeGreaterThan(200);
     step(g, new Map([['a', 0]]));
-    step(g, new Map([['a', USE]]));
+    step(g, new Map([['a', RIGHT | USE]]));
     expect(a.teleport).toBe(false);
   });
 
@@ -290,25 +309,23 @@ describe('ışınlanma', () => {
   it('donmuşken kullanılamaz, ölünce kaybolur', () => {
     const { g, a } = setup();
     Object.assign(a, { teleport: true, frozen: 30 });
-    step(g, new Map([['a', USE]]));
+    step(g, new Map([['a', RIGHT | USE]]));
     expect(a.teleport).toBe(true);
-    expect(a.x).toBeGreaterThan(200);
     Object.assign(a, { frozen: 0, hp: 1 });
     openCrate(g, a, a.x, a.y, 'mine');
     expect(a.dead).toBeGreaterThan(0);
     expect(a.teleport).toBe(false);
   });
 
-  it('bot, top kendi yarısının derinindeyken ileride kaldıysa ışınlanır', () => {
+  it('bot hedefine uzak kalınca o yöne sıçrar', () => {
     const g = createGame(1);
     const bot = addPlayer(g, 'bot', 'Bot', 'red', true);
-    addPlayer(g, 'b', 'B', 'blue');
+    addPlayer(g, 'b', 'B', 'blue').x = 400;
     g.phase = 'play';
-    Object.assign(bot, { x: 250, y: 0, teleport: true });
-    g.ball = { x: -330, y: 0, vx: -1, vy: 0 };
-    run(g, 10);
+    Object.assign(bot, { x: -350, y: 0, teleport: true });
+    g.ball = { x: 150, y: 0, vx: 0, vy: 0 };
+    run(g, 60);
     expect(bot.teleport).toBe(false);
-    expect(bot.x).toBeLessThan(0);
   });
 });
 

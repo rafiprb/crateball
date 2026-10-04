@@ -295,7 +295,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       bits.push(`${ROLE_STYLE[me.role][1]}${me.buff ? ' ✓' : ''}`);
       if (me.dead > 0) bits.push(`Respawn in ${Math.ceil(me.dead / TICK_HZ)}…`);
       if (me.gun > 0) bits.push(`Gun ×${me.gun} [E]`);
-      if (me.teleport) bits.push('Teleport home [E]');
+      if (me.teleport) bits.push('Teleport: blink [E]');
       if (me.power) bits.push('Power kick ready');
       if (me.shield) bits.push('Shield');
       if (me.boost > 0) bits.push('Speed');

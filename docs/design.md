@@ -12,11 +12,11 @@ oyuncu kutuya değince açılır.
 - Kutu içerikleri (ağırlıklı): **Gun** (6 mermi, 3 isabet öldürür, topa da çarpar), **Mine** (patlar:
   açana 1 hasar + 4 sn yavaşlama, çevredekileri ve topu iter), **Ice** (2.5 sn donma), **Speed**,
   **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
-  ile kendi kalesinin 60 px önüne, ortaya ışınlar, hız sıfırlanır, top yerinde kalır; donmuşken
-  kullanılamaz, ölünce/santrada kaybolur).
+  ile o an basılan yön tuşlarının yönüne sabit 150 px sıçratır, tuşa basılmıyorsa son hareket yönüne;
+  hız korunur, saha sınırında durur; donmuşken kullanılamaz, ölünce/santrada kaybolur).
 - Elde tek eşya: Gun ile Teleport aynı tuşu kullanır, yeni gelen eskisinin yerini alır. Silah tuş
-  basılıyken ateşler; ışınlanma yeni bir basış ister. Botlar top kendi yarılarının derinindeyken
-  ileride kaldılarsa ışınlanır.
+  basılıyken ateşler; ışınlanma yeni bir basış ister. Botlar gitmek istedikleri yere uzak kalınca
+  (200 px+) o yöne sıçrar.
 - Mevkiler (herkes topa koşmasın diye; bonus yalnızca kendi bölgesinde):
   GK kendi ceza sahasında büyük (r 22), DF kendi yarısında ağır + hızlı, MF orta bölgede uzun
   menzil + sert pas + geniş pas yardımı, FW hücum bölgesinde en hızlı + en sert şut. 1–4 tuşlarıyla değişir (takım

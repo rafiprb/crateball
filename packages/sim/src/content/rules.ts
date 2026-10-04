@@ -82,8 +82,8 @@ export const ITEMS = {
   iceFreeze: sec(2.5),
   boost: sec(5),
   boostMul: 1.6,
-  /** Teleport lands you this far in front of your own goal line, centred on the goal. */
-  teleportInset: 60,
+  /** Teleport: a blink of this many pixels in the direction you are pressing. */
+  blinkDistance: 150,
 };
 
 export type Role = 'gk' | 'def' | 'mid' | 'fwd';
@@ -162,7 +162,6 @@ export const BOT = {
   /** Only shoot this close and this well aimed (cosine of the angle). */
   shootRange: 200,
   shootCos: 0.97,
-  /** Teleport home once the ball is this deep in our half while the bot is this far up the pitch. */
-  teleportBallDepth: 150,
-  teleportFrom: 100,
+  /** Blink (teleport) toward where the bot wants to be once it is at least this far away. */
+  blinkFrom: 200,
 };
