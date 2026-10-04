@@ -1,4 +1,4 @@
-import { BALL, BOT, FIELD, ITEMS, PLAYER } from './content/rules';
+import { BALL, BOT, FIELD, PLAYER } from './content/rules';
 import { DOWN, KICK, LEFT, RIGHT, UP, USE, type Game, type Player } from './types';
 import { gunTarget } from './aim';
 
@@ -28,12 +28,8 @@ export function botInput(g: Game, p: Player): number {
     const t = gunTarget(g, p);
     if (t && (t.x - p.x) ** 2 + (t.y - p.y) ** 2 < BOT.shootRange ** 2) bits |= USE;
   }
-
-  // Bazooka: if an enemy sits on one of the 8 key lines (close to the rocket's path), face it and fire.
-  if (p.bazooka) {
-    const shot = rocketLine(g, p);
-    if (shot !== null) return shot | USE;
-  }
+  // The bazooka locks on the same way; its one rocket needs a fresh press (USE released in between).
+  if (p.bazooka && p.useArmed && gunTarget(g, p)) bits |= USE;
 
   const mates = g.players.filter((o) => o.team === p.team && o.dead === 0 && o.role !== 'gk');
   const chaser = mates.reduce<Player | null>(
@@ -98,33 +94,4 @@ export function botInput(g: Game, p: Player): number {
   )
     bits |= USE;
   return bits;
-}
-
-const EIGHT: ReadonlyArray<readonly [number, number, number]> = [
-  [1, 0, RIGHT],
-  [-1, 0, LEFT],
-  [0, 1, DOWN],
-  [0, -1, UP],
-  [1, 1, RIGHT | DOWN],
-  [1, -1, RIGHT | UP],
-  [-1, 1, LEFT | DOWN],
-  [-1, -1, LEFT | UP],
-];
-
-/** Movement bits of a key direction whose straight line passes close to an enemy in range, or null. */
-function rocketLine(g: Game, p: Player): number | null {
-  const range = ITEMS.rocketSpeed * ITEMS.rocketLife * 0.8;
-  for (const e of g.players) {
-    if (e.dead > 0 || e.team === p.team) continue;
-    const ex = e.x - p.x;
-    const ey = e.y - p.y;
-    if (ex * ex + ey * ey > range * range) continue;
-    for (const [dx, dy, bits] of EIGHT) {
-      const n = dx !== 0 && dy !== 0 ? Math.SQRT1_2 : 1;
-      const along = (ex * dx + ey * dy) * n;
-      const across = Math.abs(ex * dy - ey * dx) * n;
-      if (along > 0 && across < e.r * 0.6) return bits;
-    }
-  }
-  return null;
 }

@@ -1,4 +1,13 @@
-import { ITEMS, gunTarget, inHotLava, inPuddle, type BlastKind, type Game, type Team } from '@crateball/sim';
+import {
+  ITEMS,
+  gunTarget,
+  hasWeapon,
+  inHotLava,
+  inPuddle,
+  type BlastKind,
+  type Game,
+  type Team,
+} from '@crateball/sim';
 
 const KICK_WINDOW = 45;
 const SEEN_TTL_TICKS = 180;
@@ -61,7 +70,7 @@ export function createEventTracker(me: () => string | null = () => null) {
       !!self &&
       self.dead === 0 &&
       g.players.some(
-        (e) => e.team !== self.team && e.dead === 0 && e.gun > 0 && gunTarget(g, e)?.id === self.id,
+        (e) => e.team !== self.team && e.dead === 0 && hasWeapon(e) && gunTarget(g, e)?.id === self.id,
       );
     if (!fresh && locked && !wasLocked) out.push({ type: 'locked' });
     wasLocked = locked;

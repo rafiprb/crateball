@@ -8,6 +8,7 @@ type State = {
     state: string;
     host: string;
     players: Array<{ id: string; name: string; team: string; bot: boolean }>;
+    spectators: Array<{ id: string; name: string }>;
   } | null;
   screen: string;
   net: { clientId: string | null; rtt: number };
@@ -40,6 +41,16 @@ test('iki oyuncu aynı odada; gecikmeli istemcide kendi hareketi RTT beklemeden 
   await expect.poll(async () => (await state(a))?.room?.state, { timeout: 15_000 }).toBe('playing');
   const code = (await state(a)).room!.code;
   await b.goto(`/r/${code}?name=B`);
+  // Arriving mid-match: B watches. The host stops the match (two clicks), B takes a seat, host restarts.
+  await expect.poll(async () => (await state(b))?.room?.spectators?.length ?? 0, { timeout: 15_000 }).toBe(1);
+  await a.click('#stop-match');
+  await a.click('#stop-match');
+  await b.getByRole('button', { name: 'Join Blue' }).click();
+  // B's socket is lagged: start only once the server has seated it.
+  await expect
+    .poll(async () => (await state(a))?.room?.players.filter((p) => !p.bot).length ?? 0, { timeout: 15_000 })
+    .toBe(2);
+  await a.getByRole('button', { name: 'Start Game' }).click();
   await expect
     .poll(async () => (await state(b))?.sim?.players.filter((p) => !p.bot).length ?? 0, { timeout: 15_000 })
     .toBe(2);

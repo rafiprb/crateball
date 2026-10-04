@@ -13,13 +13,12 @@ oyuncu kutuya değince açılır.
   açana 1 hasar + 4 sn yavaşlama, çevredekileri ve topu iter), **Ice** (2.5 sn donma), **Speed**,
   **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
   ile o an basılan yön tuşlarının yönüne sabit 150 px sıçratır, tuşa basılmıyorsa son hareket yönüne;
-  hız korunur, saha sınırında durur; donmuşken kullanılamaz, ölünce/santrada kaybolur), **Bazooka**
-  (tek roket; nişan otomatik değil, basılan yön tuşlarıyla 8 yönden birine düz gider; isabet 3 can
-  götürür yani öldürür, kalkan bir kez durdurur; menzil ~850 px; takım arkadaşlarının içinden geçer,
-  topa çarparsa sertçe iter; sahibi kesik çizgiyle gidiş yolunu görür).
+  hız korunur, saha sınırında durur; donmuşken kullanılamaz, ölünce/santrada kaybolur), **Bazooka** (en nadir
+  kutu; tek roket; tuşla yön verilmez, silah gibi en yakın açık rakibe kilitlenir, hedefe kırmızı uyarı
+  düşer; roket hedefi takip eder ama yavaş döner, son anda yana kaçan kurtulabilir; isabet 3 can götürür
+  yani öldürür, kalkan bir kez durdurur; takım arkadaşlarının içinden geçer, topa çarparsa sert iter).
 - Elde tek eşya: Gun, Teleport ve Bazooka aynı tuşu (E/F/Shift) kullanır, yeni gelen eskisinin yerini
-  alır. Silah tuş basılıyken ateşler; ışınlanma ve bazuka yeni bir basış ister. Bazukalı bot, bir
-  rakip 8 yönden birinin hizasına girince o yöne dönüp ateşler. Botlar gitmek istedikleri yere uzak kalınca
+  alır. Silah tuş basılıyken ateşler; ışınlanma ve bazuka yeni bir basış ister. Bazukalı bot kilitlenince ateşler. Botlar gitmek istedikleri yere uzak kalınca
   (200 px+) o yöne sıçrar.
 - Mevkiler (herkes topa koşmasın diye; bonus yalnızca kendi bölgesinde):
   GK kendi ceza sahasında büyük (r 22), DF kendi yarısında ağır + hızlı, MF orta bölgede uzun
@@ -57,7 +56,14 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   sürükle-bırak ile oyuncuyu başka oyuncunun üstüne bırakırsa ikisi takım+mevki takası yapar,
   takım sütununa bırakırsa taşır. Ayarlar (süre 2/3/5/10 dk, gol limiti 3/5/7/10, kutular
   kapalı/normal/kaos, kutu içerikleri, sahalar, botlarla doldur) yalnızca host'ta düzenlenir; **Start Game**
-  yalnızca host. Host bir oyuncuyu ✕ ile odadan atabilir; atılan aynı kimlikle o odaya geri giremez.
+  yalnızca host. Host bir oyuncuyu ✕ ile odadan atabilir; atılan aynı sekmeden (yenilese de) o odaya
+  geri giremez. Takım değişikliği yalnızca lobide; maç başlayınca takımlar sabit.
+- İzleyiciler: lobide "Spectators" bölümü; herkes "Watch" ile izleyiciye geçebilir, host sürükleyerek
+  taşıyabilir. Maç sırasında gelen herkes izleyici olarak girer ve maçı izler; maç bitince lobiden
+  takıma geçer. Odada en fazla 12 kişi (6 oyuncu).
+- Host maç sırasında sol üstteki "Stop match" ile (iki tık) maçı bitirir; herkes lobiye döner.
+- Sohbet: lobide sol altta kayıt + yazı alanı; maçta Enter ile yazılır, yeni mesajlar birkaç saniye
+  üst üste görünüp kaybolur. Odaya yeni gelen son 30 mesajı görür; kişi başı flood sınırı var.
 - Maç bitince 6 sn sonra oda lobiye döner. Host çıkarsa host'luk sıradakine geçer; boş oda 2 dk yaşar.
 
 ## Ses ve efektler

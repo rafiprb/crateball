@@ -44,6 +44,11 @@ rm -rf "$DIR.old"
 mv "$DIR.new" "$DIR"
 cd "$DIR/deploy"
 APP_VERSION="$VERSION" docker compose up -d --no-build --remove-orphans
+# Caddy mounts the Caddyfile from the release directory that was just swapped: a changed file only
+# takes effect in a new container.
+if [ -f "$DIR.old/deploy/Caddyfile" ] && ! cmp -s "$DIR/deploy/Caddyfile" "$DIR.old/deploy/Caddyfile"; then
+  APP_VERSION="$VERSION" docker compose up -d --no-build --no-deps --force-recreate caddy
+fi
 docker image prune -f >/dev/null
 install -m 0755 "$DIR/deploy/remote-deploy.sh" /usr/local/bin/crateball-deploy
 for i in 1 2 3 4 5 6 7 8 9 10; do

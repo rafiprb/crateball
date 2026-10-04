@@ -1,4 +1,4 @@
-import type { RoomInfo, RoomListing, RoomPlayer } from '@crateball/protocol';
+import type { RoomInfo, RoomListing, RoomPlayer, Seat } from '@crateball/protocol';
 import {
   ARENAS,
   ITEM_KINDS,
@@ -63,8 +63,8 @@ export interface UiActions {
   meta(roomName: string, isPublic: boolean): void;
   join(code: string): void;
   leave(): void;
-  team(team: Team): void;
-  move(id: string, team: Team): void;
+  team(team: Seat): void;
+  move(id: string, team: Seat): void;
   swap(a: string, b: string): void;
   kick(id: string): void;
   role(role: Role): void;
@@ -360,9 +360,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
           { class: `team ${team}`, data: { team } },
           h('h3', {}, team === 'red' ? 'Red' : 'Blue'),
           h('ul', {}, ...room.players.filter((p) => p.team === team).map(player)),
-          mine &&
-            mine.team !== team &&
-            button(`Join ${team === 'red' ? 'Red' : 'Blue'}`, () => act.team(team)),
+          mine?.team !== team && button(`Join ${team === 'red' ? 'Red' : 'Blue'}`, () => act.team(team)),
         );
         col.addEventListener('dragover', (e) => {
           e.preventDefault();
@@ -377,6 +375,49 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         });
         return col;
       };
+      // Watching, not playing: drop anyone here (host) or yourself; they take a seat again from the lobby.
+      const spectator = (s: { id: string; name: string }) => {
+        const li = h(
+          'li',
+          { class: s.id === me ? 'me' : '', draggable: isHost || s.id === me, data: { id: s.id } },
+          h('span', { class: 'pname' }, s.name),
+          s.id === room.host && h('span', { class: 'tag' }, 'HOST'),
+          isHost &&
+            s.id !== me &&
+            h(
+              'button',
+              { class: 'kick', title: `Remove ${s.name} from the room`, onclick: () => act.kick(s.id) },
+              '✕',
+            ),
+        );
+        li.addEventListener('dragstart', (e) => e.dataTransfer?.setData('text/plain', s.id));
+        return li;
+      };
+      const specBox = h(
+        'div',
+        { class: 'spectators' },
+        h('h3', {}, 'Spectators'),
+        room.spectators.length
+          ? h('ul', {}, ...room.spectators.map(spectator))
+          : h('span', { class: 'empty' }, 'Nobody is watching'),
+      );
+      specBox.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        specBox.classList.add('over');
+      });
+      specBox.addEventListener('dragleave', () => specBox.classList.remove('over'));
+      specBox.addEventListener('drop', (e) => {
+        e.preventDefault();
+        specBox.classList.remove('over');
+        const id = e.dataTransfer?.getData('text/plain');
+        if (id) act.move(id, 'spec');
+      });
+      const spectators = h(
+        'div',
+        { class: 'spectators-row' },
+        specBox,
+        mine && button('Watch', () => act.team('spec')),
+      );
       const roles = h(
         'div',
         { class: 'roles' },
@@ -404,16 +445,35 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
           h('span', { class: 'code', id: 'room-code' }, room.code),
           copy,
         ),
-        h('div', { class: 'teams' }, column('red'), column('blue')),
-        h('h3', {}, 'Pick your position'),
-        roles,
-        mine && h('div', { class: 'hint' }, `${ROLE_NAME[mine.role]}: ${ROLE_HINT[mine.role]}`),
-        settingsForm(room.settings, isHost, act.settings),
-        publicBox(),
-        isHost
-          ? button('Start Game', act.start, 'primary')
-          : h('p', { class: 'hint' }, 'Waiting for the host to start…'),
-        button('Leave', act.leave),
+        // Two panes side by side (people on the left, the match on the right), so it fits without scrolling.
+        h(
+          'div',
+          { class: 'lobby-cols' },
+          h(
+            'div',
+            { class: 'pane' },
+            h('div', { class: 'teams' }, column('red'), column('blue')),
+            spectators,
+            mine && h('h3', {}, 'Pick your position'),
+            mine && roles,
+            mine && h('div', { class: 'hint' }, `${ROLE_NAME[mine.role]}: ${ROLE_HINT[mine.role]}`),
+            h('div', { id: 'chat-slot' }),
+          ),
+          h(
+            'div',
+            { class: 'pane' },
+            settingsForm(room.settings, isHost, act.settings),
+            publicBox(),
+            h(
+              'div',
+              { class: 'actions' },
+              isHost
+                ? button('Start Game', act.start, 'primary')
+                : h('p', { class: 'hint' }, 'Waiting for the host to start…'),
+              button('Leave', act.leave),
+            ),
+          ),
+        ),
       );
     },
   };

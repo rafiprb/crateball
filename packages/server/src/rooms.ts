@@ -7,6 +7,8 @@ import {
   type ErrorCode,
   type RoomInfo,
   type RoomListing,
+  type ServerMessage,
+  type Seat,
 } from '@crateball/protocol';
 import {
   MATCH,
@@ -42,6 +44,14 @@ export const EMPTY_ROOM_TTL_MS = 2 * 60_000;
 
 interface Member {
   id: string;
+  name: string;
+  /** Who to ban if kicked: the tab's session token (survives a reload), else the connection id. */
+  key: string;
+  /** Watching, not playing: no player in the game. Everyone who arrives mid-match starts here. */
+  spectator: boolean;
+  /** Chat flood control: messages left, refilled over time. */
+  chatTokens: number;
+  chatAt: number;
   send: Send;
   queue: Array<[seq: number, bits: number]>;
   ack: number;
@@ -64,14 +74,17 @@ export interface Room {
   game: Game;
   members: Map<string, Member>;
   bots: number;
-  /** Players the host kicked: they cannot come back to this room. */
+  /** Players the host kicked (by session key): they cannot come back to this room. */
   banned: Set<string>;
+  /** Recent chat, replayed to whoever joins. */
+  chat: ChatLine[];
   emptySince: number | null;
   /** Slowest tick (step + snapshot) since the last stats line. */
   stepMsMax: number;
 }
 
 type Result = Room | ErrorCode;
+type ChatLine = Extract<ServerMessage, { t: 'chat' }>;
 
 /** `droppable`: a snapshot, which may be skipped for a client that is not keeping up. */
 type Send = (raw: string, droppable?: boolean) => void;
@@ -84,8 +97,9 @@ export interface Rooms {
     isPublic: boolean,
     settings: Settings,
     send: Send,
+    key?: string,
   ): Result;
-  join(code: string, id: string, name: string, send: Send): Result;
+  join(code: string, id: string, name: string, send: Send, key?: string): Result;
   /** Deliberate leave (menu, or switching rooms): the slot is freed now. */
   leave(id: string): void;
   /** Socket closed: keep the slot for a grace period so a reconnect gets it back. */
@@ -96,8 +110,7 @@ export interface Rooms {
   /** In a room but without a socket (inside the reconnect grace period). */
   isAway(id: string): boolean;
   input(id: string, seq: number, bits: number): void;
-  switchTeam(id: string, team: Team): void;
-  move(by: string, id: string, team: Team): ErrorCode | null;
+  move(by: string, id: string, team: Seat): ErrorCode | null;
   swap(by: string, a: string, b: string): ErrorCode | null;
   setRole(id: string, role: Role): void;
   setSettings(id: string, settings: Settings): ErrorCode | null;
@@ -105,6 +118,9 @@ export interface Rooms {
   /** Host: remove a player from the room for good. */
   kick(by: string, id: string): ErrorCode | null;
   start(id: string): ErrorCode | null;
+  /** Host: end the match now; everyone goes back to the lobby. */
+  stopMatch(id: string): ErrorCode | null;
+  chat(id: string, text: string): ErrorCode | null;
   list(): RoomListing[];
   /** For /health: lets a deploy wait until no match is running. */
   stats(): { rooms: number; playing: number; players: number };
@@ -116,6 +132,11 @@ export interface Rooms {
 }
 
 const MAX_PLAYERS = MATCH.maxPerTeam * 2;
+/** Players plus spectators. */
+const MAX_MEMBERS = 12;
+const CHAT_HISTORY = 30;
+const CHAT_BURST = 5;
+const CHAT_REFILL_MS = 1500;
 /** Hard cap on rooms held in memory (anyone can create one). */
 export const MAX_ROOMS = 200;
 /** How long a dropped player keeps their slot (and host role). */
@@ -158,6 +179,9 @@ export function info(room: Room): RoomInfo {
       role: p.role,
       bot: p.bot,
     })),
+    spectators: [...room.members.values()]
+      .filter((m) => m.spectator)
+      .map((m) => ({ id: m.id, name: m.name })),
   };
 }
 
@@ -190,7 +214,6 @@ export function createRooms(
     const g = room.game;
     if (g.phase === 'over' && g.phaseT >= MATCH.overPause) {
       room.state = 'lobby';
-      newArenaPlan(g); // a fresh arena order for the next match, shown in the lobby
       log.info({ room: room.code, score: g.score }, 'maç bitti, lobiye dönüldü');
       announce(room);
       return;
@@ -225,18 +248,8 @@ export function createRooms(
     if (g.tick % SNAP_EVERY === 0) broadcastSnap(room);
     room.stepMsMax = Math.max(room.stepMsMax, performance.now() - t0);
     if (g.tick % ROOM_STATS_EVERY === 0) {
-      const starved = Object.fromEntries(
-        [...room.members.values()].map((m) => [
-          g.players.find((p) => p.id === m.id)?.name ?? m.id,
-          m.starved,
-        ]),
-      );
-      const queued = Object.fromEntries(
-        [...room.members.values()].map((m) => [
-          g.players.find((p) => p.id === m.id)?.name ?? m.id,
-          m.queue.length,
-        ]),
-      );
+      const starved = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.starved]));
+      const queued = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.queue.length]));
       log.info(
         {
           room: room.code,
@@ -304,27 +317,61 @@ export function createRooms(
     }
   };
 
-  const enter = (room: Room, id: string, name: string, send: Send) => {
+  const enter = (room: Room, id: string, name: string, send: Send, key: string) => {
     const g = room.game;
     const red = teamCount(g, 'red', false);
     const blue = teamCount(g, 'blue', false);
+    // Mid-match (or with both teams full) you watch; you can take a seat in the lobby afterwards.
+    const spectator = room.state === 'playing' || red + blue >= MAX_PLAYERS;
     const team: Team = blue < red ? 'blue' : 'red';
-    addPlayer(g, id, name, team);
-    room.members.set(id, { id, send, queue: [], ack: 0, starved: 0, gap: 0, last: 0, awayTimer: null });
+    if (!spectator) addPlayer(g, id, name, team);
+    room.members.set(id, {
+      id,
+      name,
+      key,
+      spectator,
+      chatTokens: CHAT_BURST,
+      chatAt: now(),
+      send,
+      queue: [],
+      ack: 0,
+      starved: 0,
+      gap: 0,
+      last: 0,
+      awayTimer: null,
+    });
     room.emptySince = null;
     byClient.set(id, room);
     rebalance(room);
-    log.info({ room: room.code, id, name, team }, 'oyuncu odaya girdi');
+    log.info({ room: room.code, id, name, team: spectator ? 'spec' : team }, 'oyuncu odaya girdi');
     announce(room);
+    for (const line of room.chat) send(encode(line));
   };
 
-  /** Self, or the host moving anyone. Humans per team are capped; bots rebalance around them. */
-  const moveTo = (by: string, id: string, team: Team): ErrorCode | null => {
+  /** Self, or the host moving anyone; lobby only. Humans per team are capped; bots rebalance around them. */
+  const moveTo = (by: string, id: string, team: Seat): ErrorCode | null => {
     const room = byClient.get(by);
     if (!room) return 'room_not_found';
     if (by !== id && room.host !== by) return 'not_host';
-    // The host rearranges teams in the lobby only; anyone may switch their own team any time.
-    if (by !== id && room.state !== 'lobby') return 'bad_message';
+    // Teams are fixed once the match starts.
+    if (room.state !== 'lobby') return 'bad_message';
+    const m = room.members.get(id);
+    if (team === 'spec') {
+      if (!m || m.spectator) return null;
+      m.spectator = true;
+      removePlayer(room.game, id);
+      rebalance(room);
+      announce(room);
+      return null;
+    }
+    if (m?.spectator) {
+      if (teamCount(room.game, team, false) >= MATCH.maxPerTeam) return 'room_full';
+      m.spectator = false;
+      addPlayer(room.game, id, m.name, team);
+      rebalance(room);
+      announce(room);
+      return null;
+    }
     const p = room.game.players.find((o) => o.id === id);
     if (!p || p.team === team) return null;
     if (!p.bot && teamCount(room.game, team, false) >= MATCH.maxPerTeam) return 'room_full';
@@ -395,7 +442,7 @@ export function createRooms(
     reattach,
     isMember: (id) => byClient.has(id),
     isAway: (id) => !!byClient.get(id)?.members.get(id)?.awayTimer,
-    create(id, name, roomName, isPublic, settings, send) {
+    create(id, name, roomName, isPublic, settings, send, key = id) {
       if (rooms.size >= MAX_ROOMS) return 'server_full';
       leave(id);
       const code = newCode();
@@ -409,27 +456,33 @@ export function createRooms(
         members: new Map(),
         bots: 0,
         banned: new Set(),
+        chat: [],
         emptySince: null,
         stepMsMax: 0,
       };
       rooms.set(code, room);
       log.info({ room: code, isPublic }, 'oda kuruldu');
       ensureTimer();
-      enter(room, id, name, send);
+      enter(room, id, name, send, key);
       return room;
     },
-    join(code, id, name, send) {
+    join(code, id, name, send, key = id) {
       const room = rooms.get(code);
       if (!room) return 'room_not_found';
-      // Already in this very room (a reconnect that kept its slot): just take the new socket.
       const current = byClient.get(id);
-      if (current === room) return reattach(id, send) ?? 'room_not_found';
-      if (room.banned.has(id)) return 'kicked';
-      if (room.members.size >= MAX_PLAYERS) return 'room_full';
+      if (current === room) {
+        // A reconnect that kept its slot takes the new socket; already here and connected: nothing to do
+        // (repeating it must not reset the input timeline or spam everyone with room updates).
+        if (current.members.get(id)?.awayTimer) return reattach(id, send) ?? 'room_not_found';
+        current.members.get(id)?.send(encode({ t: 'room', room: info(room) }));
+        return room;
+      }
+      if (room.banned.has(key)) return 'kicked';
+      if (room.members.size >= MAX_MEMBERS) return 'room_full';
       // Only now leave the old room: a wrong code must not throw you out of the one you are in.
       leave(id);
       if (room.members.size === 0) room.host = id;
-      enter(room, id, name, send);
+      enter(room, id, name, send, key);
       return room;
     },
     input(id, seq, bits) {
@@ -444,15 +497,13 @@ export function createRooms(
         if (m.queue.length > QUEUE_MAX * 2) m.queue.splice(0, m.queue.length - QUEUE_MAX);
       }
     },
-    switchTeam(id, team) {
-      moveTo(id, id, team);
-    },
     move: moveTo,
     swap(by, a, b) {
       const room = byClient.get(by);
       if (!room) return 'room_not_found';
       if (room.host !== by) return 'not_host';
       if (room.state !== 'lobby') return 'bad_message';
+      // Spectators have no seat to trade: drag them onto a team column instead.
       const pa = room.game.players.find((p) => p.id === a);
       const pb = room.game.players.find((p) => p.id === b);
       if (!pa || !pb) return 'bad_message';
@@ -484,7 +535,7 @@ export function createRooms(
       if (room.host !== by) return 'not_host';
       if (id === by || !room.members.has(id)) return 'bad_message';
       const target = room.members.get(id);
-      room.banned.add(id);
+      if (target) room.banned.add(target.key);
       target?.send(encode({ t: 'error', code: 'kicked', message: 'The host removed you from this room' }));
       log.info({ room: room.code, id }, 'oyuncu atıldı');
       leave(id);
@@ -514,6 +565,33 @@ export function createRooms(
       broadcastSnap(room);
       return null;
     },
+    stopMatch(id) {
+      const room = byClient.get(id);
+      if (!room) return 'room_not_found';
+      if (room.host !== id) return 'not_host';
+      if (room.state !== 'playing') return null;
+      room.state = 'lobby';
+      log.info({ room: room.code, score: room.game.score }, 'host maçı durdurdu');
+      announce(room);
+      return null;
+    },
+    chat(id, text) {
+      const room = byClient.get(id);
+      const m = room?.members.get(id);
+      if (!room || !m) return 'room_not_found';
+      const t = now();
+      m.chatTokens = Math.min(CHAT_BURST, m.chatTokens + (t - m.chatAt) / CHAT_REFILL_MS);
+      m.chatAt = t;
+      if (m.chatTokens < 1) return 'rate_limited';
+      m.chatTokens--;
+      const team = m.spectator ? 'spec' : (room.game.players.find((p) => p.id === id)?.team ?? 'spec');
+      const line: ChatLine = { t: 'chat', id, name: m.name, team, text };
+      room.chat.push(line);
+      if (room.chat.length > CHAT_HISTORY) room.chat.shift();
+      const raw = encode(line);
+      for (const o of room.members.values()) o.send(raw);
+      return null;
+    },
     stats() {
       const all = [...rooms.values()];
       return {
@@ -524,7 +602,7 @@ export function createRooms(
     },
     whereIs(id) {
       const room = byClient.get(id);
-      return { room: room?.code, name: room?.game.players.find((p) => p.id === id)?.name };
+      return { room: room?.code, name: room?.members.get(id)?.name };
     },
     list() {
       return [...rooms.values()]
@@ -532,7 +610,7 @@ export function createRooms(
         .map((r) => ({
           code: r.code,
           name: r.name,
-          humans: r.members.size,
+          humans: r.game.players.filter((p) => !p.bot).length,
           max: MAX_PLAYERS,
           state: r.state,
         }));

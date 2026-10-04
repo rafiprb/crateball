@@ -21,12 +21,18 @@ function blocks(
   return px * px + py * py < r * r;
 }
 
+/** Holding something that locks on (gun or bazooka). */
+export const hasWeapon = (p: Player) => p.gun > 0 || p.bazooka;
+
 /**
- * Auto-aim: the nearest enemy in range whose line of fire is not blocked by a teammate or the ball,
- * aimed where they are running to. Null when nobody qualifies (then the gun fires straight ahead).
+ * Auto-aim for the gun and the bazooka: the nearest enemy in range whose line of fire is not blocked by
+ * a teammate or the ball. The gun aims where they are running to; the bazooka's rocket homes in, so it
+ * aims at them. Null when nobody qualifies (then it fires straight ahead).
  */
 export function gunTarget(g: Game, p: Player): { id: string; x: number; y: number } | null {
-  const range = ITEMS.bulletSpeed * ITEMS.bulletLife;
+  const rocket = p.bazooka;
+  const range = rocket ? ITEMS.rocketLockRange : ITEMS.bulletSpeed * ITEMS.bulletLife;
+  const radius = rocket ? ITEMS.rocketRadius : ITEMS.bulletRadius;
   const enemies = g.players
     .filter((e) => e.team !== p.team && e.dead === 0)
     .map((e) => ({ e, d2: (e.x - p.x) ** 2 + (e.y - p.y) ** 2 }))
@@ -34,13 +40,13 @@ export function gunTarget(g: Game, p: Player): { id: string; x: number; y: numbe
     .sort((a, b) => a.d2 - b.d2 || (a.e.id < b.e.id ? -1 : 1));
   for (const { e, d2 } of enemies) {
     // Lead the target by the time the bullet needs to get there.
-    const t = Math.sqrt(d2) / ITEMS.bulletSpeed;
+    const t = rocket ? 0 : Math.sqrt(d2) / ITEMS.bulletSpeed;
     const x = e.x + e.vx * t;
     const y = e.y + e.vy * t;
     const mates = g.players.filter((m) => m !== p && m.team === p.team && m.dead === 0);
     const hidden =
-      mates.some((m) => blocks(p.x, p.y, x, y, m, m.r + ITEMS.bulletRadius)) ||
-      blocks(p.x, p.y, x, y, g.ball, BALL.radius + ITEMS.bulletRadius);
+      mates.some((m) => blocks(p.x, p.y, x, y, m, m.r + radius)) ||
+      blocks(p.x, p.y, x, y, g.ball, BALL.radius + radius);
     if (!hidden) return { id: e.id, x, y };
   }
   return null;

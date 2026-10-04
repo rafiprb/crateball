@@ -1,6 +1,7 @@
 import './style.css';
 import { CODE_RE, PROTOCOL_VERSION, type RoomInfo } from '@crateball/protocol';
 import { DEFAULT_SETTINGS, TICK_HZ, type BlastKind, type Role } from '@crateball/sim';
+import { createChat } from './chat';
 import { createEventTracker } from './events';
 import { createKeyboard } from './input';
 import { connect, type NetStatus } from './net';
@@ -61,6 +62,9 @@ let rtt = 0;
 /** Smoothed count of our inputs waiting on the server (debug panel). */
 let queueAvg = 0;
 
+/** A join is on its way: a refusal (full, gone, kicked) means we are not in that room. */
+let joinPending = false;
+
 const showError = (text: string) => {
   banner.hidden = false;
   banner.textContent = text;
@@ -68,6 +72,10 @@ const showError = (text: string) => {
 };
 
 const toMenu = () => {
+  joinPending = false;
+  chat.mode('off');
+  chat.mount(null);
+  stopBtn.hidden = true;
   room = null;
   code = null;
   pred.reset();
@@ -104,8 +112,10 @@ const conn = connect({
         banner.hidden = true;
     }
     if (s === 'open') {
-      if (code) conn.send({ t: 'join', code, name: ui.name });
-      else if (params.has('autoplay'))
+      if (code) {
+        joinPending = true;
+        conn.send({ t: 'join', code, name: ui.name });
+      } else if (params.has('autoplay'))
         conn.send({
           t: 'create',
           name: ui.name,
@@ -113,7 +123,10 @@ const conn = connect({
           public: false,
           settings: DEFAULT_SETTINGS,
         });
-      else if (pathCode && ui.name !== 'Player') conn.send({ t: 'join', code: pathCode, name: ui.name });
+      else if (pathCode && ui.name !== 'Player') {
+        joinPending = true;
+        conn.send({ t: 'join', code: pathCode, name: ui.name });
+      }
     }
     if (s !== 'version_mismatch') return;
     banner.hidden = false;
@@ -150,6 +163,7 @@ const conn = connect({
   onMessage: (m) => {
     switch (m.t) {
       case 'joined':
+        joinPending = false;
         code = m.code;
         pred.setMe(m.playerId);
         history.replaceState(null, '', `/r/${m.code}${debugQuery}`);
@@ -157,6 +171,9 @@ const conn = connect({
         break;
       case 'room':
         onRoom(m.room);
+        break;
+      case 'chat':
+        chat.add(m, m.id === pred.me);
         break;
       case 'snap':
         if (room?.state === 'playing') {
@@ -169,7 +186,9 @@ const conn = connect({
         break;
       case 'error':
         showError(m.message);
-        if (m.code === 'room_not_found' || m.code === 'kicked') toMenu();
+        // A refused rejoin after a long drop also lands here: drop the stale match instead of playing alone.
+        if (m.code === 'room_not_found' || m.code === 'kicked' || (joinPending && m.code === 'room_full'))
+          toMenu();
         break;
     }
   },
@@ -184,10 +203,16 @@ function onRoom(r: RoomInfo) {
     autoStarted = true;
     conn.send({ t: 'start' });
   }
+  chat.mode(r.state === 'playing' ? 'game' : 'lobby');
+  if (r.state === 'playing') chat.mount(null);
+  stopBtn.hidden = !(r.state === 'playing' && r.host === pred.me);
+  stopBtn.classList.remove('armed');
+  stopBtn.textContent = 'Stop match';
   if (r.state === 'playing') ui.hide();
   else {
     if (wasPlaying) pred.reset();
     ui.lobby(r, pred.me);
+    chat.mount(document.getElementById('chat-slot'));
   }
 }
 
@@ -197,7 +222,10 @@ const ui = createUi(
     create: (roomName, isPublic) =>
       conn.send({ t: 'create', name: ui.name, roomName, public: isPublic, settings: DEFAULT_SETTINGS }),
     meta: (roomName, isPublic) => conn.send({ t: 'meta', name: roomName, public: isPublic }),
-    join: (c) => conn.send({ t: 'join', code: c, name: ui.name }),
+    join: (c) => {
+      joinPending = true;
+      conn.send({ t: 'join', code: c, name: ui.name });
+    },
     leave: () => {
       conn.send({ t: 'leave' });
       toMenu();
@@ -215,13 +243,39 @@ const ui = createUi(
 );
 ui.menu(pathCode && CODE_RE.test(pathCode) ? pathCode : undefined);
 
+const chat = createChat(
+  (text) => conn.send({ t: 'chat', text }),
+  () => keyboard.release(),
+);
+/** Host only, in a match: two clicks (the first arms it) end the match for everyone. */
+const stopBtn = document.createElement('button');
+stopBtn.id = 'stop-match';
+stopBtn.type = 'button';
+stopBtn.hidden = true;
+stopBtn.textContent = 'Stop match';
+let disarm: ReturnType<typeof setTimeout> | undefined;
+stopBtn.addEventListener('click', () => {
+  stopBtn.blur();
+  if (stopBtn.classList.contains('armed')) {
+    conn.send({ t: 'stop' });
+    return;
+  }
+  stopBtn.classList.add('armed');
+  stopBtn.textContent = 'Click again to stop';
+  clearTimeout(disarm);
+  disarm = setTimeout(() => {
+    stopBtn.classList.remove('armed');
+    stopBtn.textContent = 'Stop match';
+  }, 3000);
+});
+document.body.append(stopBtn);
+
 const ROLE_KEYS: Record<string, Role> = { Digit1: 'gk', Digit2: 'def', Digit3: 'mid', Digit4: 'fwd' };
 const keyboard = createKeyboard(window, (code) => {
   if (code === 'KeyM') setMuted(!sound.muted);
   if (code === 'KeyR' || code === 'F9') sendReport();
+  if (code === 'Enter' && room) chat.open();
   if (room?.state !== 'playing') return;
-  const me = pred.game?.players.find((p) => p.id === pred.me);
-  if (code === 'KeyT' && me) conn.send({ t: 'move', id: me.id, team: me.team === 'red' ? 'blue' : 'red' });
   const role = ROLE_KEYS[code];
   if (role) conn.send({ t: 'role', role });
 });

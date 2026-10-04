@@ -62,7 +62,7 @@ export const CRATES = {
     ['shield', 8],
     ['power', 8],
     ['teleport', 8],
-    ['bazooka', 6],
+    ['bazooka', 3],
   ] as ReadonlyArray<readonly [ItemKind, number]>,
 };
 
@@ -74,9 +74,13 @@ export const ITEMS = {
   bulletRadius: 4,
   bulletKnock: 3,
   bulletBallPush: 1.6,
-  /** Bazooka: one rocket, fired straight along one of the 8 key directions; a hit takes all 3 hp. */
-  rocketSpeed: 7.5,
-  rocketLife: sec(1.9),
+  /** Bazooka: one rocket that locks on like the gun and then homes in (turning only so fast, so a late
+   * sidestep can make it miss); a hit takes all 3 hp. */
+  rocketSpeed: 5.5,
+  rocketLife: sec(3),
+  rocketLockRange: 560,
+  /** How hard the rocket steers toward its target each tick (0..1 blend of directions). */
+  rocketHoming: 0.04,
   rocketRadius: 6,
   rocketDamage: 3,
   rocketKnock: 9,

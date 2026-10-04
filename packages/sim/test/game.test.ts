@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BALL,
+  CRATES,
   FIELD,
   ITEMS,
   KICK,
@@ -406,55 +407,73 @@ describe('bazuka', () => {
     const m = addPlayer(g, 'm', 'M', 'red');
     const b = addPlayer(g, 'b', 'B', 'blue');
     g.phase = 'play';
-    Object.assign(a, { x: -300, y: 0, vx: 0, vy: 0 });
-    Object.assign(m, { x: -200, y: 0 });
-    Object.assign(b, { x: 250, y: 0 });
-    g.ball = { x: 0, y: 150, vx: 0, vy: 0 };
+    Object.assign(a, { x: -300, y: 0, vx: 0, vy: 0, fx: 0, fy: -1 });
+    Object.assign(m, { x: -300, y: 250 });
+    Object.assign(b, { x: 150, y: 120 });
+    g.ball = { x: 0, y: -170, vx: 0, vy: 0 };
     openCrate(g, a, a.x, a.y, 'bazooka');
     return { g, a, m, b };
   };
 
-  it('tek roket: basılan yöne gider, takım arkadaşından geçer, uzaktaki rakibi tek vuruşta öldürür', () => {
+  it('tuşla yön verilmez: en yakın rakibe kilitlenir, tek roket onu tek vuruşta öldürür', () => {
     const { g, a, m, b } = setup();
     expect(a).toMatchObject({ bazooka: true, gun: 0, teleport: false });
-    step(g, new Map([['a', RIGHT | USE]]));
+    expect(gunTarget(g, a)?.id).toBe('b');
+    // Pressing UP does not matter: the rocket goes for the locked-on enemy.
+    step(g, new Map([['a', UP | USE]]));
     expect(a.bazooka).toBe(false);
     expect(g.bullets).toHaveLength(1);
-    expect(g.bullets[0]).toMatchObject({ rocket: true, vy: 0 });
-    expect(g.bullets[0]!.vx).toBeCloseTo(ITEMS.rocketSpeed);
-    // Holding USE does not fire again.
-    run(g, 120, new Map([['a', USE]]));
+    expect(g.bullets[0]).toMatchObject({ rocket: true, target: 'b' });
+    expect(g.bullets[0]!.vx).toBeGreaterThan(0);
+    run(g, 150, new Map([['a', USE]]));
     expect(m.hp).toBe(PLAYER.maxHp);
     expect(b.dead).toBeGreaterThan(0);
     expect(g.bullets).toHaveLength(0);
   });
 
-  it('çapraz basınca 45° gider; kalkan roketi bir kez durdurur', () => {
+  it('roket hedefi takip eder: kaçan rakibe döner', () => {
     const { g, b } = setup();
-    Object.assign(b, { x: -100, y: -200, shield: true });
-    step(g, new Map([['a', RIGHT | UP | USE]]));
+    step(g, new Map([['a', USE]]));
     const r = g.bullets[0]!;
-    expect(r.vx).toBeCloseTo(ITEMS.rocketSpeed / Math.SQRT2);
-    expect(r.vy).toBeCloseTo(-ITEMS.rocketSpeed / Math.SQRT2);
-    run(g, 60);
+    const vy0 = r.vy;
+    // The target runs down: the rocket bends after them.
+    run(g, 20, new Map([['b', DOWN]]));
+    expect(r.vy).toBeGreaterThan(vy0);
+    expect(Math.hypot(r.vx, r.vy)).toBeCloseTo(ITEMS.rocketSpeed);
+    run(g, 200, new Map([['b', DOWN]]));
+    expect(b.dead).toBeGreaterThan(0);
+  });
+
+  it('kalkan roketi bir kez durdurur; menzilde kimse yoksa düz gider', () => {
+    const { g, b } = setup();
+    b.shield = true;
+    step(g, new Map([['a', USE]]));
+    run(g, 150);
     expect(b).toMatchObject({ shield: false, dead: 0, hp: PLAYER.maxHp });
+    const g2 = setup().g;
+    const a2 = g2.players.find((p) => p.id === 'a')!;
+    g2.players.find((p) => p.id === 'b')!.x = 600;
+    a2.x = -400;
+    expect(gunTarget(g2, a2)).toBeNull();
+    step(g2, new Map([['a', USE]]));
+    expect(g2.bullets[0]).toMatchObject({ vx: 0, vy: -ITEMS.rocketSpeed });
+    expect(g2.bullets[0]!.target).toBeUndefined();
   });
 
-  it('menzil uzun: sahanın büyük kısmını geçer', () => {
-    expect(ITEMS.rocketSpeed * ITEMS.rocketLife).toBeGreaterThan(FIELD.halfW * 1.5);
+  it('diğer kutulardan daha nadir', () => {
+    const weight = (k: string) => CRATES.loot.find(([kind]) => kind === k)![1];
+    for (const [kind, w] of CRATES.loot) if (kind !== 'bazooka') expect(weight('bazooka')).toBeLessThan(w);
   });
 
-  it('bot, 8 yönden birinde hizalı rakibe döner ve ateşler', () => {
-    const { g, a, b } = setup();
+  it('bot kilitlenince ateşler', () => {
+    const { g, a } = setup();
     a.bot = true;
-    Object.assign(b, { x: -100, y: 200 });
     let bits = 0;
     for (let t = 0; t < 30 && !(bits & USE); t++) {
       g.tick++;
       bits = botInput(g, a);
     }
     expect(bits & USE).toBe(USE);
-    expect(bits & (RIGHT | DOWN)).toBe(RIGHT | DOWN);
   });
 });
 

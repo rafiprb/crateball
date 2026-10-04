@@ -43,7 +43,7 @@ export interface Player {
   /** Holding a teleport: USE blinks you in the direction you press. One held item at a time
    * (gun, teleport or bazooka), a new crate replaces the old one. */
   teleport: boolean;
-  /** Holding a bazooka: USE fires its one rocket the way you press (8 directions). */
+  /** Holding a bazooka: USE fires its one homing rocket at the locked-on enemy. */
   bazooka: boolean;
   cooldown: number;
   goals: number;
@@ -71,6 +71,8 @@ export interface Bullet extends Body {
   life: number;
   /** A bazooka rocket (bigger, slower, takes all 3 hp) rather than a gun bullet. */
   rocket?: boolean;
+  /** The player a rocket is homing in on (gone once they die). */
+  target?: string;
 }
 
 /** Short-lived visual marker kept in state so prediction replays it identically. */

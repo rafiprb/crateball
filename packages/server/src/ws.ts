@@ -185,7 +185,7 @@ export function attachWebSocket(
           rooms.input(clientId, msg.s, msg.b);
           break;
         case 'team':
-          rooms.switchTeam(clientId, msg.team);
+          rooms.move(clientId, clientId, msg.team); // T in the lobby; ignored mid-match
           break;
         case 'role':
           rooms.setRole(clientId, msg.role);
@@ -198,13 +198,21 @@ export function attachWebSocket(
             fail('rate_limited');
             break;
           }
-          const r = rooms.create(clientId, msg.name, msg.roomName, msg.public, msg.settings, sendRaw);
+          const r = rooms.create(
+            clientId,
+            msg.name,
+            msg.roomName,
+            msg.public,
+            msg.settings,
+            sendRaw,
+            token ?? clientId,
+          );
           if (typeof r !== 'string') send({ t: 'joined', code: r.code, playerId: clientId });
           else fail(r);
           break;
         }
         case 'join': {
-          const r = rooms.join(msg.code, clientId, msg.name, sendRaw);
+          const r = rooms.join(msg.code, clientId, msg.name, sendRaw, token ?? clientId);
           if (typeof r !== 'string') send({ t: 'joined', code: r.code, playerId: clientId });
           else fail(r);
           break;
@@ -220,6 +228,12 @@ export function attachWebSocket(
           break;
         case 'move':
           fail(rooms.move(clientId, msg.id, msg.team));
+          break;
+        case 'stop':
+          fail(rooms.stopMatch(clientId));
+          break;
+        case 'chat':
+          fail(rooms.chat(clientId, msg.text));
           break;
         case 'kick':
           fail(rooms.kick(clientId, msg.id));

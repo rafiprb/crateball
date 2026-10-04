@@ -16,7 +16,19 @@ import {
   type Settings,
 } from './content/rules';
 import { nextRandom } from './rng';
-import { DOWN, KICK, LEFT, RIGHT, UP, USE, type Body, type Game, type Player, type Team } from './types';
+import {
+  DOWN,
+  KICK,
+  LEFT,
+  RIGHT,
+  UP,
+  USE,
+  type Body,
+  type Bullet,
+  type Game,
+  type Player,
+  type Team,
+} from './types';
 import { botInput } from './bot';
 import { gunTarget } from './aim';
 import {
@@ -399,21 +411,52 @@ function fire(g: Game, p: Player): void {
   });
 }
 
-/** The bazooka's one rocket goes straight the way you press (fx/fy come from the keys: 8 directions). */
+/** The bazooka's one rocket: launched at the locked-on enemy (else straight ahead), then it homes in. */
 function fireRocket(g: Game, p: Player): void {
+  const target = gunTarget(g, p);
   p.bazooka = false;
+  let dx = p.fx;
+  let dy = p.fy;
+  if (target) {
+    const tx = target.x - p.x;
+    const ty = target.y - p.y;
+    const n = Math.sqrt(tx * tx + ty * ty) || 1;
+    dx = tx / n;
+    dy = ty / n;
+  }
   const r = p.r + ITEMS.rocketRadius + 1;
   g.bullets.push({
     id: g.nextId++,
     owner: p.id,
     team: p.team,
-    x: p.x + p.fx * r,
-    y: p.y + p.fy * r,
-    vx: p.fx * ITEMS.rocketSpeed,
-    vy: p.fy * ITEMS.rocketSpeed,
+    x: p.x + dx * r,
+    y: p.y + dy * r,
+    vx: dx * ITEMS.rocketSpeed,
+    vy: dy * ITEMS.rocketSpeed,
     life: ITEMS.rocketLife,
     rocket: true,
+    ...(target ? { target: target.id } : {}),
   });
+}
+
+/** Turn a rocket a little toward its target (a blend of directions, renormalised: no trig). */
+function homeRocket(g: Game, b: Bullet): void {
+  if (!b.target) return;
+  const t = g.players.find((p) => p.id === b.target);
+  if (!t || t.dead > 0) {
+    delete b.target;
+    return;
+  }
+  const tx = t.x - b.x;
+  const ty = t.y - b.y;
+  const tn = Math.sqrt(tx * tx + ty * ty) || 1;
+  const k = ITEMS.rocketHoming;
+  const s = ITEMS.rocketSpeed;
+  const vx = (b.vx / s) * (1 - k) + (tx / tn) * k;
+  const vy = (b.vy / s) * (1 - k) + (ty / tn) * k;
+  const n = Math.sqrt(vx * vx + vy * vy) || 1;
+  b.vx = (vx / n) * s;
+  b.vy = (vy / n) * s;
 }
 
 /**
@@ -589,6 +632,7 @@ function updateBullets(g: Game): void {
   const lw = FIELD.halfW + FIELD.margin;
   const lh = FIELD.halfH + FIELD.margin;
   g.bullets = g.bullets.filter((b) => {
+    if (b.rocket) homeRocket(g, b);
     b.x += b.vx;
     b.y += b.vy;
     if (--b.life <= 0 || Math.abs(b.x) > lw || Math.abs(b.y) > lh) return false;

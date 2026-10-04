@@ -1,6 +1,8 @@
 import type { ArenaKind, Game, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
+/** A seat in the room: a team, or watching. */
+export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
@@ -20,8 +22,11 @@ export type ClientMessage =
   | { t: 'kick'; id: string }
   /** Host: swap two players (team + role). */
   | { t: 'swap'; a: string; b: string }
-  /** Host (anyone) or self: move a player to a team. */
-  | { t: 'move'; id: string; team: Team }
+  /** Lobby only. Host (anyone) or self: move a player to a team, or to the spectators. */
+  | { t: 'move'; id: string; team: Seat }
+  /** Host: end the running match; everyone goes back to the lobby. */
+  | { t: 'stop' }
+  | { t: 'chat'; text: string }
   /** Telemetry window (every ~2 s while playing); the server only logs it. */
   | { t: 'stats'; s: ClientStats }
   /** F9: "something just happened" — recent windows plus an optional note. */
@@ -86,6 +91,8 @@ export interface RoomInfo {
   /** Arena for each kickoff of the current match, in order (drawn when it starts). */
   arenaPlan: ArenaKind[];
   players: RoomPlayer[];
+  /** Watching, not playing (everyone who arrives mid-match starts here). */
+  spectators: Array<{ id: string; name: string }>;
 }
 
 /** GET /rooms entry. */
@@ -103,6 +110,7 @@ export type ServerMessage =
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'joined'; code: string; playerId: string }
   | { t: 'room'; room: RoomInfo }
+  | { t: 'chat'; id: string; name: string; team: Seat; text: string }
   /** Authoritative state at `tick`; `ack` = last input sequence of yours already applied; `q` = your inputs still queued on the server (clock-sync feedback). */
   | { t: 'snap'; tick: number; ack: number; q: number; g: Game };
 
@@ -206,12 +214,18 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
       return { t: 'leave' };
     case 'start':
       return { t: 'start' };
+    case 'stop':
+      return { t: 'stop' };
+    case 'chat': {
+      const text = cleanText(m.text, 120);
+      return text ? { t: 'chat', text } : null;
+    }
     case 'kick':
       return isStr(m.id, 64) ? { t: 'kick', id: m.id } : null;
     case 'swap':
       return isStr(m.a, 64) && isStr(m.b, 64) && m.a !== m.b ? { t: 'swap', a: m.a, b: m.b } : null;
     case 'move':
-      return isStr(m.id, 64) && (m.team === 'red' || m.team === 'blue')
+      return isStr(m.id, 64) && (m.team === 'red' || m.team === 'blue' || m.team === 'spec')
         ? { t: 'move', id: m.id, team: m.team }
         : null;
     case 'stats': {
@@ -299,10 +313,18 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
         isStr(r.code, 4) &&
         isStr(r.name, 64) &&
         Array.isArray(r.players) &&
+        Array.isArray(r.spectators) &&
         isObj(r.settings)
         ? { t: 'room', room: r as unknown as RoomInfo }
         : null;
     }
+    case 'chat':
+      return isStr(m.id, 64) &&
+        isStr(m.name, 32) &&
+        isStr(m.text, 200) &&
+        (m.team === 'red' || m.team === 'blue' || m.team === 'spec')
+        ? { t: 'chat', id: m.id, name: m.name, team: m.team, text: m.text }
+        : null;
     case 'snap':
       return isUint(m.tick) && isUint(m.ack) && isGame(m.g)
         ? { t: 'snap', tick: m.tick, ack: m.ack, q: isUint(m.q) ? m.q : 0, g: m.g }

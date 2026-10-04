@@ -376,7 +376,7 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     rooms.stop();
   });
 
-  it('host maç sırasında takas edemez ve başkasını taşıyamaz; herkes kendi takımını değiştirebilir (#8)', async () => {
+  it('maç sırasında kimse takım değiştiremez; takas da yok (#8)', async () => {
     const rooms = await make();
     const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
     asRoom(rooms.join(room.code, 'b', 'B', () => {}));
@@ -385,8 +385,57 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     expect(rooms.move('a', 'b', 'red')).toBe('bad_message');
     const teamOf = (id: string) => room.game.players.find((p) => p.id === id)?.team;
     const before = teamOf('b');
-    expect(rooms.move('b', 'b', before === 'red' ? 'blue' : 'red')).toBeNull();
-    expect(teamOf('b')).not.toBe(before);
+    expect(rooms.move('b', 'b', before === 'red' ? 'blue' : 'red')).toBe('bad_message');
+    expect(rooms.move('b', 'b', 'spec')).toBe('bad_message');
+    expect(teamOf('b')).toBe(before);
+    rooms.stop();
+  });
+
+  it('maç sırasında gelen izleyici olur; lobide takıma geçer, izleyiciye döner', async () => {
+    const { info } = await import('../src/rooms');
+    const rooms = await make();
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    rooms.start('a');
+    asRoom(rooms.join(room.code, 'c', 'C', () => {}));
+    expect(room.game.players.some((p) => p.id === 'c')).toBe(false);
+    expect(info(room).spectators).toEqual([{ id: 'c', name: 'C' }]);
+    expect(rooms.stopMatch('c')).toBe('not_host');
+    expect(rooms.stopMatch('a')).toBeNull();
+    expect(room.state).toBe('lobby');
+    expect(rooms.move('c', 'c', 'blue')).toBeNull();
+    expect(room.game.players.find((p) => p.id === 'c')?.team).toBe('blue');
+    expect(info(room).spectators).toEqual([]);
+    expect(rooms.move('a', 'c', 'spec')).toBeNull();
+    expect(room.game.players.some((p) => p.id === 'c')).toBe(false);
+    expect(room.members.has('c')).toBe(true);
+    rooms.stop();
+  });
+
+  it('sohbet herkese gider, geçmiş yeni gelene gösterilir, flood sınırlı', async () => {
+    const rooms = await make();
+    const got: string[] = [];
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, (raw) => got.push(raw)));
+    expect(rooms.chat('a', 'merhaba')).toBeNull();
+    expect(got.some((r) => r.includes('"t":"chat"') && r.includes('merhaba'))).toBe(true);
+    const late: string[] = [];
+    asRoom(rooms.join(room.code, 'b', 'B', (raw) => late.push(raw)));
+    expect(late.some((r) => r.includes('merhaba'))).toBe(true);
+    const results = Array.from({ length: 10 }, () => rooms.chat('a', 'spam'));
+    expect(results).toContain('rate_limited');
+    rooms.stop();
+  });
+
+  it('bağlıyken aynı odaya tekrar katılmak bir şey değiştirmez', async () => {
+    const rooms = await make();
+    const got: string[] = [];
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    asRoom(rooms.join(room.code, 'b', 'B', (raw) => got.push(raw)));
+    rooms.start('a');
+    room.members.get('b')!.ack = 40;
+    const before = got.length;
+    expect(rooms.join(room.code, 'b', 'B', () => {})).toBe(room);
+    expect(room.members.get('b')!.ack).toBe(40);
+    expect(got.length).toBe(before + 1); // only the joiner hears about it
     rooms.stop();
   });
 
@@ -394,7 +443,7 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     const rooms = await make();
     const got: string[] = [];
     const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-    asRoom(rooms.join(room.code, 'b', 'B', (raw) => got.push(raw)));
+    asRoom(rooms.join(room.code, 'b', 'B', (raw) => got.push(raw), 'tab-b'));
     asRoom(rooms.join(room.code, 'c', 'C', () => {}));
     expect(rooms.kick('b', 'c')).toBe('not_host');
     expect(rooms.kick('a', 'a')).toBe('bad_message');
@@ -402,7 +451,8 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     expect(room.members.has('b')).toBe(false);
     expect(room.game.players.some((p) => p.id === 'b')).toBe(false);
     expect(got.some((raw) => raw.includes('"code":"kicked"'))).toBe(true);
-    expect(rooms.join(room.code, 'b', 'B', () => {})).toBe('kicked');
+    // Same tab after a reload: a new connection id, the same session key.
+    expect(rooms.join(room.code, 'b2', 'B', () => {}, 'tab-b')).toBe('kicked');
     expect(rooms.kick('a', 'bot-1')).toBe('bad_message');
     rooms.stop();
   });

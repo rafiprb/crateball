@@ -7,6 +7,7 @@ import {
   KICK,
   TICK_HZ,
   gunTarget,
+  hasWeapon,
   kickDirection,
   type Game,
   ARENAS,
@@ -391,30 +392,22 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         ctx.restore();
       }
       if (p.bazooka) {
-        // A fat tube along the way you press: that is where the rocket goes.
+        // A fat tube with a red warhead, pointing at whoever it is locked on to.
+        const aim = gunTarget(g, p);
         ctx.save();
         ctx.translate(pos.x, pos.y);
-        ctx.rotate(Math.atan2(p.fy, p.fx));
+        ctx.rotate(aim ? Math.atan2(aim.y - p.y, aim.x - p.x) : Math.atan2(p.fy, p.fx));
         ctx.fillStyle = '#5E6B45';
         ctx.strokeStyle = COLORS.ink;
         ctx.lineWidth = 1.5;
-        ctx.fillRect(r - 6, -5, 20, 10);
-        ctx.strokeRect(r - 6, -5, 20, 10);
+        ctx.fillRect(r - 8, -6, 24, 12);
+        ctx.strokeRect(r - 8, -6, 24, 12);
+        ctx.fillStyle = '#E8574A';
+        ctx.beginPath();
+        ctx.arc(r + 16, 0, 5, -Math.PI / 2, Math.PI / 2);
+        ctx.fill();
+        ctx.stroke();
         ctx.restore();
-        if (me) {
-          // My own aim: a dashed line as long as the rocket flies.
-          const len = ITEMS.rocketSpeed * ITEMS.rocketLife;
-          ctx.save();
-          ctx.setLineDash([8, 8]);
-          ctx.lineDashOffset = -now / 30;
-          ctx.strokeStyle = 'rgba(255,183,96,.55)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(pos.x + p.fx * (r + 16), pos.y + p.fy * (r + 16));
-          ctx.lineTo(pos.x + p.fx * len, pos.y + p.fy * len);
-          ctx.stroke();
-          ctx.restore();
-        }
       }
       if (p.teleport) {
         // A small orb on the side the blink will go (the direction you are pressing / last moved).
@@ -449,7 +442,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       myself &&
       myself.dead === 0 &&
       g.players.some(
-        (e) => e.team !== myself.team && e.dead === 0 && e.gun > 0 && gunTarget(g, e)?.id === myself.id,
+        (e) => e.team !== myself.team && e.dead === 0 && hasWeapon(e) && gunTarget(g, e)?.id === myself.id,
       );
     const mp = hunted ? pr.pos(myself.id, alpha) : null;
     if (mp && myself) {
@@ -471,7 +464,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     // Gun auto-aim: a small crosshair on whoever my next shot will go to.
     const shooter = g.players.find((p) => p.id === pr.me);
-    const target = shooter && shooter.gun > 0 && shooter.dead === 0 ? gunTarget(g, shooter) : null;
+    const target = shooter && hasWeapon(shooter) && shooter.dead === 0 ? gunTarget(g, shooter) : null;
     const tp = target ? pr.pos(target.id, alpha) : null;
     if (tp) {
       const rr = PLAYER.radius + 9 + Math.sin(now / 150) * 1.5;
@@ -564,20 +557,21 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (me.dead > 0) bits.push(`Respawn in ${Math.ceil(me.dead / TICK_HZ)}…`);
       if (me.gun > 0) bits.push(`Gun ×${me.gun} [E/Shift]`);
       if (me.teleport) bits.push('Teleport: blink [E/Shift]');
-      if (me.bazooka) bits.push('Bazooka: aim with keys, fire [E/Shift]');
+      if (me.bazooka) bits.push('Bazooka: homing rocket [E/Shift]');
       if (me.power) bits.push('Power kick ready');
       if (me.shield) bits.push('Shield');
       if (me.boost > 0) bits.push('Speed');
       if (me.slow > 0) bits.push('Slowed');
       if (me.frozen > 0) bits.push('Frozen');
       if (bits.length) text(bits.join('  ·  '), mid, h - 44, 18, '#FFF4E0', 800);
-    }
+    } else if (pr.me)
+      text('Spectating — you can join a team when the match is over', mid, h - 44, 18, '#FFF4E0', 800);
     ctx.globalAlpha = 0.6;
     ctx.textAlign = 'left';
     ctx.font = '600 12px Nunito, system-ui, sans-serif';
     ctx.fillStyle = '#FFF4E0';
     ctx.fillText(
-      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Team: T · Role: 1 GK 2 DF 3 MF 4 FW · Report a glitch: R',
+      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Chat: Enter · Role: 1 GK 2 DF 3 MF 4 FW · Report a glitch: R',
       12,
       h - 14,
     );

@@ -440,3 +440,199 @@ li > button.kick:hover {
   background: #e8574a;
   color: #fff;
 }
+
+/* Chat: a log + input in the lobby; in a match recent lines float for a few seconds, Enter to type. */
+#chat {
+  position: fixed;
+  left: 16px;
+  bottom: 28px;
+  width: min(340px, calc(100vw - 32px));
+  z-index: 5;
+  font:
+    600 14px Nunito,
+    system-ui,
+    sans-serif;
+  color: #fff4e0;
+  pointer-events: none;
+}
+#chat[hidden] {
+  display: none;
+}
+#chat ul {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+#chat li {
+  overflow-wrap: anywhere;
+}
+#chat li b.me {
+  text-decoration: underline;
+}
+#chat li.red b {
+  color: #ff8a80;
+}
+#chat li.blue b {
+  color: #8ab0ff;
+}
+#chat li.spec b {
+  color: #c8c8d8;
+}
+#chat input {
+  pointer-events: auto;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 2px solid #3a4470;
+  background: rgba(14, 18, 40, 0.9);
+  color: inherit;
+}
+#chat input[hidden] {
+  display: none;
+}
+#chat[data-mode='lobby'] {
+  pointer-events: auto;
+  background: rgba(22, 28, 56, 0.92);
+  border: 2px solid #3a4470;
+  border-radius: 14px;
+  padding: 8px;
+}
+#chat[data-mode='lobby'] ul {
+  max-height: 180px;
+  overflow-y: auto;
+}
+#chat[data-mode='game'] li {
+  align-self: flex-start;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 3px 9px;
+  border-radius: 9px;
+  transition: opacity 0.6s;
+}
+#chat[data-mode='game'] li.old {
+  opacity: 0;
+}
+#chat[data-mode='game'] li.gone {
+  display: none;
+}
+/* Typing in a match: the recent history comes back. */
+#chat[data-mode='game']:focus-within li.old,
+#chat[data-mode='game']:focus-within li.gone {
+  display: block;
+  opacity: 0.85;
+}
+#chat[data-mode='game']:focus-within ul {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+#stop-match {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  z-index: 5;
+  font:
+    700 13px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  padding: 4px 12px;
+  border-radius: 10px;
+  border: 2px solid #e8574a;
+  background: rgba(14, 18, 40, 0.85);
+  color: #ff8a80;
+  cursor: pointer;
+}
+#stop-match[hidden] {
+  display: none;
+}
+#stop-match.armed {
+  background: #e8574a;
+  color: #fff;
+}
+.spectators {
+  border: 2px dashed #3a4470;
+  border-radius: 12px;
+  padding: 6px 12px 8px;
+}
+.spectators.over {
+  border-color: #ffb760;
+}
+.spectators h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.spectators ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.spectators li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.spectators li.me {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+}
+.spectators .empty {
+  opacity: 0.6;
+  font-size: 13px;
+}
+.spectators-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.spectators-row > .spectators {
+  flex: 1;
+}
+
+/* Lobby: two panes side by side so the whole thing fits on screen without scrolling. */
+#screen-lobby {
+  width: min(1080px, 100%);
+  padding: 18px 22px;
+  gap: 10px;
+}
+.lobby-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+.lobby-cols > .pane {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+.lobby-cols .actions {
+  display: grid;
+  gap: 8px;
+}
+#chat-slot #chat {
+  position: static;
+  width: auto;
+  background: rgba(13, 19, 48, 0.7);
+}
+#chat-slot #chat ul {
+  height: 96px;
+  max-height: none;
+}
+@media (max-width: 860px) {
+  .lobby-cols {
+    grid-template-columns: 1fr;
+  }
+}
+.lobby-cols .rname {
+  display: none;
+}
