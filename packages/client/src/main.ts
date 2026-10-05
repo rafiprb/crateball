@@ -184,7 +184,9 @@ const conn = connect({
         break;
       case 'snap':
         if (room?.state === 'playing') {
+          const ts = performance.now();
           pred.snapshot(m.ack, m.g);
+          work.snap = Math.max(work.snap, performance.now() - ts);
           queueAvg = queueAvg * 0.9 + m.q * 0.1;
         }
         break;
@@ -308,9 +310,13 @@ const telemetry = createTelemetry(() => {
       ballCorrectionMaxPx: ball,
       othersCorrectionMaxPx: others,
     }))(pred.takeMaxCorrection()),
+    simMsMax: work.sim,
+    drawMsMax: work.draw,
+    snapMsMax: work.snap,
   };
   lastCorrections = c;
   lastMyPx = px;
+  work.sim = work.draw = work.snap = 0;
   return out;
 });
 const sendReport = () => {
@@ -325,6 +331,8 @@ const TICK_MS = 1000 / TICK_HZ;
 let acc = 0;
 let last = performance.now();
 const stats = { frame: 0, fps: 0, frameMs: 0 };
+/** Worst work per frame since the last telemetry window, to tell a slow frame's cause apart. */
+const work = { sim: 0, draw: 0, snap: 0 };
 let fpsT = last;
 let fpsN = 0;
 
@@ -336,6 +344,7 @@ function loop(now: number) {
   // Offline: freeze the match instead of predicting goals and effects that never happen.
   const live = conn.status === 'open';
   if (!live) acc = Math.min(acc, tickMs);
+  const tSim = performance.now();
   while (live && acc >= tickMs) {
     acc -= tickMs;
     const bits = room?.state === 'playing' ? keyboard.bits() : 0;
@@ -343,6 +352,7 @@ function loop(now: number) {
     if (seq !== null) conn.send({ t: 'in', s: seq, b: bits });
   }
   const t0 = performance.now();
+  work.sim = Math.max(work.sim, t0 - tSim);
   sound.setAmbient(room?.state === 'playing' ? (pred.game?.arena.kind ?? null) : null);
   for (const e of track(pred.game)) {
     sound.play(e);
@@ -353,6 +363,7 @@ function loop(now: number) {
   pred.decay(dt / 1000);
   renderer.draw(pred, Math.min(1, acc / tickMs), fx, { rtt: conn.status === 'open' ? rtt : null });
   stats.frameMs = performance.now() - t0;
+  work.draw = Math.max(work.draw, stats.frameMs);
   stats.frame++;
   fpsN++;
   if (now - fpsT >= 500) {

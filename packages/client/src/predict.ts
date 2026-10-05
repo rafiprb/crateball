@@ -28,6 +28,11 @@ const BALL_MAX_OFFSET = 140;
  * guessing someone else's input. Own player: small offsets close fast (≈ 50 ms) so control stays
  * tight, but a bump from a collision closes slower (down to ≈ 120 ms) so it reads as a push. */
 const SMOOTH_RATE = 7.5;
+/** The ball away from us (someone else is playing it): its corrections come from guessing their keys and
+ * are often 20-40 px. A slower glide (≈ 200 ms half-life) reads as movement instead of a jerk. Near our own
+ * player the normal rate applies, so our own touches stay crisp. */
+const BALL_FAR_RATE = 3.4;
+const BALL_NEAR_PX = 110;
 const SMOOTH_RATE_ME = 14;
 const SMOOTH_RATE_ME_MIN = 5.8;
 /** Below this own-player offset (px) the fast rate applies; above it the rate slows in proportion. */
@@ -175,8 +180,13 @@ export function createPredictor(): Predictor {
     },
     decay(dt) {
       const k = Math.exp(-dt * SMOOTH_RATE);
+      const mine = me ? cur.get(me) : undefined;
+      const ball = cur.get('ball');
+      const ballFar =
+        !mine || !ball || (mine.x - ball.x) ** 2 + (mine.y - ball.y) ** 2 > BALL_NEAR_PX * BALL_NEAR_PX;
+      const kBallFar = Math.exp(-dt * BALL_FAR_RATE);
       for (const [id, e] of err) {
-        let f = k;
+        let f = id === 'ball' && ballFar ? kBallFar : k;
         if (id === me) {
           const len = Math.sqrt(e.x * e.x + e.y * e.y);
           const rate =

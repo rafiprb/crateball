@@ -39,7 +39,9 @@ createInterface({ input: process.stdin }).on('line', (l) => {
       if (j.myCorrectionPx > 30) bad.push(`2sn düzeltme ${j.myCorrectionPx}px`);
       if (j.fps < 50 && j.frameMsMax < 1000) bad.push(`fps ${j.fps}`);
       if ((j.longFrames >= 3 || j.frameMsMax > 60) && j.frameMsMax < 1000)
-        bad.push(`takılma ${j.longFrames} kare, en uzun ${j.frameMsMax}ms`);
+        bad.push(
+          `takılma ${j.longFrames} kare, en uzun ${j.frameMsMax}ms (iş: sim ${j.simMsMax ?? '?'} çizim ${j.drawMsMax ?? '?'} snap ${j.snapMsMax ?? '?'}ms)`,
+        );
       const now = Date.now();
       // High ping alone is a property of that player's line: say it at most every 2 minutes.
       if (j.rtt > 150 && now - (lastWarn.get(`ping:${who}`) ?? 0) > 120000) {

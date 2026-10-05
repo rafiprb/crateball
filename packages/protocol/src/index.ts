@@ -48,6 +48,10 @@ export const STAT_KEYS = [
   'myCorrectionMaxPx',
   'ballCorrectionMaxPx',
   'othersCorrectionMaxPx',
+  /** Slowest single frame's work, split: prediction ticks, drawing, applying a snapshot (ms). */
+  'simMsMax',
+  'drawMsMax',
+  'snapMsMax',
 ] as const;
 export type ClientStats = Record<(typeof STAT_KEYS)[number], number>;
 

@@ -53,8 +53,29 @@ describe('tahmin', () => {
     moved.ball.x = 20;
     c.snapshot(0, moved);
     expect(c.pos('ball', 1)!.x).toBeCloseTo(0, 6);
-    c.decay(2);
+    c.decay(4);
     expect(c.pos('ball', 1)!.x).toBeCloseTo(20, 2);
+  });
+
+  it('top uzaktayken düzeltme daha yavaş (akıcı) söner, yanımdayken hızlı', () => {
+    const shownAfter = (meX: number) => {
+      const c = createPredictor();
+      c.setMe('me');
+      const g = createGame(1);
+      const me = addPlayer(g, 'me', 'Me', 'red');
+      Object.assign(me, { x: meX, y: 0 });
+      c.snapshot(0, g);
+      const moved = cloneGame(g);
+      moved.ball.x = 20;
+      c.snapshot(0, moved);
+      c.decay(0.1);
+      return 20 - c.pos('ball', 1)!.x; // offset still left
+    };
+    const far = shownAfter(-300);
+    const near = shownAfter(-40);
+    expect(near).toBeLessThan(far);
+    expect(far).toBeGreaterThan(12); // ~200 ms half-life
+    expect(near).toBeLessThan(10); // ~90 ms half-life
   });
 });
 
