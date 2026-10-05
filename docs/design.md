@@ -14,9 +14,10 @@ oyuncu kutuya değince açılır.
   **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
   ile o an basılan yön tuşlarının yönüne sabit 150 px sıçratır, tuşa basılmıyorsa son hareket yönüne;
   hız korunur, saha sınırında durur; donmuşken kullanılamaz, ölünce/santrada kaybolur), **Bazooka** (en nadir
-  kutu; tek roket; tuşla yön verilmez, silah gibi en yakın açık rakibe kilitlenir, hedefe kırmızı uyarı
-  düşer; roket hedefi takip eder ama yavaş döner, son anda yana kaçan kurtulabilir; isabet 3 can götürür
-  yani öldürür, kalkan bir kez durdurur; takım arkadaşlarının içinden geçer, topa çarparsa sert iter).
+  kutu; tek roket; tuşla yön verilmez, menzildeki en yakın rakibe kilitlenir (arada top ya da takım
+  arkadaşı olsa da), hedefe kırmızı uyarı düşer; roket hedefi takip eder ama sınırlı döner, son anda yana
+  kaçan kurtulabilir; isabet 3 can götürür yani öldürür, kalkan bir kez durdurur; toptan ve takım
+  arkadaşlarından geçer).
 - Elde tek eşya: Gun, Teleport ve Bazooka aynı tuşu (E/F/Shift) kullanır, yeni gelen eskisinin yerini
   alır. Silah tuş basılıyken ateşler; ışınlanma ve bazuka yeni bir basış ister. Bazukalı bot kilitlenince ateşler. Botlar gitmek istedikleri yere uzak kalınca
   (200 px+) o yöne sıçrar.

@@ -33,8 +33,10 @@ export const SNAP_EVERY = 2;
 /** Input queue: beyond this a client is too far ahead; trim back to KEEP to cap latency. */
 const QUEUE_MAX = 10;
 const QUEUE_KEEP = 4;
-/** Stand-in inputs cover at most this many silent ticks (network jitter); longer silences pause. */
-const STAND_IN_TICKS = 6;
+/** Stand-in inputs cover at most this many silent ticks (network jitter, a Wi-Fi blip of up to ~300 ms);
+ * longer silences (a background tab) pause. At 6 (100 ms) ordinary Wi-Fi hiccups released the keys on the
+ * server and the whole world snapped back on the client. */
+export const STAND_IN_TICKS = 18;
 const TICK_MS = 1000 / TICK_HZ;
 const MAX_CATCHUP = 5;
 /** A room stats log line every 5 s of play. */
@@ -49,9 +51,6 @@ interface Member {
   key: string;
   /** Watching, not playing: no player in the game. Everyone who arrives mid-match starts here. */
   spectator: boolean;
-  /** Chat flood control: messages left, refilled over time. */
-  chatTokens: number;
-  chatAt: number;
   send: Send;
   queue: Array<[seq: number, bits: number]>;
   ack: number;
@@ -78,6 +77,10 @@ export interface Room {
   banned: Set<string>;
   /** Recent chat, replayed to whoever joins. */
   chat: ChatLine[];
+  /** Chat lines sent so far (numbers each line, so a client never shows one twice). */
+  chatCount: number;
+  /** Chat flood control per session key (survives leaving and rejoining). */
+  chatBuckets: Map<string, { tokens: number; at: number }>;
   emptySince: number | null;
   /** Slowest tick (step + snapshot) since the last stats line. */
   stepMsMax: number;
@@ -330,8 +333,6 @@ export function createRooms(
       name,
       key,
       spectator,
-      chatTokens: CHAT_BURST,
-      chatAt: now(),
       send,
       queue: [],
       ack: 0,
@@ -404,6 +405,8 @@ export function createRooms(
     }
     if (room.host === id) room.host = room.members.keys().next().value as string;
     rebalance(room);
+    // The last player left mid-match (bots off): nothing left to play, back to the lobby.
+    if (room.state === 'playing' && room.game.players.length === 0) room.state = 'lobby';
     announce(room);
   };
 
@@ -419,6 +422,8 @@ export function createRooms(
     m.queue = [];
     log.info({ room: room.code, id }, 'oyuncu geri döndü');
     announce(room);
+    // A reloaded page lost its chat log; a client that kept it skips lines it already has (by number).
+    for (const line of room.chat) send(encode(line));
     return room;
   };
 
@@ -457,6 +462,8 @@ export function createRooms(
         bots: 0,
         banned: new Set(),
         chat: [],
+        chatCount: 0,
+        chatBuckets: new Map(),
         emptySince: null,
         stepMsMax: 0,
       };
@@ -516,6 +523,8 @@ export function createRooms(
     setRole(id, role) {
       const room = byClient.get(id);
       if (!room) return;
+      const p = room.game.players.find((o) => o.id === id);
+      if (!p || p.role === role) return; // spectators and no-op changes: nothing to tell anyone
       setRole(room.game, id, role);
       announce(room);
     },
@@ -555,6 +564,8 @@ export function createRooms(
       if (!room) return 'room_not_found';
       if (room.host !== id) return 'not_host';
       if (room.state === 'playing') return null;
+      // Everyone watching and no bots: there would be nobody on the pitch (and a 0-0 never ends).
+      if (room.game.players.length === 0) return 'no_players';
       // The arena order is drawn as the match starts, from the pool the host picked.
       newArenaPlan(room.game);
       restartMatch(room.game);
@@ -580,12 +591,14 @@ export function createRooms(
       const m = room?.members.get(id);
       if (!room || !m) return 'room_not_found';
       const t = now();
-      m.chatTokens = Math.min(CHAT_BURST, m.chatTokens + (t - m.chatAt) / CHAT_REFILL_MS);
-      m.chatAt = t;
-      if (m.chatTokens < 1) return 'rate_limited';
-      m.chatTokens--;
+      const bucket = room.chatBuckets.get(m.key) ?? { tokens: CHAT_BURST, at: t };
+      bucket.tokens = Math.min(CHAT_BURST, bucket.tokens + (t - bucket.at) / CHAT_REFILL_MS);
+      bucket.at = t;
+      room.chatBuckets.set(m.key, bucket);
+      if (bucket.tokens < 1) return 'rate_limited';
+      bucket.tokens--;
       const team = m.spectator ? 'spec' : (room.game.players.find((p) => p.id === id)?.team ?? 'spec');
-      const line: ChatLine = { t: 'chat', id, name: m.name, team, text };
+      const line: ChatLine = { t: 'chat', n: ++room.chatCount, id, name: m.name, team, text };
       room.chat.push(line);
       if (room.chat.length > CHAT_HISTORY) room.chat.shift();
       const raw = encode(line);
@@ -612,6 +625,7 @@ export function createRooms(
           name: r.name,
           humans: r.game.players.filter((p) => !p.bot).length,
           max: MAX_PLAYERS,
+          full: r.members.size >= MAX_MEMBERS,
           state: r.state,
         }));
     },

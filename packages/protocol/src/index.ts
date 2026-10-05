@@ -1,6 +1,6 @@
 import type { ArenaKind, Game, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */
@@ -71,7 +71,8 @@ export type ErrorCode =
   | 'not_host'
   | 'server_full'
   | 'rate_limited'
-  | 'kicked';
+  | 'kicked'
+  | 'no_players';
 
 export interface RoomPlayer {
   id: string;
@@ -101,6 +102,8 @@ export interface RoomListing {
   name: string;
   humans: number;
   max: number;
+  /** No room for even a spectator. */
+  full: boolean;
   state: 'lobby' | 'playing';
 }
 
@@ -110,7 +113,8 @@ export type ServerMessage =
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'joined'; code: string; playerId: string }
   | { t: 'room'; room: RoomInfo }
-  | { t: 'chat'; id: string; name: string; team: Seat; text: string }
+  /** `n` numbers the room's lines, so a replayed line is not shown twice. */
+  | { t: 'chat'; n: number; id: string; name: string; team: Seat; text: string }
   /** Authoritative state at `tick`; `ack` = last input sequence of yours already applied; `q` = your inputs still queued on the server (clock-sync feedback). */
   | { t: 'snap'; tick: number; ack: number; q: number; g: Game };
 
@@ -124,6 +128,7 @@ const ERROR_CODES: readonly string[] = [
   'server_full',
   'rate_limited',
   'kicked',
+  'no_players',
 ];
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isUint = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
@@ -319,11 +324,12 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
         : null;
     }
     case 'chat':
-      return isStr(m.id, 64) &&
+      return isUint(m.n) &&
+        isStr(m.id, 64) &&
         isStr(m.name, 32) &&
         isStr(m.text, 200) &&
         (m.team === 'red' || m.team === 'blue' || m.team === 'spec')
-        ? { t: 'chat', id: m.id, name: m.name, team: m.team, text: m.text }
+        ? { t: 'chat', n: m.n, id: m.id, name: m.name, team: m.team, text: m.text }
         : null;
     case 'snap':
       return isUint(m.tick) && isUint(m.ack) && isGame(m.g)

@@ -203,16 +203,20 @@ function onRoom(r: RoomInfo) {
     autoStarted = true;
     conn.send({ t: 'start' });
   }
+  const typing = chat.focus();
   chat.mode(r.state === 'playing' ? 'game' : 'lobby');
   if (r.state === 'playing') chat.mount(null);
   stopBtn.hidden = !(r.state === 'playing' && r.host === pred.me);
-  stopBtn.classList.remove('armed');
-  stopBtn.textContent = 'Stop match';
+  // Unrelated room updates (someone joins, a role change) must not disarm a half-done stop.
+  if (stopBtn.hidden) {
+    stopBtn.classList.remove('armed');
+    stopBtn.textContent = 'Stop match';
+  }
   if (r.state === 'playing') ui.hide();
   else {
     if (wasPlaying) pred.reset();
     ui.lobby(r, pred.me);
-    chat.mount(document.getElementById('chat-slot'));
+    chat.mount(document.getElementById('chat-slot'), typing);
   }
 }
 

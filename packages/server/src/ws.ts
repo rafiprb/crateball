@@ -45,6 +45,7 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
   server_full: 'The server is full right now — try again in a minute',
   rate_limited: 'Slow down a little',
   kicked: 'The host removed you from this room',
+  no_players: 'Nobody is on a team — take a seat or turn bots on',
 };
 
 /** Behind Caddy the client address is in X-Forwarded-For (Caddy sets it; it does not trust incoming ones). */

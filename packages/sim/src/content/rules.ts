@@ -76,15 +76,14 @@ export const ITEMS = {
   bulletBallPush: 1.6,
   /** Bazooka: one rocket that locks on like the gun and then homes in (turning only so fast, so a late
    * sidestep can make it miss); a hit takes all 3 hp. */
-  rocketSpeed: 5.5,
+  rocketSpeed: 6.2,
   rocketLife: sec(3),
   rocketLockRange: 560,
   /** How hard the rocket steers toward its target each tick (0..1 blend of directions). */
-  rocketHoming: 0.04,
-  rocketRadius: 6,
+  rocketHoming: 0.065,
+  rocketRadius: 7,
   rocketDamage: 3,
   rocketKnock: 9,
-  rocketBallPush: 5,
   mineDamage: 1,
   mineSlow: sec(4),
   slowMul: 0.5,

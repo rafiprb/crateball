@@ -502,7 +502,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
                 h('span', { class: 'tag' }, r.code),
                 h('span', { class: 'tag' }, `${r.humans}/${r.max}`),
                 h('span', { class: 'tag' }, r.state === 'playing' ? 'Playing' : 'Lobby'),
-                button('Join', () => act.join(r.code)),
+                r.full ? h('span', { class: 'tag' }, 'Full') : button('Join', () => act.join(r.code)),
               ),
             )
           : [h('li', { class: 'empty' }, 'No public rooms yet — create one!')]),

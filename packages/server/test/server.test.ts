@@ -288,7 +288,7 @@ describe('WebSocket', () => {
       ['Bot 1', 'blue', true],
     ]);
     expect(await (await fetch(`${base}/rooms`)).json()).toEqual([
-      { code, name: 'Pazar maçı', humans: 1, max: 6, state: 'lobby' },
+      { code, name: 'Pazar maçı', humans: 1, max: 6, full: false, state: 'lobby' },
     ]);
 
     guest.socket.send(encode({ t: 'join', code, name: 'Can' }));
@@ -323,6 +323,26 @@ describe('WebSocket', () => {
 });
 
 describe('girdi kuyruğu', () => {
+  it('kısa bir ağ takılmasında (200 ms) tuşlar bırakılmış sayılmaz', async () => {
+    const { createRooms } = await import('../src/rooms');
+    const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
+    const room = rooms.create(
+      'a',
+      'A',
+      'R',
+      false,
+      { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: false },
+      () => {},
+    );
+    if (typeof room === 'string') throw new Error(room);
+    rooms.start('a');
+    rooms.input('a', 1, 8);
+    rooms.tickAll();
+    for (let i = 0; i < 12; i++) rooms.tickAll(); // 200 ms without a word
+    expect(room.game.players[0]?.input).toBe(8);
+    rooms.stop();
+  });
+
   it('kuyruk boşalınca son girdi o tick için yerine geçer ve sıra ilerler; geç gelen girdi son girdi olur', async () => {
     const { createRooms } = await import('../src/rooms');
     const log = createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent });
@@ -422,6 +442,51 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     expect(late.some((r) => r.includes('merhaba'))).toBe(true);
     const results = Array.from({ length: 10 }, () => rooms.chat('a', 'spam'));
     expect(results).toContain('rate_limited');
+    rooms.stop();
+  });
+
+  it('oyuncusuz maç başlamaz; son oyuncu maçta çıkarsa lobiye dönülür', async () => {
+    const rooms = await make();
+    const noBots = { ...settings, bots: false };
+    const room = asRoom(rooms.create('a', 'A', 'R', false, noBots, () => {}));
+    asRoom(rooms.join(room.code, 'b', 'B', () => {}));
+    rooms.move('a', 'a', 'spec');
+    rooms.move('a', 'b', 'spec');
+    expect(rooms.start('a')).toBe('no_players');
+    rooms.move('b', 'b', 'red');
+    expect(rooms.start('a')).toBeNull();
+    rooms.leave('b');
+    expect(room.state).toBe('lobby');
+    rooms.stop();
+  });
+
+  it('değişmeyen mevki herkese oda güncellemesi yollamaz (izleyici spamı)', async () => {
+    const rooms = await make();
+    const got: string[] = [];
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, (r) => got.push(r)));
+    asRoom(rooms.join(room.code, 'c', 'C', () => {}));
+    rooms.move('c', 'c', 'spec');
+    const before = got.length;
+    for (let i = 0; i < 5; i++) rooms.setRole('c', 'gk');
+    const p = room.game.players.find((o) => o.id === 'a')!;
+    rooms.setRole('a', p.role);
+    expect(got.length).toBe(before);
+    rooms.stop();
+  });
+
+  it('sohbet sınırı çıkıp girince sıfırlanmaz; geri dönen sekme geçmişi numarasıyla alır', async () => {
+    const rooms = await make();
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    asRoom(rooms.join(room.code, 'b', 'B', () => {}, 'tab-b'));
+    for (let i = 0; i < 5; i++) expect(rooms.chat('b', `m${i}`)).toBeNull();
+    rooms.leave('b');
+    asRoom(rooms.join(room.code, 'b2', 'B', () => {}, 'tab-b'));
+    expect(rooms.chat('b2', 'again')).toBe('rate_limited');
+    rooms.disconnect('b2');
+    const replay: string[] = [];
+    rooms.reattach('b2', (r) => replay.push(r));
+    const lines = replay.filter((r) => r.includes('"t":"chat"')).map((r) => JSON.parse(r) as { n: number });
+    expect(lines.map((l) => l.n)).toEqual([1, 2, 3, 4, 5]);
     rooms.stop();
   });
 
@@ -576,7 +641,8 @@ describe('uzun sessizlik', () => {
     rooms.input('a', 1, 8);
     rooms.tickAll();
     for (let i = 0; i < 120; i++) rooms.tickAll(); // 2 s silence
-    expect(ack()).toBeLessThanOrEqual(1 + 6);
+    const { STAND_IN_TICKS } = await import('../src/rooms');
+    expect(ack()).toBeLessThanOrEqual(1 + STAND_IN_TICKS);
     expect(room.game.players[0]?.input).toBe(0); // keys released
     // Waking up: its next inputs are ahead of the server count again, so they are queued and used.
     const next = ack() + 1;

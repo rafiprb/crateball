@@ -25,9 +25,10 @@ function blocks(
 export const hasWeapon = (p: Player) => p.gun > 0 || p.bazooka;
 
 /**
- * Auto-aim for the gun and the bazooka: the nearest enemy in range whose line of fire is not blocked by
- * a teammate or the ball. The gun aims where they are running to; the bazooka's rocket homes in, so it
- * aims at them. Null when nobody qualifies (then it fires straight ahead).
+ * Auto-aim for the gun and the bazooka. The gun: the nearest enemy in range whose line of fire is not
+ * blocked by a teammate or the ball, aimed where they are running to. The bazooka: the nearest enemy in
+ * range, whatever is in between (its rocket homes in and flies through the ball). Null when nobody
+ * qualifies (then it fires straight ahead).
  */
 export function gunTarget(g: Game, p: Player): { id: string; x: number; y: number } | null {
   const rocket = p.bazooka;
@@ -44,9 +45,11 @@ export function gunTarget(g: Game, p: Player): { id: string; x: number; y: numbe
     const x = e.x + e.vx * t;
     const y = e.y + e.vy * t;
     const mates = g.players.filter((m) => m !== p && m.team === p.team && m.dead === 0);
+    // A homing rocket curves around things and flies through the ball: only the gun needs a clear line.
     const hidden =
-      mates.some((m) => blocks(p.x, p.y, x, y, m, m.r + radius)) ||
-      blocks(p.x, p.y, x, y, g.ball, BALL.radius + radius);
+      !rocket &&
+      (mates.some((m) => blocks(p.x, p.y, x, y, m, m.r + radius)) ||
+        blocks(p.x, p.y, x, y, g.ball, BALL.radius + radius));
     if (!hidden) return { id: e.id, x, y };
   }
   return null;

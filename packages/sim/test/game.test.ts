@@ -155,6 +155,20 @@ describe('sim', () => {
     expect(g.blasts.length).toBeGreaterThan(0);
   });
 
+  it('yalnız botlar ortada birbirine vurup kilitlenmez: her maçta gol olur', () => {
+    const goals: number[] = [];
+    for (let seed = 1; seed <= 8; seed++) {
+      const g = createGame(seed, { minutes: 3, scoreLimit: 5, crates: 'off', loot: ['gun'], bots: true });
+      addPlayer(g, 'r', 'R', 'red', true);
+      addPlayer(g, 'b', 'B', 'blue', true);
+      g.arenaPlan = ['classic'];
+      restartMatch(g);
+      run(g, 60 * 60);
+      goals.push(g.score[0] + g.score[1]);
+    }
+    expect(Math.min(...goals)).toBeGreaterThan(0);
+  });
+
   it('botlar kendi başına gol atabilir', () => {
     const g = createGame(5);
     addPlayer(g, 'r', 'R', 'red', true);

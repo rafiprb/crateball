@@ -647,9 +647,9 @@ function updateBullets(g: Game): void {
         return false;
       }
     }
-    if (dist2(g.ball, b) < (BALL.radius + radius) ** 2) {
-      const s = (b.rocket ? ITEMS.rocketBallPush : ITEMS.bulletBallPush) / speed;
-      if (b.rocket) g.blasts.push({ x: b.x, y: b.y, kind: 'rocket', t: ITEMS.blastShow });
+    // Bullets knock the ball; a homing rocket flies through it (it is after a player).
+    if (!b.rocket && dist2(g.ball, b) < (BALL.radius + radius) ** 2) {
+      const s = ITEMS.bulletBallPush / speed;
       g.ball.vx += b.vx * s;
       g.ball.vy += b.vy * s;
       return false;

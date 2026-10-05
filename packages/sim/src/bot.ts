@@ -14,6 +14,15 @@ function idHash(id: string): number {
 /** Deterministic 0..99 roll for this bot on this tick. */
 const roll = (g: Game, p: Player) => (Math.imul(g.tick ^ idHash(p.id), 2654435761) >>> 0) % 100;
 
+/**
+ * Where in the goal mouth this bot aims: its own spot, redrawn every 1.5 s (deterministic). Two bots
+ * aiming dead centre push the ball into each other forever; a little spread breaks the deadlock.
+ */
+function aimY(g: Game, p: Player): number {
+  const h = Math.imul(Math.floor(g.tick / 90) ^ idHash(p.id), 2654435761) >>> 0;
+  return ((h % 1000) / 500 - 1) * FIELD.goalHalf * 0.8;
+}
+
 /** Simple deterministic bot: chaser goes behind the ball toward the enemy goal, others hold. */
 export function botInput(g: Game, p: Player): number {
   if (p.dead > 0 || p.frozen > 0 || g.phase === 'over') return 0;
@@ -62,7 +71,7 @@ export function botInput(g: Game, p: Player): number {
     }
   } else {
     const gx = -own * (FIELD.halfW + 20) - b.x;
-    const gy = -b.y;
+    const gy = aimY(g, p) - b.y;
     const gl = Math.sqrt(gx * gx + gy * gy) || 1;
     const nx = gx / gl;
     const ny = gy / gl;

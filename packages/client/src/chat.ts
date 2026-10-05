@@ -11,8 +11,11 @@ export interface Chat {
   add(line: Line, mine?: boolean): void;
   /** Lobby: the log and the input are always shown. Game: recent lines float, Enter opens the input. */
   mode(m: 'lobby' | 'game' | 'off'): void;
-  /** Lobby: sit inside the lobby panel (its slot is rebuilt on every update); null = float over the game. */
-  mount(slot: HTMLElement | null): void;
+  /** Lobby: sit inside the lobby panel (its slot is rebuilt on every update); null = float over the game.
+   * `keep` (from `focus()` taken before the lobby was rebuilt) puts the cursor back where it was. */
+  mount(slot: HTMLElement | null, keep?: number | null): void;
+  /** Where the cursor is in the input, or null when not typing. */
+  focus(): number | null;
   /** Enter in a match: focus the input. */
   open(): void;
   readonly typing: boolean;
@@ -29,6 +32,8 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
   root.append(log, input);
   document.body.append(root);
   let current: 'lobby' | 'game' | 'off' = 'off';
+  /** Highest line number shown: a replay after a reconnect skips what is already here. */
+  let lastN = 0;
 
   const refresh = () => {
     root.dataset.mode = current;
@@ -53,6 +58,8 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
 
   return {
     add(line, mine = false) {
+      if (line.n <= lastN) return;
+      lastN = line.n;
       const li = document.createElement('li');
       li.className = line.team;
       const who = document.createElement('b');
@@ -71,22 +78,25 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
       if (m === current) return;
       // Typing in the lobby when the match starts: give the keys back to the game.
       if (m !== 'lobby') input.blur();
-      if (m === 'off') log.replaceChildren();
+      if (m === 'off') {
+        log.replaceChildren();
+        lastN = 0;
+      }
       current = m;
       refresh();
     },
-    mount(slot) {
+    mount(slot, keep = null) {
       const parent = slot ?? document.body;
-      if (root.parentElement === parent) return;
-      // Moving a focused input drops its focus: keep typing where you were.
-      const focused = document.activeElement === input;
-      const caret = input.selectionStart;
-      parent.append(root);
-      if (focused) {
+      if (root.parentElement !== parent) parent.append(root);
+      // Rebuilding the lobby (or moving the input) drops its focus: keep typing where you were.
+      if (keep !== null && document.activeElement !== input) {
         input.focus();
-        if (caret !== null) input.setSelectionRange(caret, caret);
+        input.setSelectionRange(keep, keep);
       }
       log.scrollTop = log.scrollHeight;
+    },
+    focus() {
+      return document.activeElement === input ? (input.selectionStart ?? input.value.length) : null;
     },
     open() {
       if (current === 'off') return;
