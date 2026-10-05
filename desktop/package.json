@@ -1,0 +1,17 @@
+{
+  "name": "crateball-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Crateball desktop build (Steam): a window onto playcrateball.com",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-packager . Crateball --platform=win32 --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --app-copyright=RafiBuilds",
+    "build:mac": "electron-packager . Crateball --platform=darwin --arch=arm64,x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam",
+    "build:linux": "electron-packager . Crateball --platform=linux --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.5.1"
+  }
+}

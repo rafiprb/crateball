@@ -22,6 +22,7 @@ export default defineConfig(
     ignores: [
       '**/dist/**',
       '**/node_modules/**',
+      'desktop/out/**',
       'prototypes/**',
       'logs/**',
       'test-results/**',
@@ -36,6 +37,7 @@ export default defineConfig(
   {
     files: [
       'packages/server/**',
+      'desktop/**',
       'scripts/**',
       'tests/**',
       '*.config.ts',

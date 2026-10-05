@@ -1,0 +1,21 @@
+"AppBuild"
+{
+	"AppID" "4248750"
+	"Desc" "Crateball Demo"
+	"ContentRoot" "../out/Crateball-win32-x64/"
+	"BuildOutput" "../out/steam-build/"
+	"SetLive" ""
+	"Preview" "0"
+	"Depots"
+	{
+		"4248751"
+		{
+			"FileMapping"
+			{
+				"LocalPath" "*"
+				"DepotPath" "."
+				"recursive" "1"
+			}
+		}
+	}
+}

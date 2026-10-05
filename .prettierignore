@@ -7,3 +7,5 @@ pnpm-lock.yaml
 *.md
 .claude
 .superpowers
+desktop/out
+desktop/package-lock.json
