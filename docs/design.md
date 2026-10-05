@@ -7,6 +7,7 @@ oyuncu kutuya değince açılır.
 
 - Saha 840×400 px, 60 tick/sn. Fizik: daire çarpışmaları, sönümleme, vuruş tuşu basılıyken
   yavaşlama, tuşa her basışta bir vuruş.
+- Oyuncular kenar çizgilerinin 40 px, kale çizgilerinin 70 px dışına çıkabilir: kalenin (34 px derin) arkasından geçilebilir.
 - Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol. "No time limit" seçilirse süre yok: maç yalnızca
   gol limitiyle biter, saat oynanan süreyi ileri sayar.
 - Can 3; ölünce 3 sn sonra orta çizginin bir ucunda, kendi yarısında doğar: üst yarıda öldüyse alt uçta, alt yarıda öldüyse üst uçta. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
@@ -28,7 +29,7 @@ oyuncu kutuya değince açılır.
   alır. Silah tuş basılıyken ateşler; ışınlanma ve bazuka yeni bir basış ister. Bazukalı bot kilitlenince ateşler. Botlar gitmek istedikleri yere uzak kalınca
   (200 px+) o yöne sıçrar.
 - Mevkiler (herkes topa koşmasın diye; bonus yalnızca kendi bölgesinde):
-  GK kendi ceza sahasında büyük (r 22), DF kendi yarısında ağır + hızlı, MF orta bölgede uzun
+  GK kendi ceza sahasında biraz büyük (r 19) ve çevik (1,5× ivme ve fren: aynı son hız, daha keskin dönüş), DF kendi yarısında ağır + hızlı, MF orta bölgede uzun
   menzil + sert pas + geniş pas yardımı, FW hücum bölgesinde en hızlı + en sert şut. 1–4 tuşlarıyla değişir (takım
   arkadaşıyla takas).
 - Pas: vuruş yönü bir takım arkadaşına ±6° (orta saha kendi bölgesinde ±15°) yakınsa top ona doğru

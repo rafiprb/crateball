@@ -10,6 +10,8 @@ export const FIELD = {
   postRadius: 8,
   /** Players may roam this far beyond the touchlines. */
   margin: 40,
+  /** ...and this far beyond the goal lines: enough to get round the back of the net (34 deep). */
+  marginX: 70,
   centerRadius: 70,
 };
 
@@ -112,8 +114,9 @@ export type Role = 'gk' | 'def' | 'mid' | 'fwd';
 export const ROLES = {
   /** Auto-assignment order inside a team. */
   order: ['fwd', 'gk', 'mid', 'def'] as readonly Role[],
-  /** Keeper: much bigger inside the own box. */
-  gk: { boxDepth: 110, boxHalf: 140, radius: 22, outsideAccel: 0.92 },
+  /** Keeper: bigger inside the own box, and nimbler there: `boxAgility` × the acceleration and × the
+   * rate speed bleeds off, so the same top speed but quicker starts, stops and turns. */
+  gk: { boxDepth: 110, boxHalf: 140, radius: 19, outsideAccel: 0.92, boxAgility: 1.5 },
   /** Defender: heavier (wins shoulder duels) and a bit quicker in the own half. */
   def: { invMass: 0.28, accel: 1.1 },
   /** Midfielder: longer reach and crisper passes in the middle third. */

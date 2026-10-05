@@ -196,6 +196,41 @@ describe('sim', () => {
     expect(g.phase).toBe('over');
   });
 
+  it('oyuncu kalenin arkasından geçebilir (ağın arkasında yer var)', () => {
+    const g = createGame(1);
+    const a = addPlayer(g, 'a', 'A', 'red');
+    g.phase = 'play';
+    Object.assign(a, { x: FIELD.halfW + FIELD.goalDepth + PLAYER.radius + 2, y: -FIELD.goalHalf - 30 });
+    run(g, 90, new Map([['a', DOWN]]));
+    expect(a.y).toBeGreaterThan(FIELD.goalHalf + 10); // went all the way past the back of the net
+    expect(a.x).toBeGreaterThan(FIELD.halfW + FIELD.goalDepth);
+  });
+
+  it('kaleci ceza sahasında biraz büyük ve çevik: aynı son hız, daha çabuk dönüş', () => {
+    const turn = (inBox: boolean) => {
+      const g = createGame(1);
+      const k = addPlayer(g, 'k', 'K', 'red');
+      setRole(g, 'k', 'gk');
+      g.phase = 'play';
+      Object.assign(k, { x: inBox ? -FIELD.halfW + 60 : -100, y: 0, vx: 0, vy: 0 });
+      run(g, 60, new Map([['k', UP]]));
+      const top = Math.abs(k.vy);
+      // Reverse: how many ticks until moving the other way?
+      let t = 0;
+      while (k.vy <= 0 && t < 200) {
+        step(g, new Map([['k', DOWN]]));
+        t++;
+      }
+      return { top, t, r: k.r };
+    };
+    const box = turn(true);
+    const out = turn(false);
+    expect(box.r).toBe(ROLES.gk.radius);
+    expect(ROLES.gk.radius).toBeLessThan(22);
+    expect(box.t).toBeLessThan(out.t);
+    expect(box.top).toBeGreaterThan(out.top * 0.95);
+  });
+
   it('mayın can götürür ve yavaşlatır; buz dondurur', () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'red');
@@ -373,7 +408,7 @@ describe('ışınlanma (sıçrama)', () => {
     const { g, a } = setup();
     Object.assign(a, { teleport: true, x: 400 });
     step(g, new Map([['a', RIGHT | USE]]));
-    expect(a.x).toBeLessThanOrEqual(FIELD.halfW + FIELD.margin - PLAYER.radius);
+    expect(a.x).toBeLessThanOrEqual(FIELD.halfW + FIELD.marginX - PLAYER.radius);
   });
 
   it('tuşu basılı tutarken kutu açılırsa sıçramak için yeniden basmak gerekir', () => {

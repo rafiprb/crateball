@@ -109,7 +109,7 @@ const ROLE_STYLE: Record<Role, [string, string]> = {
 const HUD_H = 56;
 const MAX_DPR = 2;
 const MAX_PIXELS = 3840 * 2160;
-const W = FIELD.halfW + FIELD.margin + 10;
+const W = FIELD.halfW + FIELD.marginX + 10;
 const H = FIELD.halfH + FIELD.margin + 10;
 
 export interface Renderer {

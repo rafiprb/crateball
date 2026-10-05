@@ -330,7 +330,7 @@ function inZone(p: Player): boolean {
 }
 
 function accelMul(p: Player): number {
-  if (p.role === 'gk') return p.buff ? 1 : ROLES.gk.outsideAccel;
+  if (p.role === 'gk') return p.buff ? ROLES.gk.boxAgility : ROLES.gk.outsideAccel;
   if (!p.buff) return 1;
   return p.role === 'def' ? ROLES.def.accel : p.role === 'fwd' ? ROLES.fwd.accel : 1;
 }
@@ -480,7 +480,7 @@ function homeRocket(g: Game, b: Bullet): void {
 function blink(g: Game, p: Player): void {
   p.teleport = false;
   g.blasts.push({ x: p.x, y: p.y, kind: 'warp', t: ITEMS.blastShow });
-  const mx = FIELD.halfW + FIELD.margin - p.r;
+  const mx = FIELD.halfW + FIELD.marginX - p.r;
   const my = FIELD.halfH + FIELD.margin - p.r;
   p.x = Math.max(-mx, Math.min(mx, p.x + p.fx * ITEMS.blinkDistance));
   p.y = Math.max(-my, Math.min(my, p.y + p.fy * ITEMS.blinkDistance));
@@ -492,7 +492,9 @@ function integrate(g: Game): void {
     if (p.dead > 0) continue;
     p.x += p.vx;
     p.y += p.vy;
-    const pd = playerDamping(g);
+    let pd = playerDamping(g);
+    // Keeper in the box: speed bleeds off faster (with the matching extra acceleration: sharper turns).
+    if (p.role === 'gk' && p.buff) pd = 1 - (1 - pd) * ROLES.gk.boxAgility;
     p.vx *= pd;
     p.vy *= pd;
   }
@@ -574,7 +576,7 @@ function collide(g: Game): void {
 
 function confinePlayer(g: Game, p: Player): void {
   const r = p.r;
-  const mx = FIELD.halfW + FIELD.margin - r;
+  const mx = FIELD.halfW + FIELD.marginX - r;
   const my = FIELD.halfH + FIELD.margin - r;
   p.x = Math.max(-mx, Math.min(mx, p.x));
   p.y = Math.max(-my, Math.min(my, p.y));
@@ -660,7 +662,7 @@ function damage(g: Game, p: Player, amount: number, kx: number, ky: number): voi
 }
 
 function updateBullets(g: Game): void {
-  const lw = FIELD.halfW + FIELD.margin;
+  const lw = FIELD.halfW + FIELD.marginX;
   const lh = FIELD.halfH + FIELD.margin;
   g.bullets = g.bullets.filter((b) => {
     if (b.rocket) homeRocket(g, b);
