@@ -82,6 +82,7 @@ describe('oyun mesajları', () => {
       },
     });
     expect(decodeClientMessage(raw({ ...ok, minutes: 999 }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, minutes: 0 }))).toMatchObject({ settings: { minutes: 0 } });
     expect(decodeClientMessage(raw({ ...ok, loot: 'teleport' }))).toMatchObject({
       settings: { loot: ['teleport'] },
     });

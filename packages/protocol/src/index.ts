@@ -186,7 +186,7 @@ export function decodeSettings(v: unknown): Settings | null {
   if (!Array.isArray(list) || list.length === 0 || list.length > ITEMS.length) return null;
   if (!list.every((k) => typeof k === 'string' && ITEMS.includes(k))) return null;
   const loot = ITEMS.filter((k) => (list as string[]).includes(k)) as Settings['loot'];
-  if (![2, 3, 5, 10].includes(minutes as number) || ![3, 5, 7, 10].includes(scoreLimit as number))
+  if (![2, 3, 5, 10, 0].includes(minutes as number) || ![3, 5, 7, 10].includes(scoreLimit as number))
     return null;
   if (crates !== 'off' && crates !== 'normal' && crates !== 'chaos') return null;
   if (typeof bots !== 'boolean') return null;

@@ -124,6 +124,7 @@ export const ROLES = {
 
 /** Room settings the host picks in the lobby. */
 export interface Settings {
+  /** Match length; 0 = no time limit (only the score limit ends it, and the clock counts up). */
   minutes: number;
   scoreLimit: number;
   crates: 'off' | 'normal' | 'chaos';
@@ -148,7 +149,7 @@ export const ITEM_KINDS: readonly ItemKind[] = [
 ];
 
 export const SETTING_CHOICES = {
-  minutes: [2, 3, 5, 10],
+  minutes: [2, 3, 5, 10, 0],
   scoreLimit: [3, 5, 7, 10],
   crates: ['off', 'normal', 'chaos'],
 } as const;

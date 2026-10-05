@@ -8,7 +8,8 @@ const FADE_MS = 600;
 const KEEP = 30;
 
 export interface Chat {
-  add(line: Line, mine?: boolean): void;
+  /** False for a line already shown (a replay after a reconnect). */
+  add(line: Line, mine?: boolean): boolean;
   /** Lobby: the log and the input are always shown. Game: recent lines float, Enter opens the input. */
   mode(m: 'lobby' | 'game' | 'off'): void;
   /** Lobby: sit inside the lobby panel (its slot is rebuilt on every update); null = float over the game.
@@ -66,7 +67,7 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
 
   return {
     add(line, mine = false) {
-      if (line.n <= lastN) return;
+      if (line.n <= lastN) return false;
       lastN = line.n;
       const li = document.createElement('li');
       li.className = line.team;
@@ -81,6 +82,7 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
       setTimeout(() => li.classList.add('old'), SHOW_MS);
       setTimeout(() => li.classList.add('gone'), SHOW_MS + FADE_MS);
       refresh();
+      return true;
     },
     mode(m) {
       if (m === current) return;

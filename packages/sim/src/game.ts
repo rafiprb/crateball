@@ -224,7 +224,11 @@ export function step(g: Game, inputs?: ReadonlyMap<string, number>): void {
   }
   // Terminal: the server takes the room back to the lobby after MATCH.overPause.
   if (g.phase === 'over') return;
-  if (g.phase === 'play' && g.clock > 0) g.clock--;
+  // Timed: the clock counts down to 0. No time limit: it counts the time played, for the scoreboard.
+  if (g.phase === 'play') {
+    if (g.settings.minutes === 0) g.clock++;
+    else if (g.clock > 0) g.clock--;
+  }
 
   for (const p of g.players) controlPlayer(g, p);
   integrate(g);
@@ -800,7 +804,8 @@ function rules(g: Game): void {
   }
   if (g.phase === 'goal' && g.phaseT >= MATCH.goalPause) {
     const [r, bl] = g.score;
-    if (r >= g.settings.scoreLimit || bl >= g.settings.scoreLimit || (g.clock === 0 && r !== bl)) {
+    const timeUp = g.settings.minutes > 0 && g.clock === 0;
+    if (r >= g.settings.scoreLimit || bl >= g.settings.scoreLimit || (timeUp && r !== bl)) {
       g.phase = 'over';
       g.phaseT = 0;
       return;
@@ -808,7 +813,7 @@ function rules(g: Game): void {
     resetKickoff(g, b.x > 0 ? 'blue' : 'red');
     return;
   }
-  if (g.phase === 'play' && g.clock === 0 && g.score[0] !== g.score[1]) {
+  if (g.phase === 'play' && g.settings.minutes > 0 && g.clock === 0 && g.score[0] !== g.score[1]) {
     g.phase = 'over';
     g.phaseT = 0;
   }

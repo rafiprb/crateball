@@ -180,7 +180,9 @@ const conn = connect({
         onRoom(m.room);
         break;
       case 'chat':
-        chat.add(m, m.id === pred.me);
+        // In a match a new line also pops up above the speaker (replays after a reconnect don't).
+        if (chat.add(m, m.id === pred.me) && room?.state === 'playing' && m.team !== 'spec')
+          renderer.say(m.id, m.text);
         break;
       case 'snap':
         if (room?.state === 'playing') {

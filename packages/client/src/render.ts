@@ -115,7 +115,15 @@ const H = FIELD.halfH + FIELD.margin + 10;
 export interface Renderer {
   resize(w: number, h: number, dpr: number): void;
   draw(p: Predictor, alpha: number, fx: Particles, hud: { rtt: number | null }): void;
+  /** A chat line from a player: shown in a speech bubble above them for a few seconds. */
+  say(id: string, text: string): void;
 }
+
+/** Chat bubbles: how long one stays (the last part fades) and how wide it may get, in pitch pixels. */
+const BUBBLE_MS = 4500;
+const BUBBLE_FADE_MS = 600;
+const BUBBLE_MAX_W = 150;
+const BUBBLE_LINES = 3;
 
 export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const ctx = canvas.getContext('2d', { alpha: false })!;
@@ -534,6 +542,77 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.globalAlpha = 1;
     }
     fx.draw(ctx, false);
+    drawBubbles(g, pr, alpha, now);
+  };
+
+  const bubbles = new Map<string, { text: string; at: number }>();
+  /** Greedy word wrap into at most BUBBLE_LINES lines; the last one ends in … if text is left over. */
+  const wrap = (s: string): string[] => {
+    const lines: string[] = [];
+    let line = '';
+    for (const word of s.split(/\s+/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (ctx.measureText(next).width <= BUBBLE_MAX_W) line = next;
+      else {
+        if (line) lines.push(line);
+        line = word;
+        // A single word wider than the bubble: cut it.
+        while (ctx.measureText(line).width > BUBBLE_MAX_W && line.length > 1) line = line.slice(0, -1);
+      }
+      if (lines.length === BUBBLE_LINES) break;
+    }
+    if (line && lines.length < BUBBLE_LINES) lines.push(line);
+    if (lines.join(' ').length < s.trim().length) {
+      let last = lines[lines.length - 1] ?? '';
+      while (last && ctx.measureText(`${last}…`).width > BUBBLE_MAX_W) last = last.slice(0, -1);
+      lines[lines.length - 1] = `${last}…`;
+    }
+    return lines;
+  };
+  const drawBubbles = (g: Game, pr: Predictor, alpha: number, now: number) => {
+    for (const [id, b] of bubbles) {
+      const age = now - b.at;
+      if (age > BUBBLE_MS) {
+        bubbles.delete(id);
+        continue;
+      }
+      const p = g.players.find((o) => o.id === id);
+      if (!p || p.dead > 0) continue;
+      const pos = pr.pos(id, alpha) ?? p;
+      ctx.globalAlpha = Math.min(1, (BUBBLE_MS - age) / BUBBLE_FADE_MS, age / 120);
+      ctx.font = `700 11px 'Baloo 2', Nunito, system-ui, sans-serif`;
+      const lines = wrap(b.text);
+      const lh = 12;
+      const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 14;
+      const h = lines.length * lh + 8;
+      // Above the hp dots; kept inside the play area so it never leaves the screen.
+      const bx = Math.max(-W + w / 2, Math.min(W - w / 2, pos.x));
+      const by = pos.y - p.r - 14 - h / 2;
+      ctx.fillStyle = '#FFF4E0';
+      ctx.strokeStyle = COLORS.ink;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(bx - w / 2, by - h / 2, w, h, 7);
+      ctx.fill();
+      ctx.stroke();
+      // Tail pointing down at the speaker.
+      const tx = Math.max(bx - w / 2 + 8, Math.min(bx + w / 2 - 8, pos.x));
+      ctx.beginPath();
+      ctx.moveTo(tx - 5, by + h / 2 - 0.5);
+      ctx.lineTo(tx, by + h / 2 + 6);
+      ctx.lineTo(tx + 5, by + h / 2 - 0.5);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(tx - 5, by + h / 2);
+      ctx.lineTo(tx, by + h / 2 + 6);
+      ctx.lineTo(tx + 5, by + h / 2);
+      ctx.stroke();
+      ctx.fillStyle = COLORS.ink;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      lines.forEach((l, i) => ctx.fillText(l, bx, by - h / 2 + 4 + lh / 2 + i * lh));
+      ctx.globalAlpha = 1;
+    }
   };
 
   const drawHud = (g: Game, pr: Predictor, w: number) => {
@@ -544,11 +623,13 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.fill();
     text(String(g.score[0]), mid - 60, HUD_H / 2, 30, COLORS.red, 800);
     text(String(g.score[1]), mid + 60, HUD_H / 2, 30, COLORS.blue, 800);
-    const secs = Math.ceil(g.clock / TICK_HZ);
-    const clock =
-      g.clock === 0 ? 'GOLDEN GOAL' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    const hurry = g.clock > 0 && secs <= 30;
-    text(clock, mid, HUD_H / 2, g.clock === 0 ? 15 : 22, hurry ? '#FF6A5E' : '#FFF4E0', 800);
+    const timed = g.settings.minutes > 0;
+    // No time limit: the clock shows the time played (floor), and nothing is ever in a hurry.
+    const secs = timed ? Math.ceil(g.clock / TICK_HZ) : Math.floor(g.clock / TICK_HZ);
+    const golden = timed && g.clock === 0;
+    const clock = golden ? 'GOLDEN GOAL' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    const hurry = timed && g.clock > 0 && secs <= 30;
+    text(clock, mid, HUD_H / 2, golden ? 15 : 22, hurry ? '#FF6A5E' : '#FFF4E0', 800);
     text('RED', mid - 130, HUD_H / 2, 14, COLORS.red, 800);
     text('BLUE', mid + 130, HUD_H / 2, 14, COLORS.blue, 800);
     const me = g.players.find((p) => p.id === pr.me);
@@ -590,7 +671,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       banner = `${t.toUpperCase()} WINS!`;
       color = COLORS[t];
       // Say why it ended: the clock ran out (or golden goal) vs. someone reached the score limit.
-      const why = g.clock === 0 ? 'FULL TIME' : `FIRST TO ${g.settings.scoreLimit}`;
+      const why = golden ? 'FULL TIME' : `FIRST TO ${g.settings.scoreLimit}`;
       text(`${why}  ·  ${g.score[0]} – ${g.score[1]}`, mid, h / 2 + 56, 26, '#FFF4E0', 800);
     }
     if (g.arena.kind === 'wind') {
@@ -626,7 +707,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       text(look.hint, mid, h / 2 - 118, 18, '#FFF4E0', 700);
     }
     if (banner) text(banner, mid, h / 2, 72, color, 800);
-    else if (g.phase === 'play' && g.clock > 0 && secs <= 10) {
+    else if (g.phase === 'play' && timed && g.clock > 0 && secs <= 10) {
       // Final countdown, big and fading in the middle of the pitch.
       ctx.globalAlpha = 0.55;
       text(String(secs), mid, h / 2, 120, '#FF6A5E', 800);
@@ -634,7 +715,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     } else if (
       g.phase === 'kickoff' &&
       g.score[0] + g.score[1] === 0 &&
-      g.clock === g.settings.minutes * 60 * TICK_HZ
+      (timed ? g.clock === g.settings.minutes * 60 * TICK_HZ : g.clock === 0)
     )
       text(`First to ${g.settings.scoreLimit}`, mid, h / 2 - 82, 24, '#FFF4E0', 800);
   };
@@ -668,6 +749,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       cx = canvas.width / 2;
       cy = (HUD_H * dpr + canvas.height - 30 * dpr) / 2;
       pitch = null;
+    },
+    say(id, s) {
+      bubbles.set(id, { text: s, at: performance.now() });
     },
     draw(pr, alpha, fx, hudInfo) {
       const now = performance.now();

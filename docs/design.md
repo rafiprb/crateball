@@ -7,7 +7,8 @@ oyuncu kutuya değince açılır.
 
 - Saha 840×400 px, 60 tick/sn. Fizik: daire çarpışmaları, sönümleme, vuruş tuşu basılıyken
   yavaşlama, tuşa her basışta bir vuruş.
-- Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol.
+- Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol. "No time limit" seçilirse süre yok: maç yalnızca
+  gol limitiyle biter, saat oynanan süreyi ileri sayar.
 - Can 3; ölünce 3 sn sonra orta çizginin bir ucunda, kendi yarısında doğar: üst yarıda öldüyse alt uçta, alt yarıda öldüyse üst uçta. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
 - Kutu ağırlıkları (100 üzerinden; kötüler = iyiler = 50): Mine 20, Ice 16, Dizzy 14 | Gun 18, Speed 7,
   Shield 7, Power kick 6, Teleport 6, Bazooka 6.
@@ -68,6 +69,7 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   taşıyabilir. Maç sırasında gelen herkes izleyici olarak girer ve maçı izler; maç bitince lobiden
   takıma geçer. Odada en fazla 12 kişi (6 oyuncu).
 - Host maç sırasında sol üstteki "Stop match" ile (iki tık) maçı bitirir; herkes lobiye döner.
+- Maçta yazılan mesaj ayrıca ~4,5 sn yazanın üstünde konuşma balonunda görünür (en fazla üç satır).
 - Sohbet: lobide sol altta kayıt + yazı alanı; maçta Enter ile yazılır, yeni mesajlar birkaç saniye
   üst üste görünüp kaybolur. Odaya yeni gelen son 30 mesajı görür; kişi başı flood sınırı var.
 - Maç bitince 6 sn sonra oda lobiye döner. Host çıkarsa host'luk sıradakine geçer; boş oda 2 dk yaşar.

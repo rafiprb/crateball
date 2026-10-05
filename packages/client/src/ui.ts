@@ -218,7 +218,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
     return h(
       'div',
       { class: 'settings' },
-      select('minutes', 'Match length', (v) => `${v} min`),
+      select('minutes', 'Match length', (v) => (v === 0 ? 'No time limit' : `${v} min`)),
       select('scoreLimit', 'Score limit', (v) => `First to ${v}`),
       select(
         'crates',

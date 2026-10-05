@@ -179,6 +179,23 @@ describe('sim', () => {
     }
   });
 
+  it('süresiz maç: saat ileri sayar, süre bitmez, yalnızca gol limitiyle biter', () => {
+    const g = createGame(1, { minutes: 0, scoreLimit: 3, crates: 'off', loot: ['gun'], bots: false });
+    addPlayer(g, 'a', 'A', 'red');
+    restartMatch(g);
+    expect(g.clock).toBe(0);
+    g.phase = 'play';
+    run(g, 60 * 60);
+    expect(g.clock).toBeGreaterThan(60 * 50);
+    expect(g.phase).not.toBe('over'); // 0-0 after a minute: nothing ends it
+    g.score = [2, 1];
+    g.ball = { x: FIELD.halfW - 5, y: 0, vx: 6, vy: 0 };
+    run(g, 10);
+    run(g, 200);
+    expect(g.score[0]).toBe(3);
+    expect(g.phase).toBe('over');
+  });
+
   it('mayın can götürür ve yavaşlatır; buz dondurur', () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'red');
