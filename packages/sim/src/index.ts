@@ -16,6 +16,7 @@ export {
   removePlayer,
   newArenaPlan,
   restartMatch,
+  rollLoot,
   step,
   teamCount,
   winner,

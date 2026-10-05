@@ -3,6 +3,7 @@ import {
   ARENAS,
   ITEM_KINDS,
   SETTING_CHOICES,
+  defaultWeights,
   type ItemKind,
   type Role,
   type Settings,
@@ -45,14 +46,66 @@ const ARENA_CHIP: Record<string, [string, string]> = {
   wind: ['Wind', '#9AB86A'],
 };
 
-export const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DF', mid: 'MF', fwd: 'FW' };
+export const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DF', mid: 'MF', fwd: 'FW', none: '–' };
 const ROLE_NAME: Record<Role, string> = {
   gk: 'Goalkeeper',
   def: 'Defender',
   mid: 'Midfielder',
   fwd: 'Forward',
+  none: 'No role',
+};
+/** Crate items in the lobby: the helpful ones first, with their in-game colours. */
+const ITEM_GOOD: readonly ItemKind[] = ['gun', 'boost', 'shield', 'power', 'teleport', 'bazooka'];
+const ITEM_BAD: readonly ItemKind[] = ['mine', 'ice', 'dizzy'];
+const ITEM_COLOR: Record<ItemKind, string> = {
+  gun: '#FFE066',
+  mine: '#FF6A3D',
+  ice: '#9BE3FF',
+  dizzy: '#9FE8C8',
+  boost: '#7CFF7A',
+  shield: '#7AF0FF',
+  power: '#FFA94D',
+  teleport: '#C77DFF',
+  bazooka: '#B8C890',
+};
+type Weights = Settings['weights'];
+const total = (w: Weights) => ITEM_KINDS.reduce((a, k) => a + w[k], 0);
+/** Scale to whole numbers adding up to exactly 100 (largest remainder), keeping zeros at zero. */
+function to100(w: Weights): Weights {
+  const t = total(w) || 1;
+  const exact = ITEM_KINDS.map((k) => ({ k, x: (100 * w[k]) / t }));
+  const out = { ...w };
+  for (const e of exact) out[e.k] = Math.floor(e.x);
+  let left = 100 - total(out);
+  for (const e of [...exact].sort((a, b) => (b.x % 1) - (a.x % 1))) {
+    if (left <= 0) break;
+    if (e.x > 0) {
+      out[e.k]++;
+      left--;
+    }
+  }
+  return out;
+}
+const WEIGHT_PRESETS: Record<string, () => Weights> = {
+  Default: defaultWeights,
+  Friendly: () => {
+    const w = defaultWeights();
+    for (const k of ITEM_KINDS) w[k] = ITEM_GOOD.includes(k) ? w[k] * 2 : w[k] / 2;
+    return to100(w);
+  },
+  Mean: () => {
+    const w = defaultWeights();
+    for (const k of ITEM_KINDS) w[k] = ITEM_GOOD.includes(k) ? w[k] / 2 : w[k] * 2;
+    return to100(w);
+  },
+  'Guns only': () => {
+    const w = defaultWeights();
+    for (const k of ITEM_KINDS) w[k] = 0;
+    return { ...w, gun: 75, bazooka: 25 };
+  },
 };
 const ROLE_HINT: Record<Role, string> = {
+  none: 'No passive; play anywhere',
   gk: 'Catches hard shots near your goal, nimble there',
   def: 'Shoulder charge in your half: shoves and slows',
   mid: 'Soft first touch + pass lock across midfield',
@@ -160,30 +213,113 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
       });
       return h('label', {}, label, sel);
     };
-    // Which items crates may contain; at least one stays ticked.
-    const lootBoxes = () =>
-      h(
+    // Crate shares: one slider per item, 0..100. They never add up to more than 100: lowering one puts
+    // the difference in a free pool, raising one can only take what is in the pool. Labels follow the
+    // drag; the room only hears about it on release (a re-render mid-drag would drop the slider).
+    const weightSliders = () => {
+      const w: Weights = { ...s.weights };
+      const free = () => 100 - total(w);
+      const rows = new Map<ItemKind, { input: HTMLInputElement; val: HTMLElement; row: HTMLElement }>();
+      const goodTxt = h('span', { class: 'good' });
+      const badTxt = h('span', { class: 'bad' });
+      const barGood = h('i', { class: 'good' });
+      const barFree = h('i', { class: 'free' });
+      const barBad = h('i', { class: 'bad' });
+      const pool = h('div', { class: 'pool' });
+      const presetRow = h('div', { class: 'presets' });
+      const send = () => onChange({ ...s, weights: { ...w } });
+      const sync = () => {
+        for (const [k, r] of rows) {
+          r.input.value = String(w[k]);
+          r.val.textContent = `${w[k]}%`;
+          r.row.classList.toggle('off', w[k] === 0);
+        }
+        const good = ITEM_GOOD.reduce((a, k) => a + w[k], 0);
+        const bad = ITEM_BAD.reduce((a, k) => a + w[k], 0);
+        goodTxt.textContent = `Good ${good}%`;
+        badTxt.textContent = `Bad ${bad}%`;
+        barGood.style.width = `${good}%`;
+        barFree.style.width = `${free()}%`;
+        barBad.style.width = `${bad}%`;
+        const f = free();
+        const parts: Node[] = [];
+        if (f === 0) parts.push(h('span', {}, 'All 100% given out. Lower one to raise another.'));
+        else if (!editable) parts.push(h('span', {}, `Free: ${f}% (shared out among the rest).`));
+        else {
+          parts.push(h('span', {}, `Free: ${f}%. Raise another item, or `));
+          parts.push(
+            button('spread it', () => {
+              Object.assign(w, to100(w));
+              sync();
+              send();
+            }),
+          );
+        }
+        pool.replaceChildren(...parts);
+        presetRow.replaceChildren(
+          ...Object.entries(WEIGHT_PRESETS).map(([name, make]) => {
+            const p = make();
+            const on = ITEM_KINDS.every((k) => p[k] === w[k]);
+            const b = h('button', { type: 'button', class: on ? 'on' : '', disabled: !editable }, name);
+            b.addEventListener('click', () => {
+              Object.assign(w, make());
+              sync();
+              send();
+            });
+            return b;
+          }),
+        );
+      };
+      const column = (title: string, cls: string, kinds: readonly ItemKind[]) =>
+        h(
+          'div',
+          {},
+          h('div', { class: `grp ${cls}` }, title),
+          ...kinds.map((k) => {
+            const input = h('input', {
+              type: 'range',
+              min: '0',
+              max: '100',
+              step: '1',
+              disabled: !editable,
+              data: { weight: k },
+            });
+            input.setAttribute('aria-label', `${ITEM_LABEL[k]} share`);
+            input.addEventListener('input', () => {
+              let v = Math.min(Number(input.value), w[k] + free());
+              // At least one item stays in.
+              if (v === 0 && ITEM_KINDS.every((o) => o === k || w[o] === 0)) v = 1;
+              w[k] = v;
+              sync();
+            });
+            input.addEventListener('change', send);
+            const val = h('span', { class: 'val' });
+            const row = h(
+              'div',
+              { class: 'wrow' },
+              h('i', { class: 'dot' }),
+              h('span', { class: 'wname' }, ITEM_LABEL[k]),
+              input,
+              val,
+            );
+            row.style.setProperty('--c', ITEM_COLOR[k]);
+            rows.set(k, { input, val, row });
+            return row;
+          }),
+        );
+      const fs = h(
         'fieldset',
-        { class: 'loot' },
+        { class: 'loot weights' },
         h('legend', {}, 'Crate contents'),
-        ...ITEM_KINDS.map((kind) => {
-          const box = h('input', {
-            type: 'checkbox',
-            checked: s.loot.includes(kind),
-            disabled: !editable,
-            data: { loot: kind },
-          });
-          box.addEventListener('change', () => {
-            const next = box.checked ? [...s.loot, kind] : s.loot.filter((k) => k !== kind);
-            if (next.length === 0) {
-              box.checked = true;
-              return;
-            }
-            onChange({ ...s, loot: ITEM_KINDS.filter((k) => next.includes(k)) });
-          });
-          return h('label', { class: 'check' }, box, ITEM_LABEL[kind]);
-        }),
+        presetRow,
+        h('div', { class: 'bal-txt' }, goodTxt, badTxt),
+        h('div', { class: 'balance' }, barGood, barFree, barBad),
+        h('div', { class: 'wcols' }, column('Good', 'good', ITEM_GOOD), column('Bad', 'bad', ITEM_BAD)),
+        pool,
       );
+      sync();
+      return fs;
+    };
     // Which arenas the match draws from (a new one each kickoff); at least one stays ticked.
     const arenaBoxes = () => {
       const pool = s.arenas ?? ARENAS.kinds;
@@ -215,6 +351,13 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
     };
     const bots = h('input', { type: 'checkbox', checked: s.bots, disabled: !editable });
     bots.addEventListener('change', () => onChange({ ...s, bots: bots.checked }));
+    const roles = h('input', {
+      type: 'checkbox',
+      checked: s.roles !== false,
+      disabled: !editable,
+      id: 'roles-on',
+    });
+    roles.addEventListener('change', () => onChange({ ...s, roles: roles.checked }));
     return h(
       'div',
       { class: 'settings' },
@@ -225,9 +368,10 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         'Crates',
         (v) => ({ off: 'Off', normal: 'Normal', chaos: 'Chaos' })[v as string] ?? '',
       ),
-      lootBoxes(),
+      weightSliders(),
       arenaBoxes(),
       h('label', { class: 'check' }, bots, 'Fill with bots'),
+      h('label', { class: 'check' }, roles, 'Positions (role passives)'),
     );
   };
 
@@ -419,24 +563,33 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         specBox,
         mine && button('Watch', () => act.team('spec')),
       );
+      // A real position is one per team: taken by a human teammate = greyed out (a bot just swaps).
+      // "No role" is open to everyone.
+      const takenBy = (r: Role) =>
+        r === 'none' || !mine
+          ? undefined
+          : room.players.find((p) => p.team === mine.team && p.role === r && !p.bot && p.id !== me);
       const roles = h(
         'div',
         { class: 'roles' },
-        ...(['gk', 'def', 'mid', 'fwd'] as const).map((r) =>
-          h(
+        ...(['gk', 'def', 'mid', 'fwd', 'none'] as const).map((r) => {
+          const owner = takenBy(r);
+          return h(
             'button',
             {
               type: 'button',
               class: mine?.role === r ? 'on' : '',
-              title: ROLE_HINT[r],
+              title: owner ? `${owner.name} plays ${ROLE_NAME[r]}` : ROLE_HINT[r],
+              disabled: owner !== undefined,
               onclick: () => act.role(r),
               data: { role: r },
             },
             h('b', {}, ROLE_LABEL[r]),
             ` ${ROLE_NAME[r]}`,
-          ),
-        ),
+          );
+        }),
       );
+      const rolesOn = room.settings.roles !== false;
       show(
         'lobby',
         h(
@@ -456,8 +609,15 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
             h('div', { class: 'teams' }, column('red'), column('blue')),
             spectators,
             mine && h('h3', {}, 'Pick your position'),
-            mine && roles,
-            mine && h('div', { class: 'hint' }, `${ROLE_NAME[mine.role]}: ${ROLE_HINT[mine.role]}`),
+            mine && rolesOn && roles,
+            mine &&
+              h(
+                'div',
+                { class: 'hint' },
+                rolesOn
+                  ? `${ROLE_NAME[mine.role]}: ${ROLE_HINT[mine.role]}`
+                  : 'Positions are off for this match.',
+              ),
             h('div', { id: 'chat-slot' }),
           ),
           h(

@@ -1,6 +1,6 @@
-import type { ArenaKind, Game, Role, Settings, Team } from '@crateball/sim';
+import type { ArenaKind, Game, ItemKind, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */
@@ -180,12 +180,9 @@ const ITEMS: readonly string[] = [
 export function decodeSettings(v: unknown): Settings | null {
   if (!isObj(v)) return null;
   const { minutes, scoreLimit, crates, bots } = v;
-  // Older clients send nothing ('mixed') or a single kind; newer ones a list of kinds.
-  const raw = v.loot ?? 'mixed';
-  const list = raw === 'mixed' ? ITEMS : typeof raw === 'string' ? [raw] : raw;
-  if (!Array.isArray(list) || list.length === 0 || list.length > ITEMS.length) return null;
-  if (!list.every((k) => typeof k === 'string' && ITEMS.includes(k))) return null;
-  const loot = ITEMS.filter((k) => (list as string[]).includes(k)) as Settings['loot'];
+  const weights = decodeWeights(v);
+  if (!weights) return null;
+  if (v.roles !== undefined && typeof v.roles !== 'boolean') return null;
   if (![2, 3, 5, 10, 0].includes(minutes as number) || ![3, 5, 7, 10].includes(scoreLimit as number))
     return null;
   if (crates !== 'off' && crates !== 'normal' && crates !== 'chaos') return null;
@@ -200,10 +197,52 @@ export function decodeSettings(v: unknown): Settings | null {
     minutes: minutes as number,
     scoreLimit: scoreLimit as number,
     crates,
-    loot: loot as Settings['loot'],
+    weights,
+    roles: v.roles !== false,
     arenas,
     bots,
   };
+}
+
+/**
+ * Crate shares: whole numbers 0..100 per item, adding up to 1..100 (missing items = 0). A settings
+ * object without `weights` but with the older `loot` list keeps the standard shares of those items.
+ */
+/** The standard crate shares (sim CRATES.loot; a test keeps the two in step: protocol only takes types
+ * from the sim). */
+export const DEFAULT_WEIGHTS: Readonly<Settings['weights']> = {
+  gun: 18,
+  mine: 22,
+  ice: 18,
+  dizzy: 10,
+  boost: 7,
+  shield: 7,
+  power: 6,
+  teleport: 6,
+  bazooka: 6,
+};
+
+function decodeWeights(v: Record<string, unknown>): Settings['weights'] | null {
+  const out = { ...DEFAULT_WEIGHTS };
+  if (v.weights === undefined) {
+    if (v.loot === undefined) return out;
+    const list = v.loot;
+    if (!Array.isArray(list) || list.length === 0 || list.length > ITEMS.length) return null;
+    if (!list.every((k) => typeof k === 'string' && ITEMS.includes(k))) return null;
+    for (const k of ITEMS) if (!(list as string[]).includes(k)) out[k as ItemKind] = 0;
+    return out;
+  }
+  const w = v.weights;
+  if (!isObj(w)) return null;
+  if (!Object.keys(w).every((k) => ITEMS.includes(k))) return null;
+  let sum = 0;
+  for (const k of ITEMS) {
+    const n = w[k] ?? 0;
+    if (!Number.isInteger(n) || (n as number) < 0 || (n as number) > 100) return null;
+    out[k as ItemKind] = n as number;
+    sum += n as number;
+  }
+  return sum >= 1 && sum <= 100 ? out : null;
 }
 
 /** Güvenilmeyen girdi: doğrular ve yalnızca bilinen alanlarla yeni nesne döner. */
@@ -272,7 +311,7 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
     case 'team':
       return m.team === 'red' || m.team === 'blue' ? { t: 'team', team: m.team } : null;
     case 'role':
-      return m.role === 'gk' || m.role === 'def' || m.role === 'mid' || m.role === 'fwd'
+      return m.role === 'gk' || m.role === 'def' || m.role === 'mid' || m.role === 'fwd' || m.role === 'none'
         ? { t: 'role', role: m.role }
         : null;
     default:

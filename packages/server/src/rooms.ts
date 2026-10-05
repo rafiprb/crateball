@@ -549,7 +549,7 @@ export function createRooms(
       if (!room) return;
       const p = room.game.players.find((o) => o.id === id);
       if (!p || p.role === role) return; // spectators and no-op changes: nothing to tell anyone
-      setRole(room.game, id, role);
+      if (!setRole(room.game, id, role)) return; // a human teammate already plays it
       announce(room);
     },
     setSettings(id, settings) {

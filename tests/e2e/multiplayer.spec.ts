@@ -4,7 +4,7 @@ type State = {
   room: {
     code: string;
     name: string;
-    settings: { loot: string[] };
+    settings: { weights: Record<string, number>; roles?: boolean };
     state: string;
     host: string;
     players: Array<{ id: string; name: string; team: string; bot: boolean }>;
@@ -97,8 +97,8 @@ test('lobi: oda kur, Find Room ile bul, host sürükleyerek yer değiştirir, me
   await a.locator('#room-name').fill('E2E lobby');
   await a.locator('#room-name').press('Enter');
   await expect.poll(async () => (await state(a)).room?.name).toBe('E2E lobby');
-  await a.locator('input[data-loot=gun]').uncheck();
-  await expect.poll(async () => (await state(a)).room?.settings.loot.includes('gun')).toBe(false);
+  await a.locator('input[data-weight=gun]').fill('0');
+  await expect.poll(async () => (await state(a)).room?.settings.weights.gun).toBe(0);
   const code = await a.locator('#room-code').innerText();
 
   await b.goto('/?name=Guest');

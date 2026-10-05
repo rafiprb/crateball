@@ -6,6 +6,7 @@ import {
   DEFAULT_SETTINGS,
   FIELD,
   ITEMS,
+  ITEM_KINDS,
   MATCH,
   PASS,
   PLAYER,
@@ -100,16 +101,24 @@ export function teamCount(g: Game, team: Team, bots?: boolean): number {
 
 export function freeRole(g: Game, team: Team): Role {
   const used = new Set(g.players.filter((p) => p.team === team).map((p) => p.role));
-  return ROLES.order.find((r) => !used.has(r)) ?? 'mid';
+  return ROLES.order.find((r) => !used.has(r)) ?? 'none';
 }
 
-/** Take a role; a teammate already holding it gets yours. */
-export function setRole(g: Game, id: string, role: Role): void {
+/**
+ * Take a role. `none` is always free. A real role held by a human teammate is taken (refused, returns
+ * false); one held by a bot is, and the bot gets your old role (or the next free one).
+ */
+export function setRole(g: Game, id: string, role: Role): boolean {
   const p = g.players.find((o) => o.id === id);
-  if (!p || p.role === role) return;
-  const other = g.players.find((o) => o.team === p.team && o.role === role);
-  if (other) other.role = p.role;
+  if (!p) return false;
+  if (p.role === role) return true;
+  const other = role === 'none' ? undefined : g.players.find((o) => o.team === p.team && o.role === role);
+  if (other && !other.bot) return false;
+  const old = p.role;
   p.role = role;
+  if (other) other.role = old !== 'none' ? old : 'none';
+  if (other && other.role === 'none') other.role = freeRole(g, other.team);
+  return true;
 }
 
 export function addPlayer(g: Game, id: string, name: string, team: Team, bot = false): Player {
@@ -264,8 +273,8 @@ function controlPlayer(g: Game, p: Player): void {
   if (p.boost > 0) p.boost--;
   if (p.dizzy > 0) p.dizzy--;
   if (p.chargeCd > 0) p.chargeCd--;
-  p.buff = inZone(p);
-  p.r = p.role === 'gk' && inBox(p) ? ROLES.gk.radius : PLAYER.radius;
+  p.buff = rolesOn(g) && inZone(p);
+  p.r = p.role === 'gk' && rolesOn(g) && inBox(p) ? ROLES.gk.radius : PLAYER.radius;
   const kickHeld = (p.input & KICK) !== 0;
   const useHeld = (p.input & USE) !== 0;
   if (p.frozen > 0) {
@@ -295,7 +304,7 @@ function controlPlayer(g: Game, p: Player): void {
     p.fy = dy;
     let a = kickHeld ? PLAYER.kickingAccel : PLAYER.accel;
     if (p.slow > 0) a *= ITEMS.slowMul;
-    a *= accelMul(p);
+    a *= accelMul(g, p);
     if (p.bot) a *= BOT.accelMul;
     a *= arenaAccel(g, p);
     if (p.boost > 0) a *= ITEMS.boostMul;
@@ -321,6 +330,8 @@ const advance = (p: Player) => -side(p.team) * p.x;
 const inBox = (p: Player) =>
   advance(p) < -(FIELD.halfW - ROLES.gk.boxDepth) && Math.abs(p.y) < ROLES.gk.boxHalf;
 
+const rolesOn = (g: Game) => g.settings.roles !== false;
+
 function inZone(p: Player): boolean {
   const u = advance(p);
   switch (p.role) {
@@ -332,11 +343,13 @@ function inZone(p: Player): boolean {
       return Math.abs(u) < ROLES.mid.zoneHalf;
     case 'fwd':
       return u > ROLES.fwd.zoneStart;
+    case 'none':
+      return false;
   }
 }
 
-function accelMul(p: Player): number {
-  if (p.role === 'gk') return p.buff ? ROLES.gk.agility : ROLES.gk.outsideAccel;
+function accelMul(g: Game, p: Player): number {
+  if (p.role === 'gk' && rolesOn(g)) return p.buff ? ROLES.gk.agility : ROLES.gk.outsideAccel;
   if (!p.buff) return 1;
   return p.role === 'fwd' ? ROLES.fwd.accel : 1;
 }
@@ -779,10 +792,14 @@ function spawnCrate(g: Game): void {
   }
 }
 
-function rollLoot(g: Game): ItemKind {
-  const allowed = g.settings.loot?.length ? g.settings.loot : null;
-  const table = allowed ? CRATES.loot.filter(([kind]) => allowed.includes(kind)) : CRATES.loot;
-  const total = table.reduce((s, [, w]) => s + w, 0);
+/** What a crate holds, drawn from the host's shares. Exported for tests. */
+export function rollLoot(g: Game): ItemKind {
+  // The host's shares; anything left unassigned is spread in proportion simply by drawing over the
+  // total that was assigned.
+  const w = g.settings.weights;
+  const custom = w ? ITEM_KINDS.map((k) => [k, w[k] ?? 0] as const).filter(([, n]) => n > 0) : [];
+  const table = custom.length ? custom : CRATES.loot;
+  const total = table.reduce((s, [, n]) => s + n, 0);
   let r = rand(g) * total;
   for (const [kind, w] of table) {
     if ((r -= w) < 0) return kind;

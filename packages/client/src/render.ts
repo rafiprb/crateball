@@ -104,6 +104,7 @@ const ROLE_STYLE: Record<Role, [string, string]> = {
   def: ['DF', 'Defender: shoulder charge in your half'],
   mid: ['MF', 'Midfielder: soft first touch + pass lock in midfield'],
   fwd: ['FW', 'Forward: fastest, near misses curl inside the post'],
+  none: ['', 'No role'],
 };
 
 const HUD_H = 56;
@@ -440,7 +441,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (p.slow > 0) text('~', pos.x, pos.y - r - 12, 16, '#C59BFF', 800);
       for (let i = 0; i < PLAYER.maxHp; i++)
         circle(pos.x - 8 + i * 8, pos.y - r - 5, 2.6, i < p.hp ? '#FF5A6E' : 'rgba(0,0,0,.35)');
-      text(ROLE_STYLE[p.role][0], pos.x, pos.y + 1, 10, p.buff ? '#FFF4E0' : 'rgba(255,244,224,.55)', 800);
+      if (g.settings.roles !== false)
+        text(ROLE_STYLE[p.role][0], pos.x, pos.y + 1, 10, p.buff ? '#FFF4E0' : 'rgba(255,244,224,.55)', 800);
       text(p.name, pos.x, pos.y + r + 10, 11, me ? '#FFF4E0' : 'rgba(255,244,224,.85)', 700);
     }
     const bp = pr.pos('ball', alpha) ?? g.ball;
@@ -500,7 +502,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const mine = g.players.find((p) => p.id === pr.me);
     const aim = mine && mine.dead === 0 && mine.frozen === 0 ? kickDirection(g, mine) : null;
     if (aim) {
-      const showPass = aim.to !== null && mine?.role === 'mid';
+      const showPass = aim.to !== null && mine?.role === 'mid' && g.settings.roles !== false;
       const color = showPass ? '#FFE066' : 'rgba(255,255,255,.75)';
       const sx = bp.x + aim.x * (BALL.radius + 4);
       const sy = bp.y + aim.y * (BALL.radius + 4);
@@ -638,7 +640,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const h = canvas.height / dpr;
     if (me) {
       const bits: string[] = [];
-      bits.push(`${ROLE_STYLE[me.role][1]}${me.buff ? ' ✓' : ''}`);
+      if (g.settings.roles !== false) bits.push(`${ROLE_STYLE[me.role][1]}${me.buff ? ' ✓' : ''}`);
       if (me.dead > 0) bits.push(`Respawn in ${Math.ceil(me.dead / TICK_HZ)}…`);
       if (me.gun > 0) bits.push(`Gun ×${me.gun} [E/Shift]`);
       if (me.teleport) bits.push('Teleport: blink [E/Shift]');

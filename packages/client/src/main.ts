@@ -285,7 +285,13 @@ stopBtn.addEventListener('click', () => {
 });
 document.body.append(stopBtn);
 
-const ROLE_KEYS: Record<string, Role> = { Digit1: 'gk', Digit2: 'def', Digit3: 'mid', Digit4: 'fwd' };
+const ROLE_KEYS: Record<string, Role> = {
+  Digit1: 'gk',
+  Digit2: 'def',
+  Digit3: 'mid',
+  Digit4: 'fwd',
+  Digit5: 'none',
+};
 const keyboard = createKeyboard(window, (code) => {
   if (code === 'KeyM') setMuted(!sound.muted);
   if (code === 'KeyR' || code === 'F9') sendReport();

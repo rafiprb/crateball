@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { PROTOCOL_VERSION, decodeClientMessage, decodeServerMessage, encode } from '../src/index';
+import {
+  DEFAULT_WEIGHTS,
+  PROTOCOL_VERSION,
+  decodeClientMessage,
+  decodeServerMessage,
+  encode,
+} from '../src/index';
+import { defaultWeights } from '@crateball/sim';
 
 describe('istemci mesajları', () => {
+  it('varsayılan kutu payları sim ile aynı', () => {
+    expect(DEFAULT_WEIGHTS).toEqual(defaultWeights());
+  });
   it('hello gidiş-dönüş (token ile ve tokensız)', () => {
     const a = { t: 'hello', protocolVersion: PROTOCOL_VERSION } as const;
     const b = { t: 'hello', protocolVersion: PROTOCOL_VERSION, sessionToken: 'abc' } as const;
@@ -77,19 +87,29 @@ describe('oyun mesajları', () => {
       public: true,
       settings: {
         ...ok,
-        loot: ['gun', 'mine', 'ice', 'dizzy', 'boost', 'shield', 'power', 'teleport', 'bazooka'],
+        weights: defaultWeights(),
+        roles: true,
         arenas: ['classic', 'rain', 'volcano', 'ice', 'wind'],
       },
     });
     expect(decodeClientMessage(raw({ ...ok, minutes: 999 }))).toBeNull();
     expect(decodeClientMessage(raw({ ...ok, minutes: 0 }))).toMatchObject({ settings: { minutes: 0 } });
-    expect(decodeClientMessage(raw({ ...ok, loot: 'teleport' }))).toMatchObject({
-      settings: { loot: ['teleport'] },
+    // Crate shares: whole numbers 0..100 adding up to 1..100, missing items = 0.
+    expect(decodeClientMessage(raw({ ...ok, weights: { gun: 60, mine: 30 } }))).toMatchObject({
+      settings: { weights: { gun: 60, mine: 30, ice: 0, bazooka: 0 } },
     });
-    expect(decodeClientMessage(raw({ ...ok, loot: ['teleport', 'gun', 'gun'] }))).toMatchObject({
-      settings: { loot: ['gun', 'teleport'] },
+    expect(decodeClientMessage(raw({ ...ok, weights: { gun: 70, mine: 40 } }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, weights: { gun: 0 } }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, weights: { gun: 2.5 } }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, weights: { gun: -1, mine: 50 } }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, weights: { nuke: 10 } }))).toBeNull();
+    // An older loot list keeps the standard shares of the listed items.
+    expect(decodeClientMessage(raw({ ...ok, loot: ['teleport', 'gun'] }))).toMatchObject({
+      settings: { weights: { gun: 18, teleport: 6, mine: 0 } },
     });
     expect(decodeClientMessage(raw({ ...ok, loot: [] }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, roles: false }))).toMatchObject({ settings: { roles: false } });
+    expect(decodeClientMessage(raw({ ...ok, roles: 'no' }))).toBeNull();
     // Arenas: missing = all, a list is sorted and de-duplicated, empty or unknown is refused.
     expect(decodeClientMessage(raw(ok))).toMatchObject({
       settings: { arenas: ['classic', 'rain', 'volcano', 'ice', 'wind'] },
@@ -101,7 +121,7 @@ describe('oyun mesajları', () => {
     expect(decodeClientMessage(raw({ ...ok, arenas: ['moon'] }))).toBeNull();
     expect(decodeClientMessage(JSON.stringify({ t: 'kick', id: 'x' }))).toEqual({ t: 'kick', id: 'x' });
     expect(decodeClientMessage(JSON.stringify({ t: 'kick', id: 5 }))).toBeNull();
-    expect(decodeClientMessage(raw({ ...ok, loot: 'nuke' }))).toBeNull();
+    expect(decodeClientMessage(raw({ ...ok, loot: ['nuke'] }))).toBeNull();
   });
   it('girdi baytı 0..63 aralığında', () => {
     expect(decodeClientMessage('{"t":"in","s":5,"b":17}')).toEqual({ t: 'in', s: 5, b: 17 });

@@ -105,7 +105,8 @@ export const ITEMS = {
   blinkDistance: 150,
 };
 
-export type Role = 'gk' | 'def' | 'mid' | 'fwd';
+/** `none`: no position (no passive). Anyone may take it; the four real ones are one per team. */
+export type Role = 'gk' | 'def' | 'mid' | 'fwd' | 'none';
 
 /**
  * Positions: each role has its own kind of passive, active only inside its (wide) zone, so spreading
@@ -164,9 +165,12 @@ export interface Settings {
   minutes: number;
   scoreLimit: number;
   crates: 'off' | 'normal' | 'chaos';
-  /** Which items crates may contain (weighted as usual among them). All of them = the normal mix;
-   * one = a fun mode, also handy for trying a new item. Never empty. */
-  loot: ItemKind[];
+  /** How likely each item is when a crate opens: whole-number shares out of 100 (they add up to at
+   * most 100; whatever is left over is spread over the others in proportion). 0 = never. At least one
+   * item is above 0. */
+  weights: Record<ItemKind, number>;
+  /** Position passives on (missing = on). Off: nobody gets a role buff. */
+  roles?: boolean;
   /** Arenas the match draws from (missing = all of them). Never empty. */
   arenas?: ArenaKind[];
   bots: boolean;
@@ -184,6 +188,13 @@ export const ITEM_KINDS: readonly ItemKind[] = [
   'bazooka',
 ];
 
+/** The standard mix (CRATES.loot) as a settings weight table. */
+export function defaultWeights(): Record<ItemKind, number> {
+  const w = Object.fromEntries(ITEM_KINDS.map((k) => [k, 0])) as Record<ItemKind, number>;
+  for (const [kind, n] of CRATES.loot) w[kind] = n;
+  return w;
+}
+
 export const SETTING_CHOICES = {
   minutes: [2, 3, 5, 10, 0],
   scoreLimit: [3, 5, 7, 10],
@@ -194,7 +205,8 @@ export const DEFAULT_SETTINGS: Settings = {
   minutes: 3,
   scoreLimit: 5,
   crates: 'normal',
-  loot: [...ITEM_KINDS],
+  weights: defaultWeights(),
+  roles: true,
   bots: true,
 };
 

@@ -269,12 +269,16 @@ ul.rooms li {
 }
 .roles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
 }
 .roles button {
   font-size: 14px;
   padding: 6px 4px;
+}
+.roles button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 .roles button.on {
   background: #ffe066;
@@ -635,4 +639,123 @@ li > button.kick:hover {
 }
 .lobby-cols .rname {
   display: none;
+}
+
+/* Crate shares: presets, a good/bad balance bar and one slider per item (two columns). */
+fieldset.weights {
+  display: block;
+}
+.weights .presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.weights .presets button,
+.weights .pool button {
+  font:
+    700 13px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #222a5a;
+  border: 2px solid #3a4470;
+  box-shadow: none;
+  min-width: 0;
+}
+.weights .presets button.on {
+  border-color: #ffb347;
+  color: #ffb347;
+}
+.weights .bal-txt {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+}
+.weights .good {
+  color: #7cff7a;
+}
+.weights .bad {
+  color: #ff8a65;
+}
+.weights .balance {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #222a55;
+  margin: 2px 0 6px;
+}
+.weights .balance i {
+  display: block;
+  height: 100%;
+}
+.weights .balance i.good {
+  background: #7cff7a;
+}
+.weights .balance i.free {
+  background: #3a4470;
+}
+.weights .balance i.bad {
+  background: #ff6a3d;
+}
+.weights .wcols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+.weights .grp {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.weights .wrow {
+  display: grid;
+  grid-template-columns: 10px 74px 1fr 36px;
+  gap: 6px;
+  align-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 19px;
+}
+.weights .wrow .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.weights .wrow input[type='range'] {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  height: 14px;
+  accent-color: var(--c);
+  background: none;
+  border: 0;
+}
+.weights .wrow .val {
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.weights .wrow.off .wname {
+  color: #687099;
+  text-decoration: line-through;
+}
+.weights .pool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #aab0d0;
+}
+@media (max-width: 520px) {
+  .weights .wcols {
+    grid-template-columns: 1fr;
+  }
 }

@@ -27,8 +27,19 @@ import {
   setRole,
   step,
   botInput,
+  defaultWeights,
+  rollLoot,
+  DEFAULT_SETTINGS,
   type Game,
+  type ItemKind,
 } from '../src';
+
+/** Crate shares with just one item in. */
+const only = (kind: ItemKind) => {
+  const w = defaultWeights();
+  for (const k of ITEM_KINDS) w[k] = k === kind ? 100 : 0;
+  return w;
+};
 
 const run = (g: Game, n: number, inputs?: Map<string, number>) => {
   for (let i = 0; i < n; i++) step(g, inputs);
@@ -180,7 +191,7 @@ describe('sim', () => {
   });
 
   it('süresiz maç: saat ileri sayar, süre bitmez, yalnızca gol limitiyle biter', () => {
-    const g = createGame(1, { minutes: 0, scoreLimit: 3, crates: 'off', loot: ['gun'], bots: false });
+    const g = createGame(1, { minutes: 0, scoreLimit: 3, crates: 'off', weights: only('gun'), bots: false });
     addPlayer(g, 'a', 'A', 'red');
     restartMatch(g);
     expect(g.clock).toBe(0);
@@ -261,7 +272,13 @@ describe('sim', () => {
   it('yalnız botlar ortada birbirine vurup kilitlenmez: her maçta gol olur', () => {
     const goals: number[] = [];
     for (let seed = 1; seed <= 8; seed++) {
-      const g = createGame(seed, { minutes: 3, scoreLimit: 5, crates: 'off', loot: ['gun'], bots: true });
+      const g = createGame(seed, {
+        minutes: 3,
+        scoreLimit: 5,
+        crates: 'off',
+        weights: only('gun'),
+        bots: true,
+      });
       addPlayer(g, 'r', 'R', 'red', true);
       addPlayer(g, 'b', 'B', 'blue', true);
       g.arenaPlan = ['classic'];
@@ -281,13 +298,52 @@ describe('sim', () => {
 });
 
 describe('mevkiler', () => {
-  it('takım içinde mevkiler sırayla dağılır ve takas edilir', () => {
+  it('takım içinde mevkiler sırayla dağılır; botun mevkisi alınır, insanınki alınamaz', () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'red');
     const b = addPlayer(g, 'b', 'B', 'red');
+    const bot = addPlayer(g, 'x', 'X', 'red', true);
+    expect([a.role, b.role, bot.role]).toEqual(['fwd', 'gk', 'mid']);
+    // A human teammate's position is taken.
+    expect(setRole(g, 'a', 'gk')).toBe(false);
     expect([a.role, b.role]).toEqual(['fwd', 'gk']);
-    setRole(g, 'a', 'gk');
-    expect([a.role, b.role]).toEqual(['gk', 'fwd']);
+    // A bot's is swapped.
+    expect(setRole(g, 'a', 'mid')).toBe(true);
+    expect([a.role, bot.role]).toEqual(['mid', 'fwd']);
+    // "No role" is open to everyone, any number of times; a bot pushed off gets a free real role.
+    expect(setRole(g, 'b', 'none')).toBe(true);
+    expect(setRole(g, 'a', 'none')).toBe(true);
+    expect([a.role, b.role]).toEqual(['none', 'none']);
+    expect(setRole(g, 'a', 'fwd')).toBe(true);
+    expect(bot.role).not.toBe('none');
+    expect(bot.role).not.toBe('fwd');
+  });
+  it('mevkiler kapalıyken ve rolsüz oyuncuda pasif yok', () => {
+    const buffed = (roles: boolean, role: 'gk' | 'none') => {
+      const g = createGame(1, { ...DEFAULT_SETTINGS, roles });
+      const k = addPlayer(g, 'k', 'K', 'red');
+      setRole(g, 'k', role);
+      Object.assign(k, { x: -FIELD.halfW + 30, y: 0 });
+      step(g);
+      return [k.buff, k.r];
+    };
+    expect(buffed(true, 'gk')).toEqual([true, ROLES.gk.radius]);
+    expect(buffed(false, 'gk')).toEqual([false, PLAYER.radius]);
+    expect(buffed(true, 'none')).toEqual([false, PLAYER.radius]);
+  });
+  it('kutu payları: sıfır olan hiç çıkmaz, oranlar tutar (boşta kalan orantılı dağılır)', () => {
+    const w = defaultWeights();
+    for (const k of ITEM_KINDS) w[k] = 0;
+    Object.assign(w, { gun: 30, mine: 10 }); // 60 left unassigned
+    const g = createGame(7, { ...DEFAULT_SETTINGS, weights: w });
+    const seen: Record<string, number> = {};
+    for (let i = 0; i < 4000; i++) {
+      const k = rollLoot(g);
+      seen[k] = (seen[k] ?? 0) + 1;
+    }
+    expect(Object.keys(seen).sort()).toEqual(['gun', 'mine']);
+    expect(seen.gun! / 4000).toBeGreaterThan(0.7);
+    expect(seen.gun! / 4000).toBeLessThan(0.8);
   });
   it('kaleci kendi ceza sahasında büyür, dışarıda normale döner', () => {
     const g = createGame(1);
@@ -669,7 +725,13 @@ describe('bazuka', () => {
 
 describe('kutu içeriği ayarı', () => {
   it('tek tür seçilince her kutudan o çıkar', () => {
-    const g = createGame(3, { minutes: 3, scoreLimit: 5, crates: 'chaos', loot: ['teleport'], bots: false });
+    const g = createGame(3, {
+      minutes: 3,
+      scoreLimit: 5,
+      crates: 'chaos',
+      weights: only('teleport'),
+      bots: false,
+    });
     const a = addPlayer(g, 'a', 'A', 'red');
     g.phase = 'play';
     a.x = 9999;
@@ -689,7 +751,13 @@ describe('kutu içeriği ayarı', () => {
 
 describe('sahalar', () => {
   const arenaGame = (seed = 1, scoreLimit = 5) => {
-    const g = createGame(seed, { minutes: 3, scoreLimit, crates: 'off', loot: [...ITEM_KINDS], bots: false });
+    const g = createGame(seed, {
+      minutes: 3,
+      scoreLimit,
+      crates: 'off',
+      weights: defaultWeights(),
+      bots: false,
+    });
     addPlayer(g, 'a', 'A', 'red');
     return g;
   };

@@ -11,7 +11,7 @@ import {
   encode,
   type ServerMessage,
 } from '@crateball/protocol';
-import { ITEM_KINDS, type Settings } from '@crateball/sim';
+import { defaultWeights, type Settings } from '@crateball/sim';
 import { createLogger, loadConfig, startServer, type RunningServer, type ServerConfig } from '../src/app';
 
 const silent = new Writable({ write: (_c, _e, cb) => cb() });
@@ -269,7 +269,8 @@ describe('WebSocket', () => {
       minutes: 2,
       scoreLimit: 3,
       crates: 'chaos',
-      loot: [...ITEM_KINDS],
+      weights: defaultWeights(),
+      roles: true,
       arenas: ['ice', 'wind'],
       bots: true,
     };
@@ -331,7 +332,7 @@ describe('girdi kuyruğu', () => {
       'A',
       'R',
       false,
-      { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: false },
+      { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false },
       () => {},
       'k',
     );
@@ -360,7 +361,7 @@ describe('girdi kuyruğu', () => {
       'A',
       'R',
       false,
-      { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: false },
+      { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false },
       () => {},
     );
     if (typeof room === 'string') throw new Error(room);
@@ -382,7 +383,7 @@ describe('girdi kuyruğu', () => {
       'A',
       'R',
       false,
-      { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: false },
+      { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false },
       (r) => sent.push(r),
     );
     if (typeof room === 'string') throw new Error(room);
@@ -405,7 +406,13 @@ describe('girdi kuyruğu', () => {
 });
 
 describe('inceleme düzeltmeleri (sunucu)', () => {
-  const settings: Settings = { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: true };
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: true,
+  };
   const make = async () => {
     const { createRooms } = await import('../src/rooms');
     return createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
@@ -651,7 +658,7 @@ describe('WebSocket sınırları', () => {
         name: 'Host',
         roomName: 'R',
         public: false,
-        settings: { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: true },
+        settings: { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: true },
       }),
     );
     const { code } = await until(a, 'joined');
@@ -689,7 +696,7 @@ describe('WebSocket sınırları', () => {
         name: 'Host',
         roomName: 'R',
         public: false,
-        settings: { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: true },
+        settings: { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: true },
       }),
     );
     const { code } = await until(a, 'joined');
@@ -730,7 +737,7 @@ describe('uzun sessizlik', () => {
       minutes: 3,
       scoreLimit: 5,
       crates: 'off',
-      loot: [...ITEM_KINDS],
+      weights: defaultWeights(),
       bots: false,
     };
     const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.push(r));

@@ -11,7 +11,11 @@ oyuncu kutuya değince açılır.
 - Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol. "No time limit" seçilirse süre yok: maç yalnızca
   gol limitiyle biter, saat oynanan süreyi ileri sayar.
 - Can 3; ölünce 3 sn sonra orta çizginin bir ucunda, kendi yarısında doğar: üst yarıda öldüyse alt uçta, alt yarıda öldüyse üst uçta. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
-- Kutu ağırlıkları (100 üzerinden; kötüler = iyiler = 50): Mine 22, Ice 18, Dizzy 10 | Gun 18, Speed 7,
+- Kutu payları host'un elinde: lobide her eşyaya 0–100 kaydırıcı, toplam 100'ü geçemez (birini kısınca
+  boşa çıkan pay havuza düşer, diğeri oradan artar; boşta kalan maçta orantılı dağılır). Hazır ayarlar:
+  Default / Friendly / Mean / Guns only. Maç başlarken ayarlar loglanır ('maç başladı'), hangi
+  karışımların seçildiği oradan sayılır.
+- Varsayılan kutu ağırlıkları (100 üzerinden; kötüler = iyiler = 50): Mine 22, Ice 18, Dizzy 10 | Gun 18, Speed 7,
   Shield 7, Power kick 6, Teleport 6, Bazooka 6.
 - **Dizzy** (kötü): 4 sn yön tuşları ters çalışır; kafadan kabarcıklar çıkar. Santrada ve ölünce geçer.
 - **Shield** süresiz: gol olana ya da ilk kötü şey gelene kadar kalır ve onu tek seferlik engeller (mermi,
@@ -37,7 +41,10 @@ oyuncu kutuya değince açılır.
   - FW (orta çizginin 80 px ilerisinden): en hızlı, %25 sert şut; direğin az dışına giden şut içeri kıvrılır.
   - Tutma / yumuşak karşılama sadece sert gelen topta (top ve çarpma hızı ≥ 2 px/tik): yavaş dokunuş, top
     sürme ve topun etrafında dönme normal kalır, yani kaleci tutup çevirip pas atabilir.
-  - 1–4 tuşlarıyla değişir (takım arkadaşıyla takas).
+  - Gerçek mevkiler takımda tek kişilik: bir insan takım arkadaşının mevkisi alınamaz (lobide düğmesi
+    kapalı), botunki alınır (bot boşta kalan bir mevkiye geçer). "No role" (pasifsiz) herkese açık.
+    1–5 tuşlarıyla maç içinde de değişir.
+  - Host lobide "Positions" kutusunu kapatırsa kimse pasif almaz (mevki etiketleri ve seçici gizlenir).
 - Pas: vuruş yönü bir takım arkadaşına ±6° (orta saha kendi bölgesinde ±15°) yakınsa top ona doğru
   bükülür ve koşusunun önüne atılır; kale ağzına giden şut bükülmez. Vuruş tuşu basılı değilken
   topa değmek "hafif dokunuş"tur (top az seker, kontrol kolay). Kendi oyuncunun topa yakınken
