@@ -8,7 +8,7 @@ export const FIELD = {
   goalHalf: 64,
   goalDepth: 34,
   postRadius: 8,
-  /** Players may roam this far beyond the touchlines (haxball style). */
+  /** Players may roam this far beyond the touchlines. */
   margin: 40,
   centerRadius: 70,
 };

@@ -30,6 +30,8 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
   input.placeholder = 'Say something… (Enter)';
   input.autocomplete = 'off';
   root.append(log, input);
+  // Off until we are in a room (the main menu has no chat).
+  root.hidden = true;
   document.body.append(root);
   let current: 'lobby' | 'game' | 'off' = 'off';
   /** Highest line number shown: a replay after a reconnect skips what is already here. */

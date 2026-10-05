@@ -2,7 +2,7 @@
 
 **Play:** https://playcrateball.com
 
-Browser 3v3 arcade football in the spirit of haxball. Open a link, create a room, share the code. Crates
+Browser 3v3 arcade football. Open a link, create a room, share the code. Crates
 drop at random spots: a **gun** (3 hits and you're out), a **mine** (lose a heart and slow down), **ice**
 (frozen for a moment), plus speed, a shield and a power kick.
 

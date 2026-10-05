@@ -415,6 +415,9 @@ function getState() {
       },
       ball: g.ball,
       crates: g.crates.map((c) => ({ x: c.x, y: c.y })),
+      arena: g.arena.kind,
+      bullets: g.bullets.length,
+      blasts: g.blasts.map((b) => b.kind),
     },
   };
 }

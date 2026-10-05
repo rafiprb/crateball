@@ -1,11 +1,11 @@
 # Crateball — tasarım
 
-Haxball tarzı, tarayıcıda linkle açılan 1–3 v 1–3 arcade futbol. Rastgele yerlerde kutular düşer;
+Tarayıcıda linkle açılan 1–3 v 1–3 arcade futbol. Rastgele yerlerde kutular düşer;
 oyuncu kutuya değince açılır.
 
 ## Kurallar (sabitler: `packages/sim/src/content/rules.ts`)
 
-- Saha 840×400 px, 60 tick/sn. Haxball fiziği: daire çarpışmaları, sönümleme, vuruş tuşu basılıyken
+- Saha 840×400 px, 60 tick/sn. Fizik: daire çarpışmaları, sönümleme, vuruş tuşu basılıyken
   yavaşlama, tuşa her basışta bir vuruş.
 - Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol.
 - Can 3; ölünce 3 sn sonra orta çizginin bir ucunda, kendi yarısında doğar: üst yarıda öldüyse alt uçta, alt yarıda öldüyse üst uçta. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.

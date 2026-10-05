@@ -116,3 +116,17 @@ test('tarayıcı konsolu logs/dev.log dosyasına Türkçe bozulmadan akar', asyn
     .poll(() => (existsSync(LOG_FILE) ? readFileSync(LOG_FILE, 'utf8') : ''), { timeout: 5000 })
     .toContain(marker);
 });
+
+test('ana menüde sohbet kutusu yok; lobide var, çıkınca gider', async ({ page }) => {
+  await page.goto('/?name=Test');
+  await page.waitForSelector('#ui .panel');
+  await expect(page.locator('#chat')).toBeHidden();
+  await page
+    .getByRole('button', { name: /create/i })
+    .first()
+    .click();
+  await page.waitForSelector('.team li');
+  await expect(page.locator('#chat')).toBeVisible();
+  await page.getByRole('button', { name: 'Leave' }).click();
+  await expect(page.locator('#chat')).toBeHidden();
+});

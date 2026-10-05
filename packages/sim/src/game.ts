@@ -513,7 +513,7 @@ function integrate(g: Game): void {
   b.vy *= bd;
 }
 
-/** Elastic-ish circle contact, haxball style (bounce = product of both coefficients). */
+/** Elastic-ish circle contact (bounce = product of both coefficients). */
 function contact(a: Body, ar: number, am: number, ab: number, b: Body, br: number, bm: number, bb: number) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;

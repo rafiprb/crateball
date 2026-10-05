@@ -1,6 +1,6 @@
 # Crateball
 
-Tarayıcıda linkle açılan, haxball tarzı 3v3 arcade futbol: kutulardan silah/mayın/buz çıkar,
+Tarayıcıda linkle açılan 3v3 arcade futbol: kutulardan silah/mayın/buz çıkar,
 oyuncuların mevkileri var. Tamamen yapay zekâ ile geliştiriliyor.
 
 - Tasarım ve ağ modeli: `docs/design.md` — her işten önce oku.
