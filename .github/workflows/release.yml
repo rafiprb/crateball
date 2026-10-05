@@ -55,6 +55,8 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
+          # The secret is masked only as a whole ("user@address"); ssh errors print the address alone.
+          echo "::add-mask::${DEPLOY_HOST#*@}"
           VERSION="${GITHUB_SHA:0:7}"
           FORCE=""
           [ "${{ inputs.force }}" = "true" ] && FORCE=force
