@@ -620,13 +620,21 @@ function confineBall(b: Body): void {
   }
 }
 
+/**
+ * The shield takes the first bad thing that happens to its owner (a bullet, a rocket, an eruption, a
+ * mine, ice, dizzy) and breaks; everyone sees and hears it go. True when it blocked.
+ */
+function shieldBlocks(g: Game, p: Player): boolean {
+  if (!p.shield) return false;
+  p.shield = false;
+  g.blasts.push({ x: p.x, y: p.y, kind: 'block', t: ITEMS.blastShow });
+  return true;
+}
+
 function damage(g: Game, p: Player, amount: number, kx: number, ky: number): void {
   p.vx += kx;
   p.vy += ky;
-  if (p.shield) {
-    p.shield = false;
-    return;
-  }
+  if (shieldBlocks(g, p)) return;
   p.hp -= amount;
   if (p.hp <= 0) {
     p.hp = 0;
@@ -740,9 +748,10 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
       p.teleport = false;
       break;
     case 'dizzy':
-      p.dizzy = ITEMS.dizzy;
+      if (!shieldBlocks(g, p)) p.dizzy = ITEMS.dizzy;
       break;
     case 'ice':
+      if (shieldBlocks(g, p)) break;
       p.frozen = ITEMS.iceFreeze;
       p.vx = 0;
       p.vy = 0;
@@ -757,7 +766,10 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
       p.power = true;
       break;
     case 'mine': {
-      for (const body of [g.ball, ...g.players.filter((o) => o.dead === 0)]) {
+      // A shielded opener is spared the whole thing (damage, slow and the shove); the blast still
+      // goes off around them.
+      const spared = shieldBlocks(g, p);
+      for (const body of [g.ball, ...g.players.filter((o) => o.dead === 0 && !(spared && o === p))]) {
         const dx = body.x - x;
         const dy = body.y - y;
         const d = Math.sqrt(dx * dx + dy * dy);
@@ -766,6 +778,7 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
         body.vx += dx * f;
         body.vy += dy * f;
       }
+      if (spared) break;
       if (p.dead === 0) p.slow = ITEMS.mineSlow;
       damage(g, p, ITEMS.mineDamage, 0, 0);
       break;

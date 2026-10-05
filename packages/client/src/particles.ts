@@ -33,6 +33,7 @@ const ITEM_COLORS: Record<BlastKind, string[]> = {
   teleport: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
   bazooka: ['#7A8B5A', '#B8C890', '#FF9A3D'],
   rocket: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
+  block: ['#7AF0FF', '#E0FDFF', '#FFFFFF'],
   warp: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
   erupt: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
 };
@@ -293,6 +294,14 @@ export function createParticles(): Particles {
             // Teleport departure/arrival: a purple swirl, no crate involved.
             burst(e.x, e.y, 24, [40, 180], colors, { shape: 1, size: 2.5, life: 0.5, drag: 5 });
             ring(e.x, e.y, colors[0]!, 16, 0.35);
+            break;
+          }
+          if (e.kind === 'block') {
+            // The shield shatters: glassy shards fly off and a bright ring pops outwards.
+            burst(e.x, e.y, 26, [90, 260], colors, { shape: 2, size: 5, life: 0.6, spin: 14, drag: 4 });
+            ring(e.x, e.y, '#7AF0FF', 20, 0.35);
+            ring(e.x, e.y, '#E0FDFF', 12, 0.25);
+            shake = Math.max(shake, 4);
             break;
           }
           if (e.kind === 'erupt' || e.kind === 'rocket') {

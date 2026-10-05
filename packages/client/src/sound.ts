@@ -103,6 +103,12 @@ export function createSound(): Sound {
           noise(0.05, 0.6, 'bandpass', 2000, 0.08);
           tone('square', 220, 180, 0.06, 0.15, 0.08);
           break;
+        case 'block':
+          // A bright "ting" off the shield, then the glassy shatter.
+          tone('sine', 1760, 1700, 0.25, 0.4);
+          tone('sine', 2640, 2500, 0.18, 0.22, 0.02);
+          noise(0.18, 0.45, 'highpass', 5000, 0.05);
+          break;
         case 'dizzy':
           // A woozy, wobbling slide down, then a hiccup.
           [520, 440, 360].forEach((f, i) => tone('sine', f, f * 0.82, 0.22, 0.28, i * 0.14));

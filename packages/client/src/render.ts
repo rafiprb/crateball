@@ -47,6 +47,7 @@ const ITEM_STYLE: Record<BlastKind, [string, string]> = {
   teleport: ['#C77DFF', 'TELEPORT!'],
   bazooka: ['#B8C890', 'BAZOOKA!'],
   rocket: ['#FF6A3D', 'BOOM!'],
+  block: ['#7AF0FF', 'BLOCKED!'],
   warp: ['#C77DFF', ''],
   erupt: ['#FF6A3D', 'ERUPTION!'],
 };

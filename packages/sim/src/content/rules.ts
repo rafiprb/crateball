@@ -46,7 +46,8 @@ export const MATCH = {
 export type ItemKind =
   'gun' | 'mine' | 'ice' | 'dizzy' | 'boost' | 'shield' | 'power' | 'teleport' | 'bazooka';
 /** What a blast marker shows: a crate opening, or a teleport's departure/arrival flash. */
-export type BlastKind = ItemKind | 'warp' | 'erupt' | 'rocket';
+/** `block`: a shield just took a hit (or a bad crate) for its owner. */
+export type BlastKind = ItemKind | 'warp' | 'erupt' | 'rocket' | 'block';
 
 export const CRATES = {
   radius: 14,

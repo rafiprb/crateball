@@ -163,6 +163,22 @@ describe('sim', () => {
     expect(a.dizzy).toBe(0);
   });
 
+  it('kalkan ilk kötü şeyi (mayın, buz, sarhoş, mermi) tek seferlik engeller ve bunu gösterir', () => {
+    for (const bad of ['mine', 'ice', 'dizzy'] as const) {
+      const g = createGame(1);
+      const a = addPlayer(g, 'a', 'A', 'red');
+      g.phase = 'play';
+      Object.assign(a, { x: -200, y: 0, vx: 0, vy: 0 });
+      openCrate(g, a, a.x, a.y, 'shield');
+      openCrate(g, a, a.x, a.y, bad);
+      expect(a).toMatchObject({ shield: false, hp: PLAYER.maxHp, slow: 0, frozen: 0, dizzy: 0 });
+      expect(g.blasts.some((b) => b.kind === 'block')).toBe(true);
+      // Only once: the next one lands.
+      openCrate(g, a, a.x, a.y, bad);
+      expect(a.hp < PLAYER.maxHp || a.frozen > 0 || a.dizzy > 0).toBe(true);
+    }
+  });
+
   it('mayın can götürür ve yavaşlatır; buz dondurur', () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'red');
