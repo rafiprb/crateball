@@ -39,7 +39,13 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
     root.dataset.mode = current;
     root.hidden = current === 'off';
     input.hidden = current === 'game' && document.activeElement !== input;
-    if (current === 'lobby') log.scrollTop = log.scrollHeight;
+    toBottom();
+  };
+  /** The newest line is the one that matters: keep the log scrolled to the end (also after the history
+   * reappears when you start typing in a match, which changes the list's height a frame later). */
+  const toBottom = () => {
+    log.scrollTop = log.scrollHeight;
+    requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
   };
 
   input.addEventListener('keydown', (e) => {
@@ -103,6 +109,7 @@ export function createChat(send: (text: string) => void, onOpen: () => void): Ch
       onOpen();
       input.hidden = false;
       input.focus();
+      toBottom();
     },
     get typing() {
       return document.activeElement === input;
