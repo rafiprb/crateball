@@ -4,7 +4,7 @@ import type { GameEvent } from './events';
 /** Cosmetic only (client-side, Math.random is fine here). Fixed pool, no allocation per frame. */
 const MAX = 900;
 
-type Shape = 0 | 1 | 2 | 3; // dot, spark, shard, ring
+type Shape = 0 | 1 | 2 | 3 | 4; // dot, spark, shard, ring, bubble
 interface P {
   x: number;
   y: number;
@@ -26,6 +26,7 @@ const ITEM_COLORS: Record<BlastKind, string[]> = {
   gun: ['#FFE066', '#FFF4E0', '#C88A4A'],
   mine: ['#FF6A3D', '#FFB760', '#FFE066', '#5A4A3A'],
   ice: ['#9BE3FF', '#E8F8FF', '#5FC8FF'],
+  dizzy: ['#CFF6FF', '#9FE8C8', '#F2FFF8'],
   boost: ['#7CFF7A', '#D8FFD0'],
   shield: ['#7AF0FF', '#E0FDFF'],
   power: ['#FFA94D', '#FFE066'],
@@ -418,6 +419,21 @@ export function createParticles(): Particles {
             drag: 2,
             ground: true,
           });
+        // Dizzy: bubbles float up off the head and wobble side to side, like a drunk cartoon.
+        if (p.dizzy > 0 && Math.random() < 0.28)
+          add({
+            x: at.x + rnd(-p.r * 0.5, p.r * 0.5),
+            y: at.y - p.r - 2,
+            vx: rnd(-8, 8),
+            vy: rnd(-48, -32),
+            shape: 4,
+            size: rnd(2.5, 5),
+            grow: 2.5,
+            life: rnd(1.2, 1.8),
+            drag: 0.25,
+            spin: rnd(3, 6),
+            color: 'rgba(225,245,255,.9)',
+          });
         if (p.frozen > 0 && Math.random() < 0.3)
           add({
             x: at.x + rnd(-p.r, p.r),
@@ -507,6 +523,21 @@ export function createParticles(): Particles {
             ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             ctx.stroke();
             break;
+          case 4: {
+            // Bubble: a thin ring with a highlight, swaying as it rises.
+            const bx = p.x + Math.sin(p.rot) * 5;
+            ctx.lineWidth = 1.2;
+            ctx.fillStyle = 'rgba(200,235,255,.18)';
+            ctx.beginPath();
+            ctx.arc(bx, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(bx - p.size * 0.35, p.y - p.size * 0.35, p.size * 0.25, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+          }
         }
       }
       ctx.globalAlpha = 1;

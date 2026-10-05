@@ -146,6 +146,23 @@ describe('sim', () => {
     }
   });
 
+  it('sarhoş: 4 sn tuşlar ters çalışır, sonra düzelir; santrada ve ölünce geçer', () => {
+    const g = createGame(1);
+    const a = addPlayer(g, 'a', 'A', 'red');
+    g.phase = 'play';
+    Object.assign(a, { x: -200, y: 0, vx: 0, vy: 0 });
+    openCrate(g, a, a.x, a.y, 'dizzy');
+    expect(a.dizzy).toBe(ITEMS.dizzy);
+    run(g, 20, new Map([['a', RIGHT]]));
+    expect(a.vx).toBeLessThan(0); // pressing right goes left
+    run(g, ITEMS.dizzy, new Map([['a', RIGHT]]));
+    expect(a.dizzy).toBe(0);
+    expect(a.vx).toBeGreaterThan(0);
+    openCrate(g, a, a.x, a.y, 'dizzy');
+    restartMatch(g);
+    expect(a.dizzy).toBe(0);
+  });
+
   it('mayın can götürür ve yavaşlatır; buz dondurur', () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'red');
@@ -502,9 +519,13 @@ describe('bazuka', () => {
     expect(g2.bullets[0]!.target).toBeUndefined();
   });
 
-  it('diğer kutulardan daha nadir', () => {
+  it('kutularda iyiler ve kötüler eşit ağırlıkta; bazuka silahtan nadir', () => {
     const weight = (k: string) => CRATES.loot.find(([kind]) => kind === k)![1];
-    for (const [kind, w] of CRATES.loot) if (kind !== 'bazooka') expect(weight('bazooka')).toBeLessThan(w);
+    const bad = ['mine', 'ice', 'dizzy'];
+    const sum = (ks: string[]) => ks.reduce((s, k) => s + weight(k), 0);
+    const all = CRATES.loot.map(([k]) => k);
+    expect(sum(bad)).toBe(sum(all.filter((k) => !bad.includes(k))));
+    expect(weight('bazooka')).toBeLessThan(weight('gun'));
   });
 
   it('bot kilitlenince ateşler', () => {

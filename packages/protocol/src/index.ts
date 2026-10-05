@@ -161,7 +161,17 @@ function cleanText(v: unknown, max: number): string | null {
 }
 
 const ARENA_KINDS: readonly string[] = ['classic', 'rain', 'volcano', 'ice', 'wind'];
-const ITEMS: readonly string[] = ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport', 'bazooka'];
+const ITEMS: readonly string[] = [
+  'gun',
+  'mine',
+  'ice',
+  'dizzy',
+  'boost',
+  'shield',
+  'power',
+  'teleport',
+  'bazooka',
+];
 
 export function decodeSettings(v: unknown): Settings | null {
   if (!isObj(v)) return null;

@@ -43,7 +43,8 @@ export const MATCH = {
   overPause: sec(6),
 };
 
-export type ItemKind = 'gun' | 'mine' | 'ice' | 'boost' | 'shield' | 'power' | 'teleport' | 'bazooka';
+export type ItemKind =
+  'gun' | 'mine' | 'ice' | 'dizzy' | 'boost' | 'shield' | 'power' | 'teleport' | 'bazooka';
 /** What a blast marker shows: a crate opening, or a teleport's departure/arrival flash. */
 export type BlastKind = ItemKind | 'warp' | 'erupt' | 'rocket';
 
@@ -53,16 +54,18 @@ export const CRATES = {
   firstAfter: sec(4),
   minGap: sec(5),
   maxGap: sec(9),
-  /** Weighted loot table. */
+  /** Weighted loot table (out of 100): the bad half (mine, ice, dizzy) weighs exactly as much as the
+   * good half, so every crate is a gamble. */
   loot: [
-    ['gun', 34],
-    ['mine', 22],
-    ['ice', 18],
-    ['boost', 10],
-    ['shield', 8],
-    ['power', 8],
-    ['teleport', 8],
-    ['bazooka', 3],
+    ['mine', 20],
+    ['ice', 16],
+    ['dizzy', 14],
+    ['gun', 18],
+    ['boost', 7],
+    ['shield', 7],
+    ['power', 6],
+    ['teleport', 6],
+    ['bazooka', 6],
   ] as ReadonlyArray<readonly [ItemKind, number]>,
 };
 
@@ -91,6 +94,8 @@ export const ITEMS = {
   blastPush: 6,
   blastShow: sec(0.6),
   iceFreeze: sec(2.5),
+  /** Dizzy: your movement keys work backwards for this long. */
+  dizzy: sec(4),
   boost: sec(5),
   boostMul: 1.6,
   /** Teleport: a blink of this many pixels in the direction you are pressing. */
@@ -133,6 +138,7 @@ export const ITEM_KINDS: readonly ItemKind[] = [
   'gun',
   'mine',
   'ice',
+  'dizzy',
   'boost',
   'shield',
   'power',

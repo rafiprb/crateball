@@ -133,6 +133,7 @@ export function addPlayer(g: Game, id: string, name: string, team: Team, bot = f
     hp: PLAYER.maxHp,
     dead: 0,
     frozen: 0,
+    dizzy: 0,
     slow: 0,
     boost: 0,
     shield: false,
@@ -182,7 +183,7 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
   g.arena = makeArena(g, kind, () => rand(g));
   const slots = { red: 0, blue: 0 };
   for (const p of g.players) {
-    Object.assign(p, { hp: PLAYER.maxHp, dead: 0, frozen: 0, slow: 0, boost: 0, cooldown: 0 });
+    Object.assign(p, { hp: PLAYER.maxHp, dead: 0, frozen: 0, dizzy: 0, slow: 0, boost: 0, cooldown: 0 });
     Object.assign(p, {
       shield: false,
       power: false,
@@ -256,6 +257,7 @@ function controlPlayer(g: Game, p: Player): void {
   }
   if (p.slow > 0) p.slow--;
   if (p.boost > 0) p.boost--;
+  if (p.dizzy > 0) p.dizzy--;
   p.buff = inZone(p);
   p.r = p.role === 'gk' && p.buff ? ROLES.gk.radius : PLAYER.radius;
   const kickHeld = (p.input & KICK) !== 0;
@@ -274,6 +276,11 @@ function controlPlayer(g: Game, p: Player): void {
   if (p.input & DOWN) dy += 1;
   if (p.input & LEFT) dx -= 1;
   if (p.input & RIGHT) dx += 1;
+  // Dizzy: everything the other way round.
+  if (p.dizzy > 0) {
+    dx = -dx;
+    dy = -dy;
+  }
   if (dx !== 0 || dy !== 0) {
     const n = Math.sqrt(dx * dx + dy * dy);
     dx /= n;
@@ -628,6 +635,7 @@ function damage(g: Game, p: Player, amount: number, kx: number, ky: number): voi
     p.teleport = false;
     p.bazooka = false;
     p.frozen = 0;
+    p.dizzy = 0;
     p.slow = 0;
     p.boost = 0;
     p.power = false;
@@ -730,6 +738,9 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
       p.bazooka = true;
       p.gun = 0;
       p.teleport = false;
+      break;
+    case 'dizzy':
+      p.dizzy = ITEMS.dizzy;
       break;
     case 'ice':
       p.frozen = ITEMS.iceFreeze;

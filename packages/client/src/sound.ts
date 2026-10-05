@@ -103,6 +103,11 @@ export function createSound(): Sound {
           noise(0.05, 0.6, 'bandpass', 2000, 0.08);
           tone('square', 220, 180, 0.06, 0.15, 0.08);
           break;
+        case 'dizzy':
+          // A woozy, wobbling slide down, then a hiccup.
+          [520, 440, 360].forEach((f, i) => tone('sine', f, f * 0.82, 0.22, 0.28, i * 0.14));
+          tone('triangle', 900, 1300, 0.07, 0.2, 0.5);
+          break;
         case 'bazooka':
           // Heavy metal clunk.
           tone('square', 160, 120, 0.12, 0.3);

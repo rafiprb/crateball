@@ -77,7 +77,7 @@ describe('oyun mesajları', () => {
       public: true,
       settings: {
         ...ok,
-        loot: ['gun', 'mine', 'ice', 'boost', 'shield', 'power', 'teleport', 'bazooka'],
+        loot: ['gun', 'mine', 'ice', 'dizzy', 'boost', 'shield', 'power', 'teleport', 'bazooka'],
         arenas: ['classic', 'rain', 'volcano', 'ice', 'wind'],
       },
     });

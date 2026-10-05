@@ -29,6 +29,7 @@ const ITEM_LABEL: Record<ItemKind, string> = {
   gun: 'Gun',
   mine: 'Mine',
   ice: 'Ice',
+  dizzy: 'Dizzy',
   boost: 'Speed',
   shield: 'Shield',
   power: 'Power kick',

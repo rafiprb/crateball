@@ -9,7 +9,11 @@ oyuncu kutuya değince açılır.
   yavaşlama, tuşa her basışta bir vuruş.
 - Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol.
 - Can 3; ölünce 3 sn sonra orta çizginin bir ucunda, kendi yarısında doğar: üst yarıda öldüyse alt uçta, alt yarıda öldüyse üst uçta. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
-- Kutu içerikleri (ağırlıklı): **Gun** (3 mermi, yeni silah 3’e doldurur; otomatik nişan: en yakın, önü açık rakip; hedef alınana kırmızı uyarı; 3 isabet öldürür, topa da çarpar), **Mine** (patlar:
+- Kutu ağırlıkları (100 üzerinden; kötüler = iyiler = 50): Mine 20, Ice 16, Dizzy 14 | Gun 18, Speed 7,
+  Shield 7, Power kick 6, Teleport 6, Bazooka 6.
+- **Dizzy** (kötü): 4 sn yön tuşları ters çalışır; kafadan kabarcıklar çıkar. Santrada ve ölünce geçer.
+- **Shield** süresiz: bir isabet alana ya da gol olana kadar kalır.
+- Kutu içerikleri: **Gun** (3 mermi, yeni silah 3’e doldurur; otomatik nişan: en yakın, önü açık rakip; hedef alınana kırmızı uyarı; 3 isabet öldürür, topa da çarpar), **Mine** (patlar:
   açana 1 hasar + 4 sn yavaşlama, çevredekileri ve topu iter), **Ice** (2.5 sn donma), **Speed**,
   **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
   ile o an basılan yön tuşlarının yönüne sabit 150 px sıçratır, tuşa basılmıyorsa son hareket yönüne;

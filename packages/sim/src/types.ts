@@ -35,6 +35,8 @@ export interface Player {
   hp: number;
   dead: number;
   frozen: number;
+  /** Ticks left with the movement keys reversed (a dizzy crate). */
+  dizzy: number;
   slow: number;
   boost: number;
   shield: boolean;

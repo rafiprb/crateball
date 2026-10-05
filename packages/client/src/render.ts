@@ -40,6 +40,7 @@ const ITEM_STYLE: Record<BlastKind, [string, string]> = {
   gun: ['#FFE066', 'GUN!'],
   mine: ['#FF6A3D', 'BOOM!'],
   ice: ['#9BE3FF', 'FROZEN!'],
+  dizzy: ['#9FE8C8', 'DIZZY!'],
   boost: ['#7CFF7A', 'SPEED!'],
   shield: ['#7AF0FF', 'SHIELD!'],
   power: ['#FFA94D', 'POWER KICK!'],
@@ -563,6 +564,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (me.boost > 0) bits.push('Speed');
       if (me.slow > 0) bits.push('Slowed');
       if (me.frozen > 0) bits.push('Frozen');
+      if (me.dizzy > 0) bits.push('Dizzy: keys reversed!');
       if (bits.length) text(bits.join('  ·  '), mid, h - 44, 18, '#FFF4E0', 800);
     } else if (pr.me)
       text('Spectating — you can join a team when the match is over', mid, h - 44, 18, '#FFF4E0', 800);

@@ -410,6 +410,7 @@ function getState() {
         hp: me.hp,
         gun: me.gun,
         bazooka: me.bazooka,
+        dizzy: me.dizzy,
         role: me.role,
       },
       ball: g.ball,
