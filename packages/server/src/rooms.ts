@@ -601,7 +601,9 @@ export function createRooms(
         m.last = 0;
         m.gap = 0;
       }
-      log.info({ room: room.code, settings: room.game.settings }, 'maç başladı');
+      // Settings per match start: `pnpm crate-stats` counts which crate mixes people actually pick.
+      const humans = room.game.players.filter((p) => !p.bot).length;
+      log.info({ room: room.code, humans, settings: room.game.settings }, 'maç başladı');
       announce(room);
       broadcastSnap(room);
       return null;

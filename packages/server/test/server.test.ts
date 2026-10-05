@@ -504,6 +504,30 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     rooms.stop();
   });
 
+  it('host takası ve takım değişimi bir takımda aynı gerçek mevkiyi iki insana vermez', async () => {
+    const rooms = await make();
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    for (const id of ['b', 'c', 'd']) asRoom(rooms.join(room.code, id, id.toUpperCase(), () => {}));
+    const ok = () => {
+      for (const team of ['red', 'blue'] as const) {
+        const roles = room.game.players
+          .filter((p) => p.team === team && p.role !== 'none')
+          .map((p) => p.role);
+        expect(new Set(roles).size).toBe(roles.length);
+      }
+    };
+    const humans = ['a', 'b', 'c', 'd'];
+    for (let i = 0; i < 12; i++) {
+      const x = humans[i % 4]!;
+      const y = humans[(i * 3 + 1) % 4]!;
+      if (x !== y) rooms.swap('a', x, y);
+      ok();
+      rooms.move('a', humans[(i + 2) % 4]!, i % 2 ? 'red' : 'blue');
+      ok();
+    }
+    rooms.stop();
+  });
+
   it('oyuncusuz maç başlamaz; son oyuncu maçta çıkarsa lobiye dönülür', async () => {
     const rooms = await make();
     const noBots = { ...settings, bots: false };

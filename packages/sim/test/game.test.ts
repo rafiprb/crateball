@@ -410,6 +410,23 @@ describe('mevkiler', () => {
     step(g);
     expect(o.slow).toBe(0);
   });
+  it('duran defansa koşarak çarpan rakip omuz yemez; bekleme süresi ölüyken de işler', () => {
+    const g = createGame(1);
+    g.phase = 'play';
+    const d = addPlayer(g, 'd', 'D', 'red');
+    setRole(g, 'd', 'def');
+    const o = addPlayer(g, 'o', 'O', 'blue');
+    g.ball.x = 300;
+    Object.assign(d, { x: -250, y: 0, vx: 0, vy: 0 });
+    Object.assign(o, { x: -250 + 31, y: 0, vx: -2.4, vy: 0 });
+    step(g);
+    expect(o.slow).toBe(0);
+    expect(d.chargeCd).toBe(0);
+    d.chargeCd = ROLES.def.chargeCooldown;
+    d.dead = 30;
+    run(g, 30);
+    expect(d.chargeCd).toBe(ROLES.def.chargeCooldown - 30);
+  });
   it('forvet bölgesinde direğin az dışına giden şutu içeri kıvırır', () => {
     const shot = (px: number) => {
       const g = createGame(1);

@@ -161,7 +161,16 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
   let screen = 'none';
   let listTimer: ReturnType<typeof setInterval> | null = null;
 
+  // A crate-share slider mid-drag only tells the room on release; if the lobby is rebuilt before that
+  // (someone joins, a role changes), send what it shows first so the edit is not lost.
+  let pendingWeights: (() => void) | null = null;
+
   const show = (id: string, ...children: Child[]) => {
+    if (pendingWeights) {
+      const send = pendingWeights;
+      pendingWeights = null;
+      send();
+    }
     if (listTimer) clearInterval(listTimer);
     listTimer = null;
     screen = id;
@@ -291,8 +300,12 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
               if (v === 0 && ITEM_KINDS.every((o) => o === k || w[o] === 0)) v = 1;
               w[k] = v;
               sync();
+              pendingWeights = send;
             });
-            input.addEventListener('change', send);
+            input.addEventListener('change', () => {
+              pendingWeights = null;
+              send();
+            });
             const val = h('span', { class: 'val' });
             const row = h(
               'div',

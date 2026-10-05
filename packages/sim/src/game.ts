@@ -256,6 +256,8 @@ export function step(g: Game, inputs?: ReadonlyMap<string, number>): void {
 
 function controlPlayer(g: Game, p: Player): void {
   if (p.cooldown > 0) p.cooldown--;
+  // Ticks on while dead too, so a respawned defender does not come back still waiting.
+  if (p.chargeCd > 0) p.chargeCd--;
   if (p.dead > 0) {
     if (--p.dead === 0) {
       // Back in at an end of the halfway line, on your own side: the end away from where you died
@@ -272,7 +274,6 @@ function controlPlayer(g: Game, p: Player): void {
   if (p.slow > 0) p.slow--;
   if (p.boost > 0) p.boost--;
   if (p.dizzy > 0) p.dizzy--;
-  if (p.chargeCd > 0) p.chargeCd--;
   p.buff = rolesOn(g) && inZone(p);
   p.r = p.role === 'gk' && rolesOn(g) && inBox(p) ? ROLES.gk.radius : PLAYER.radius;
   const kickHeld = (p.input & KICK) !== 0;
@@ -577,8 +578,8 @@ function contact(a: Body, ar: number, am: number, ab: number, b: Body, br: numbe
 
 /** Defender in their zone running into an opponent: an extra shove and a moment's slowdown (then a
  * cooldown before the next one). */
-function shoulderCharge(d: Player, o: Player, closing: number): void {
-  if (d.role !== 'def' || !d.buff || d.chargeCd > 0 || closing < ROLES.def.chargeMinSpeed) return;
+function shoulderCharge(d: Player, o: Player, into: number): void {
+  if (d.role !== 'def' || !d.buff || d.chargeCd > 0 || into < ROLES.def.chargeMinSpeed) return;
   d.chargeCd = ROLES.def.chargeCooldown;
   const dx = o.x - d.x;
   const dy = o.y - d.y;
@@ -597,13 +598,19 @@ function collide(g: Game): void {
     const a = alive[i]!;
     for (let j = i + 1; j < alive.length; j++) {
       const b = alive[j]!;
-      const closing = Math.sqrt((a.vx - b.vx) ** 2 + (a.vy - b.vy) ** 2);
+      // How fast each one was running INTO the other (own velocity along the line between them), taken
+      // before the bump: only a defender who did the running charges, not one who got run into.
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const n = Math.sqrt(dx * dx + dy * dy) || 1;
+      const aInto = (a.vx * dx + a.vy * dy) / n;
+      const bInto = -(b.vx * dx + b.vy * dy) / n;
       if (
         contact(a, a.r, invMass(a), PLAYER.bounce, b, b.r, invMass(b), PLAYER.bounce) &&
         a.team !== b.team
       ) {
-        shoulderCharge(a, b, closing);
-        shoulderCharge(b, a, closing);
+        shoulderCharge(a, b, aInto);
+        shoulderCharge(b, a, bInto);
       }
     }
     const kicking = (a.input & KICK) !== 0;
