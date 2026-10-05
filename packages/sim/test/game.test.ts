@@ -128,6 +128,24 @@ describe('sim', () => {
     expect(b.hp).toBe(PLAYER.maxHp);
   });
 
+  it('ölen, orta çizginin öldüğü yere uzak ucunda doğar', () => {
+    for (const [diedAt, back] of [
+      [-150, 1],
+      [150, -1],
+    ] as const) {
+      const g = createGame(1);
+      const a = addPlayer(g, 'a', 'A', 'red');
+      g.phase = 'play';
+      Object.assign(a, { x: -200, y: diedAt, hp: 1 });
+      openCrate(g, a, a.x, a.y, 'mine');
+      expect(a.dead).toBeGreaterThan(0);
+      run(g, PLAYER.respawn);
+      expect(a.dead).toBe(0);
+      expect(Math.sign(a.y)).toBe(back);
+      expect(Math.abs(a.y)).toBeGreaterThan(FIELD.halfH - 60);
+    }
+  });
+
   it('mayın can götürür ve yavaşlatır; buz dondurur', () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'red');
@@ -380,11 +398,12 @@ describe('gol sonrası ve yeniden doğma', () => {
     }
     expect(g.crates).toEqual([]);
   });
-  it('ölen oyuncu orta çizginin üst ucunda, kendi yarısında doğar', () => {
+  it('ölen oyuncu orta çizginin ucunda, kendi yarısında doğar', () => {
     const g = createGame(1);
     const a = addPlayer(g, 'a', 'A', 'blue');
     g.phase = 'play';
-    Object.assign(a, { hp: 0, dead: 1, x: 9999, y: 9999 });
+    // Parked at -9999: died in the bottom half, so back in at the top end.
+    Object.assign(a, { hp: 0, dead: 1, x: 9999, y: -9999 });
     step(g);
     expect(a.dead).toBe(0);
     expect(a.x).toBeGreaterThan(0);
@@ -394,6 +413,15 @@ describe('gol sonrası ve yeniden doğma', () => {
 });
 
 describe('inceleme düzeltmeleri (sim)', () => {
+  it('aşırı hızlı top bile kale yanındaki duvardan geçmez (hız tavanı)', () => {
+    const g = createGame(1);
+    addPlayer(g, 'a', 'A', 'red').x = -300;
+    g.phase = 'play';
+    g.ball = { x: FIELD.halfW - 11, y: FIELD.goalHalf + 30, vx: 100, vy: -12 };
+    run(g, 3);
+    expect(g.score).toEqual([0, 0]);
+  });
+
   it('çok hızlı top kalenin yanındaki çizgiden geçip gol olmaz (#4)', () => {
     const g = createGame(1);
     addPlayer(g, 'a', 'A', 'red').x = -300;

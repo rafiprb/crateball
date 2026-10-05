@@ -150,8 +150,10 @@ export function encode(msg: ClientMessage | ServerMessage): string {
 /** Strips control characters and trims; null when nothing is left. */
 function cleanText(v: unknown, max: number): string | null {
   if (typeof v !== 'string') return null;
+  // Control and format characters out (C0/C1, zero-width, right-to-left overrides that flip how a
+  // name reads); the zero-width joiner stays, emoji sequences need it.
   const s = [...v]
-    .filter((c) => c >= ' ')
+    .filter((c) => c === '\u200D' || !/[\p{Cc}\p{Cf}]/u.test(c))
     .join('')
     .trim()
     .slice(0, max);

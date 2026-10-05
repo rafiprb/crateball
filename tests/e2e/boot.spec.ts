@@ -29,7 +29,7 @@ test('sahne açılır, odaya girer ve botla maç başlar', async ({ page }) => {
     expect.objectContaining({ name: 'Şule', bot: false }),
     expect.objectContaining({ bot: true }),
   ]);
-  expect(state.net.clientId).toHaveLength(8);
+  expect(state.net.clientId).toHaveLength(12);
 });
 
 test('F1 debug panelini açar/kapatır, ?debug açık başlatır', async ({ page }) => {

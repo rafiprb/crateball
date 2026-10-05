@@ -43,6 +43,9 @@ export function createEventTracker(me: () => string | null = () => null) {
   const ground = new Map<string, boolean>();
   const kickSeen = new Map<string, number>();
   const hp = new Map<string, { hp: number; x: number; y: number }>();
+  /** What each player held last frame: a shot fired point-blank is created and gone within one tick,
+   * so the bullet is never seen; the spent round (or bazooka) still tells us it was fired. */
+  const arms = new Map<string, { gun: number; bazooka: boolean }>();
   /** Blast key → tick first seen. Kept across frames so a blast that a rollback removes and a later
    * replay brings back does not play twice; forgotten after a few seconds. */
   const blastsSeen = new Map<string, number>();
@@ -78,7 +81,13 @@ export function createEventTracker(me: () => string | null = () => null) {
     const warnKey = w ? `${w.x}:${w.y}` : '';
     if (!fresh && w && warnKey !== lastWarn) out.push({ type: 'warn', x: w.x, y: w.y });
     lastWarn = warnKey;
+    const newShooters = new Set(g.bullets.filter((b) => b.id > maxBullet).map((b) => b.owner));
     for (const p of g.players) {
+      const had = arms.get(p.id);
+      const spent = had && p.dead === 0 && p.cooldown > 0 && (p.gun < had.gun || (had.bazooka && !p.bazooka));
+      if (!fresh && spent && !newShooters.has(p.id))
+        out.push({ type: 'shot', x: p.x, y: p.y, vx: p.fx, vy: p.fy, rocket: had.bazooka && !p.bazooka });
+      arms.set(p.id, { gun: p.gun, bazooka: p.bazooka });
       // Stepping into a puddle or onto hot lava (edge-triggered per player).
       if (p.dead === 0 && (g.arena.kind === 'rain' || g.arena.kind === 'volcano')) {
         const wet = g.arena.kind === 'rain' ? inPuddle(g, p) : inHotLava(g, p);

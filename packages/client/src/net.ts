@@ -6,14 +6,20 @@ import {
   type ServerMessage,
 } from '@crateball/protocol';
 
-export type NetStatus = 'connecting' | 'open' | 'closed' | 'version_mismatch';
+/** `taken`: this tab connected again elsewhere (a duplicated tab); this one stops. */
+export type NetStatus = 'connecting' | 'open' | 'closed' | 'version_mismatch' | 'taken';
+
+/** Server close code: a newer socket of the same session replaced this one. */
+const CLOSE_TAKEN_OVER = 4011;
+/** Nothing heard for this long (the server answers a ping every second): the link is dead. */
+export const STALL_MS = 6000;
 
 export interface SocketLike {
   send(data: string): void;
   close(): void;
   onopen: (() => void) | null;
   onmessage: ((ev: { data: unknown }) => void) | null;
-  onclose: (() => void) | null;
+  onclose: ((ev?: { code?: number }) => void) | null;
 }
 
 export interface ConnectionOptions {
@@ -22,6 +28,7 @@ export interface ConnectionOptions {
   /** Sent in hello so the server can give a reconnecting tab its old slot back. */
   sessionToken?: string;
   schedule?: (fn: () => void, ms: number) => unknown;
+  now?: () => number;
   onStatus?: (status: NetStatus) => void;
   /** Every decoded message after the welcome handshake. */
   onMessage?: (m: ServerMessage) => void;
@@ -48,6 +55,8 @@ export function connect(o: ConnectionOptions): Connection {
   let stopped = false;
   let socket: SocketLike | null = null;
   const queued: ClientMessage[] = [];
+  const now = o.now ?? (() => Date.now());
+  let heardAt = now();
 
   const setStatus = (s: NetStatus) => {
     status = s;
@@ -68,6 +77,7 @@ export function connect(o: ConnectionOptions): Connection {
         }),
       );
     s.onmessage = (ev) => {
+      heardAt = now();
       const m = typeof ev.data === 'string' ? decodeServerMessage(ev.data) : null;
       if (!m) return;
       if (m.t === 'welcome') {
@@ -81,10 +91,16 @@ export function connect(o: ConnectionOptions): Connection {
         setStatus('version_mismatch');
       } else o.onMessage?.(m);
     };
-    s.onclose = () => {
+    s.onclose = (ev) => {
+      if (socket !== s) return;
       socket = null;
       clientId = null;
       if (status === 'version_mismatch') return;
+      if (ev?.code === CLOSE_TAKEN_OVER) {
+        stopped = true;
+        setStatus('taken');
+        return;
+      }
       setStatus('closed');
       if (stopped) return;
       const delay = BACKOFF_MS[Math.min(attempts, BACKOFF_MS.length - 1)] ?? 10000;
@@ -94,6 +110,18 @@ export function connect(o: ConnectionOptions): Connection {
   };
 
   open();
+  // A dead link (sleeping laptop, network switch) can look open for minutes: give up on it and
+  // reconnect, which also gets the slot back through the session token.
+  const watchdog = setInterval(() => {
+    const s = socket;
+    if (!s || status !== 'open' || now() - heardAt < STALL_MS) return;
+    heardAt = now();
+    const onclose = s.onclose;
+    s.onmessage = null;
+    s.onclose = null;
+    s.close();
+    onclose?.();
+  }, 1000);
   return {
     get status() {
       return status;
@@ -111,6 +139,7 @@ export function connect(o: ConnectionOptions): Connection {
     },
     close() {
       stopped = true;
+      clearInterval(watchdog);
       if (socket) socket.close();
       else setStatus('closed');
     },

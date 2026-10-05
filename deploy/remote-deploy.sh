@@ -17,6 +17,8 @@ rm -rf "$DIR.new" && mkdir -p "$DIR.new"
 tar -x -C "$DIR.new"
 [ -f "$DIR.new/deploy/compose.yml" ] || { echo "archive has no deploy/compose.yml" >&2; exit 4; }
 
+# Keep the running image under a second name: if the new one does not come up, we go back to it.
+docker image tag crateball:latest crateball:previous 2>/dev/null || true
 # Build first, while the old version keeps serving: the risky window (check → restart) is then seconds.
 (cd "$DIR.new/deploy" && APP_VERSION="$VERSION" docker compose build game)
 
@@ -49,15 +51,24 @@ APP_VERSION="$VERSION" docker compose up -d --no-build --remove-orphans
 if [ -f "$DIR.old/deploy/Caddyfile" ] && ! cmp -s "$DIR/deploy/Caddyfile" "$DIR.old/deploy/Caddyfile"; then
   APP_VERSION="$VERSION" docker compose up -d --no-build --no-deps --force-recreate caddy
 fi
-docker image prune -f >/dev/null
-install -m 0755 "$DIR/deploy/remote-deploy.sh" /usr/local/bin/crateball-deploy
 for i in 1 2 3 4 5 6 7 8 9 10; do
   if out=$(docker compose exec -T game wget -qO- http://localhost:8080/health 2>/dev/null); then
     echo "$out"
+    docker image prune -f >/dev/null
+    install -m 0755 "$DIR/deploy/remote-deploy.sh" /usr/local/bin/crateball-deploy
     echo "deployed $VERSION"
     exit 0
   fi
   sleep 2
 done
-echo "game did not become healthy" >&2
+echo "game did not become healthy: rolling back to the previous release" >&2
+if [ -d "$DIR.old" ] && docker image inspect crateball:previous >/dev/null 2>&1; then
+  rm -rf "$DIR.failed"
+  mv "$DIR" "$DIR.failed"
+  mv "$DIR.old" "$DIR"
+  docker image tag crateball:previous crateball:latest
+  cd "$DIR/deploy"
+  docker compose up -d --no-build --remove-orphans --force-recreate || true
+  echo "rolled back; the failed release is in $DIR.failed" >&2
+fi
 exit 6

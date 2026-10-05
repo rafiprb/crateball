@@ -8,7 +8,7 @@ oyuncu kutuya değince açılır.
 - Saha 840×400 px, 60 tick/sn. Haxball fiziği: daire çarpışmaları, sönümleme, vuruş tuşu basılıyken
   yavaşlama, tuşa her basışta bir vuruş.
 - Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol.
-- Can 3; ölünce 3 sn sonra orta çizginin üst ucunda, kendi yarısında doğar. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
+- Can 3; ölünce 3 sn sonra orta çizginin bir ucunda, kendi yarısında doğar: üst yarıda öldüyse alt uçta, alt yarıda öldüyse üst uçta. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
 - Kutu içerikleri (ağırlıklı): **Gun** (3 mermi, yeni silah 3’e doldurur; otomatik nişan: en yakın, önü açık rakip; hedef alınana kırmızı uyarı; 3 isabet öldürür, topa da çarpar), **Mine** (patlar:
   açana 1 hasar + 4 sn yavaşlama, çevredekileri ve topu iter), **Ice** (2.5 sn donma), **Speed**,
   **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
@@ -86,7 +86,11 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   simüle et. Eski ve yeni tahmin arasındaki fark görsel ofset olur ve ~50 ms'de söner (60 px üstü
   ışınlanma sayılır, yumuşatılmaz). Böylece kendi vuruşun top üzerinde anında görünür.
 - Sunucu her oyuncu için tick başına bir girdi tüketir; kuyruk 8'i aşarsa 3'e kırpılır (gecikme
-  birikmesin). Girdi gelmezse son girdi tekrarlanır.
+  birikmesin). Girdi gelmezse son girdi en fazla 18 tick (~300 ms, Wi-Fi takılması) tekrarlanır;
+  daha uzun sessizlikte tuşlar bırakılmış sayılır, geç gelen eski girdi onları yeniden kilitlemez.
+- Bağlantı canlılığı: sunucu 5 sn'de bir ping atar, 2 cevapsızda bağlantıyı kapatır; istemci 6 sn hiçbir
+  şey duymazsa yeniden bağlanır. Aynı sekme (oturum anahtarı) yeni bağlantıyla gelirse eski bağlantı
+  hâlâ açık görünse de yeri devralır; eskisi 4011 ile kapanır ("başka sekmede açık").
 - Sim yalnızca `+ - * / sqrt` kullanır (trig yok) → motorlar arası aynı sonuç.
 
 ## Yayın

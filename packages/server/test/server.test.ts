@@ -207,7 +207,7 @@ describe('WebSocket', () => {
     c.socket.send(encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION }));
     const m = await c.next();
     expect(m.t).toBe('welcome');
-    if (m.t === 'welcome') expect(m.clientId).toHaveLength(8);
+    if (m.t === 'welcome') expect(m.clientId).toHaveLength(12);
     c.socket.close();
   });
   it('yanlış sürüm → version_mismatch ve 4001 ile kapanış', async () => {
@@ -323,6 +323,35 @@ describe('WebSocket', () => {
 });
 
 describe('girdi kuyruğu', () => {
+  it('bekleme penceresi geçtikten sonra gelen geç girdi tuşları yeniden kilitlemez; kopunca tuş bırakılır', async () => {
+    const { createRooms, STAND_IN_TICKS } = await import('../src/rooms');
+    const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
+    const room = rooms.create(
+      'a',
+      'A',
+      'R',
+      false,
+      { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: false },
+      () => {},
+      'k',
+    );
+    if (typeof room === 'string') throw new Error(room);
+    rooms.start('a');
+    rooms.input('a', 1, 8);
+    rooms.tickAll();
+    for (let i = 0; i < STAND_IN_TICKS + 5; i++) rooms.tickAll();
+    rooms.input('a', 2, 8); // a straggler from long ago
+    for (let i = 0; i < 5; i++) rooms.tickAll();
+    expect(room.game.players[0]?.input).toBe(0);
+    // A drop: no stand-in keys after it.
+    rooms.input('a', 100, 4);
+    rooms.tickAll();
+    rooms.disconnect('a');
+    rooms.tickAll();
+    expect(room.game.players[0]?.input).toBe(0);
+    rooms.stop();
+  });
+
   it('kısa bir ağ takılmasında (200 ms) tuşlar bırakılmış sayılmaz', async () => {
     const { createRooms } = await import('../src/rooms');
     const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
@@ -442,6 +471,29 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     expect(late.some((r) => r.includes('merhaba'))).toBe(true);
     const results = Array.from({ length: 10 }, () => rooms.chat('a', 'spam'));
     expect(results).toContain('rate_limited');
+    rooms.stop();
+  });
+
+  it('bir adres en fazla 5 oda tutar; bot takası botları dengeler, bot adları küçük kalır', async () => {
+    const rooms = await make();
+    for (const id of ['a', 'b', 'c', 'g', 'h'])
+      asRoom(rooms.create(id, id, 'R', false, settings, () => {}, id, 'ip1'));
+    expect(rooms.create('d', 'd', 'R', false, settings, () => {}, 'd', 'ip1')).toBe('rate_limited');
+    expect(typeof rooms.create('e', 'e', 'R', false, settings, () => {}, 'e', 'ip2')).not.toBe('string');
+    // a's room: a (red) vs a bot. b joins red -> two bots on blue; host swaps b with a blue bot.
+    const room = rooms.rooms.get(rooms.whereIs('a').room!)!;
+    asRoom(rooms.join(room.code, 'f', 'F', () => {}));
+    const teams = () => ({
+      red: room.game.players.filter((p) => p.team === 'red').length,
+      blue: room.game.players.filter((p) => p.team === 'blue').length,
+    });
+    for (let i = 0; i < 6; i++) rooms.move('f', 'f', i % 2 ? 'red' : 'blue');
+    expect(room.game.players.filter((p) => p.bot).every((p) => /^Bot [1-3]$/.test(p.name))).toBe(true);
+    const fTeam = room.game.players.find((p) => p.id === 'f')!.team;
+    const bot = room.game.players.find((p) => p.bot && p.team !== fTeam)!;
+    rooms.move('a', 'a', fTeam);
+    expect(rooms.swap('a', 'a', bot.id)).toBeNull();
+    expect(teams().red).toBe(teams().blue);
     rooms.stop();
   });
 
@@ -617,6 +669,54 @@ describe('WebSocket sınırları', () => {
     expect(room.host).toBe(first.clientId);
     expect(room.players.filter((p) => !p.bot)).toHaveLength(1);
     b.socket.close();
+  });
+
+  it('aynı sekme hâlâ bağlı görünürken yeniden bağlanırsa yeri devralır, eski bağlantı 4011 ile kapanır', async () => {
+    const { wsUrl } = await boot();
+    const until = async <T extends ServerMessage['t']>(c: ReturnType<typeof client>, t: T) => {
+      for (;;) {
+        const m = await c.next();
+        if (m.t === t) return m as Extract<ServerMessage, { t: T }>;
+      }
+    };
+    const a = client(wsUrl);
+    await a.opened;
+    hello(a, 'oturum-x');
+    const first = await until(a, 'welcome');
+    a.socket.send(
+      encode({
+        t: 'create',
+        name: 'Host',
+        roomName: 'R',
+        public: false,
+        settings: { minutes: 3, scoreLimit: 5, crates: 'off', loot: [...ITEM_KINDS], bots: true },
+      }),
+    );
+    const { code } = await until(a, 'joined');
+    // The old socket never closes (a sleeping laptop): the same token comes back on a new one.
+    const b = client(wsUrl);
+    await b.opened;
+    hello(b, 'oturum-x');
+    expect((await until(b, 'welcome')).clientId).toBe(first.clientId);
+    expect(await a.closed).toBe(4011);
+    b.socket.send(encode({ t: 'join', code, name: 'Host' }));
+    const room = (await until(b, 'room')).room;
+    expect(room.host).toBe(first.clientId);
+    expect(room.players.filter((p) => !p.bot)).toHaveLength(1);
+    b.socket.close();
+  });
+
+  it('adres başına bağlantı sınırını aşan bağlantı hiç dinlenmez', async () => {
+    const { wsUrl } = await boot();
+    const { LIMITS } = await import('../src/ws');
+    const ok = Array.from({ length: LIMITS.connectionsPerIp }, () => client(wsUrl));
+    await Promise.all(ok.map((c) => c.opened));
+    const extra = client(wsUrl);
+    await extra.opened.catch(() => {});
+    hello(extra, 'fazla');
+    expect(await extra.closed).toBe(4010);
+    expect(extra.socket.readyState).toBe(WebSocket.CLOSED);
+    for (const c of ok) c.socket.close();
   });
 });
 

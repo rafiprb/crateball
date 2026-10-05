@@ -43,6 +43,10 @@ const MAX_CATCHUP = 5;
 const ROOM_STATS_EVERY = TICK_HZ * 5;
 /** An empty room survives this long so a shared link still works after a refresh. */
 export const EMPTY_ROOM_TTL_MS = 2 * 60_000;
+/** A room that never had a match is cheap to recreate: it goes sooner (room slots are limited). */
+export const EMPTY_UNUSED_ROOM_TTL_MS = 30_000;
+/** Rooms one address may hold open at once (several friends behind one router still fit). */
+export const ROOMS_PER_OWNER = 5;
 
 interface Member {
   id: string;
@@ -82,6 +86,10 @@ export interface Room {
   /** Chat flood control per session key (survives leaving and rejoining). */
   chatBuckets: Map<string, { tokens: number; at: number }>;
   emptySince: number | null;
+  /** Address that created it (a cap per address keeps one client from taking every room slot). */
+  owner: string;
+  /** A match has been played here. */
+  started: boolean;
   /** Slowest tick (step + snapshot) since the last stats line. */
   stepMsMax: number;
 }
@@ -101,6 +109,7 @@ export interface Rooms {
     settings: Settings,
     send: Send,
     key?: string,
+    owner?: string,
   ): Result;
   join(code: string, id: string, name: string, send: Send, key?: string): Result;
   /** Deliberate leave (menu, or switching rooms): the slot is freed now. */
@@ -160,7 +169,10 @@ function rebalance(room: Room): void {
     }
     while (humans[team] + bots < size) {
       room.bots++;
-      addPlayer(g, `bot-${room.bots}`, `Bot ${room.bots}`, team, true);
+      // Ids stay unique; names reuse the lowest free number (no "Bot 4821" after many moves).
+      let n = 1;
+      while (g.players.some((p) => p.bot && p.name === `Bot ${n}`)) n++;
+      addPlayer(g, `bot-${room.bots}`, `Bot ${n}`, team, true);
       bots++;
     }
   }
@@ -277,7 +289,8 @@ export function createRooms(
   const sweep = () => {
     const t = now();
     for (const r of rooms.values()) {
-      if (r.emptySince !== null && t - r.emptySince > EMPTY_ROOM_TTL_MS) {
+      const ttl = r.started ? EMPTY_ROOM_TTL_MS : EMPTY_UNUSED_ROOM_TTL_MS;
+      if (r.emptySince !== null && t - r.emptySince > ttl) {
         rooms.delete(r.code);
         log.info({ room: r.code }, 'boş oda kapandı');
       }
@@ -438,6 +451,9 @@ export function createRooms(
       if (!room || !m) return;
       m.send = () => {};
       m.queue = [];
+      // Nothing to stand in for any more: the keys count as released from now on.
+      m.last = 0;
+      m.gap = STAND_IN_TICKS + 1;
       const p = room.game.players.find((o) => o.id === id);
       if (p) p.input = 0;
       if (m.awayTimer) clearTimeout(m.awayTimer);
@@ -447,8 +463,11 @@ export function createRooms(
     reattach,
     isMember: (id) => byClient.has(id),
     isAway: (id) => !!byClient.get(id)?.members.get(id)?.awayTimer,
-    create(id, name, roomName, isPublic, settings, send, key = id) {
+    create(id, name, roomName, isPublic, settings, send, key = id, owner = id) {
       if (rooms.size >= MAX_ROOMS) return 'server_full';
+      let mine = 0;
+      for (const r of rooms.values()) if (r.owner === owner && r !== byClient.get(id)) mine++;
+      if (mine >= ROOMS_PER_OWNER) return 'rate_limited';
       leave(id);
       const code = newCode();
       const room: Room = {
@@ -466,6 +485,8 @@ export function createRooms(
         chatBuckets: new Map(),
         emptySince: null,
         stepMsMax: 0,
+        owner,
+        started: false,
       };
       rooms.set(code, room);
       log.info({ room: code, isPublic }, 'oda kuruldu');
@@ -496,9 +517,11 @@ export function createRooms(
       const room = byClient.get(id);
       const m = room?.members.get(id);
       if (room?.state !== 'playing' || !m) return;
-      // Arrived after a stand-in already played its tick: still the freshest intent.
-      if (seq <= m.ack) m.last = bits;
-      else if (seq > (m.queue.at(-1)?.[0] ?? m.ack)) {
+      // Arrived after a stand-in already played its tick: still the freshest intent, while the
+      // stand-in window lasts. After it the keys were released; a straggler must not latch them again.
+      if (seq <= m.ack) {
+        if (m.gap <= STAND_IN_TICKS) m.last = bits;
+      } else if (seq > (m.queue.at(-1)?.[0] ?? m.ack)) {
         m.queue.push([seq, bits]);
         // Bounded on arrival too, not only at the next tick: a flood cannot grow it.
         if (m.queue.length > QUEUE_MAX * 2) m.queue.splice(0, m.queue.length - QUEUE_MAX);
@@ -517,6 +540,7 @@ export function createRooms(
       [pa.team, pb.team] = [pb.team, pa.team];
       [pa.role, pb.role] = [pb.role, pa.role];
       [pa.x, pb.x, pa.y, pb.y] = [pb.x, pa.x, pb.y, pa.y];
+      rebalance(room); // a human for a bot changes how many bots each side needs
       announce(room);
       return null;
     },
@@ -570,7 +594,13 @@ export function createRooms(
       newArenaPlan(room.game);
       restartMatch(room.game);
       room.state = 'playing';
-      for (const m of room.members.values()) m.queue = [];
+      room.started = true;
+      // Nothing from the last match carries over: no queued or held keys at the new kickoff.
+      for (const m of room.members.values()) {
+        m.queue = [];
+        m.last = 0;
+        m.gap = 0;
+      }
       log.info({ room: room.code, settings: room.game.settings }, 'maç başladı');
       announce(room);
       broadcastSnap(room);
@@ -595,6 +625,10 @@ export function createRooms(
       bucket.tokens = Math.min(CHAT_BURST, bucket.tokens + (t - bucket.at) / CHAT_REFILL_MS);
       bucket.at = t;
       room.chatBuckets.set(m.key, bucket);
+      // Sessions come and go while a room lives: forget buckets that have long been full again.
+      if (room.chatBuckets.size > 64)
+        for (const [k, b] of room.chatBuckets)
+          if (t - b.at > CHAT_BURST * CHAT_REFILL_MS) room.chatBuckets.delete(k);
       if (bucket.tokens < 1) return 'rate_limited';
       bucket.tokens--;
       const team = m.spectator ? 'spec' : (room.game.players.find((p) => p.id === id)?.team ?? 'spec');

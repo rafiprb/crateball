@@ -60,6 +60,12 @@ describe('oyun mesajları', () => {
     });
     expect(decodeClientMessage('{"t":"join","code":"ABIO","name":"x"}')).toBeNull();
   });
+  it('isimden yön çeviren ve görünmez karakterleri atar, emoji birleştiricisini bırakır', () => {
+    const m = decodeClientMessage(
+      JSON.stringify({ t: 'join', code: 'ABCD', name: 'a\u202Eb\u200Bc\u0085d👩\u200D💻' }),
+    );
+    expect(m).toMatchObject({ name: 'abcd👩\u200D💻' });
+  });
   it('ayarları seçeneklerle sınırlar', () => {
     const ok = { minutes: 3, scoreLimit: 5, crates: 'chaos', bots: false };
     const raw = (settings: unknown) =>

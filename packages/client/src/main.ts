@@ -104,6 +104,13 @@ const conn = connect({
   url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
   createSocket: laggySocket ? (url) => laggySocket(url, lag, jitter) : undefined,
   onStatus: (s) => {
+    if (s === 'taken') {
+      // The same tab connected again elsewhere (a duplicated tab took the seat): this one steps aside.
+      toMenu();
+      banner.hidden = false;
+      banner.textContent = 'Crateball is open in another tab — this one is disconnected.';
+      return;
+    }
     if (room) {
       if (s === 'closed') {
         banner.hidden = false;
@@ -366,6 +373,7 @@ const NET_TEXT: Record<NetStatus, string> = {
   open: 'connected',
   closed: 'offline — retrying',
   version_mismatch: 'version mismatch',
+  taken: 'open in another tab',
 };
 
 function getState() {

@@ -191,6 +191,7 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
       bazooka: false,
       kickArmed: true,
       useArmed: true,
+      input: 0,
     });
     placeAtSpawn(g, p, slots[p.team]++);
   }
@@ -242,10 +243,11 @@ function controlPlayer(g: Game, p: Player): void {
   if (p.cooldown > 0) p.cooldown--;
   if (p.dead > 0) {
     if (--p.dead === 0) {
-      // Back in at the top of the halfway line, on your own side.
+      // Back in at an end of the halfway line, on your own side: the end away from where you died
+      // (the parking spot's sign remembers it).
       p.hp = PLAYER.maxHp;
       p.x = side(p.team) * PLAYER.respawnOffsetX;
-      p.y = -(FIELD.halfH - PLAYER.radius - PLAYER.respawnInsetY);
+      p.y = Math.sign(p.y) * (FIELD.halfH - PLAYER.radius - PLAYER.respawnInsetY);
       p.vx = p.vy = 0;
       p.fx = -side(p.team);
       p.fy = 0;
@@ -415,6 +417,7 @@ function fire(g: Game, p: Player): void {
 function fireRocket(g: Game, p: Player): void {
   const target = gunTarget(g, p);
   p.bazooka = false;
+  p.cooldown = ITEMS.gunCooldown;
   let dx = p.fx;
   let dy = p.fy;
   if (target) {
@@ -487,6 +490,12 @@ function integrate(g: Game): void {
   const b = g.ball;
   const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
   const steps = Math.min(BALL.maxSubsteps, Math.max(1, Math.ceil(speed / BALL.radius)));
+  // Safety cap: the sub-steps (each no longer than the radius) must cover the whole move.
+  if (speed > BALL.radius * BALL.maxSubsteps) {
+    const k = (BALL.radius * BALL.maxSubsteps) / speed;
+    b.vx *= k;
+    b.vy *= k;
+  }
   for (let i = 0; i < steps; i++) {
     b.x += b.vx / steps;
     b.y += b.vy / steps;
@@ -623,8 +632,10 @@ function damage(g: Game, p: Player, amount: number, kx: number, ky: number): voi
     p.boost = 0;
     p.power = false;
     g.blasts.push({ x: p.x, y: p.y, kind: 'mine', t: ITEMS.blastShow });
+    // Parked off the pitch while dead; the sign of y picks the respawn end: died in the top half →
+    // back in at the bottom, and the other way round.
     p.x = 9999;
-    p.y = 9999;
+    p.y = p.y < 0 ? 9999 : -9999;
   }
 }
 
