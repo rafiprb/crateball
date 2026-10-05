@@ -60,9 +60,9 @@ export const CRATES = {
   /** Weighted loot table (out of 100): the bad half (mine, ice, dizzy) weighs exactly as much as the
    * good half, so every crate is a gamble. */
   loot: [
-    ['mine', 20],
-    ['ice', 16],
-    ['dizzy', 14],
+    ['mine', 22],
+    ['ice', 18],
+    ['dizzy', 10],
     ['gun', 18],
     ['boost', 7],
     ['shield', 7],
@@ -108,21 +108,54 @@ export const ITEMS = {
 export type Role = 'gk' | 'def' | 'mid' | 'fwd';
 
 /**
- * Positions: each role gets a buff only inside its zone, so spreading out pays off
- * instead of everyone chasing the ball. Zones are measured along the attack direction.
+ * Positions: each role has its own kind of passive, active only inside its (wide) zone, so spreading
+ * out pays off instead of everyone chasing the ball. Zones are measured along the attack direction.
  */
 export const ROLES = {
   /** Auto-assignment order inside a team. */
   order: ['fwd', 'gk', 'mid', 'def'] as readonly Role[],
-  /** Keeper: bigger inside the own box, and nimbler there: `boxAgility` × the acceleration and × the
-   * rate speed bleeds off, so the same top speed but quicker starts, stops and turns. */
-  gk: { boxDepth: 110, boxHalf: 140, radius: 19, outsideAccel: 0.92, boxAgility: 1.5 },
-  /** Defender: heavier (wins shoulder duels) and a bit quicker in the own half. */
-  def: { invMass: 0.28, accel: 1.1 },
-  /** Midfielder: longer reach and crisper passes in the middle third. */
-  mid: { reach: 8, kick: 1.18, zoneHalf: 160 },
-  /** Forward: fastest and hardest shot in the attacking third. */
-  fwd: { accel: 1.22, kick: 1.2, zoneStart: 140 },
+  /** A ball counts as arriving hard (for the keeper's catch and the midfielder's first touch) when it
+   * moves at least this fast and hits the player at least this fast (px/tick). */
+  cushionMin: 2,
+  /**
+   * Keeper, zone = `zoneDepth` px out from the own goal line (a little deeper than the box). Safe hands:
+   * a ball that arrives hard keeps only `catch` of its speed, so shots drop at their feet. Nimble:
+   * `agility` × the acceleration and × the rate speed bleeds off (same top speed, sharper turns).
+   * Bigger only inside the box.
+   */
+  gk: {
+    zoneDepth: 140,
+    boxDepth: 110,
+    boxHalf: 140,
+    radius: 19,
+    outsideAccel: 0.92,
+    agility: 1.5,
+    catch: 0.2,
+  },
+  /**
+   * Defender, zone = `zoneDepth` px out from the own goal line (most of the own half). Heavy, and a
+   * shoulder charge: running into an opponent at speed shoves them `chargePush` px/tick further and
+   * slows them for `chargeSlow` ticks; then `chargeCooldown` ticks before the next one.
+   */
+  def: {
+    zoneDepth: 340,
+    invMass: 0.28,
+    chargeMinSpeed: 1.2,
+    chargePush: 2.4,
+    chargeSlow: 36,
+    chargeCooldown: sec(1.5),
+  },
+  /**
+   * Midfielder, zone = middle 60% of the pitch. Playmaker: the wider pass lock (PASS.cosMid), longer
+   * reach, crisper kick, and a soft first touch: a ball that arrives hard keeps only `firstTouch` of
+   * its speed, so it stays close.
+   */
+  mid: { reach: 8, kick: 1.18, zoneHalf: 252, firstTouch: 0.45 },
+  /**
+   * Forward, zone = from `zoneStart` px past halfway. Finisher: fastest, harder shots, and a shot that
+   * would just miss is bent inside the posts when it points within `aimCos` of the goal mouth.
+   */
+  fwd: { accel: 1.22, kick: 1.25, zoneStart: 80, aimCos: 0.94, aimInside: 14 },
 };
 
 /** Room settings the host picks in the lobby. */

@@ -11,7 +11,7 @@ oyuncu kutuya değince açılır.
 - Maç 3 dk, 5 gole kadar; süre bittiğinde berabere ise altın gol. "No time limit" seçilirse süre yok: maç yalnızca
   gol limitiyle biter, saat oynanan süreyi ileri sayar.
 - Can 3; ölünce 3 sn sonra orta çizginin bir ucunda, kendi yarısında doğar: üst yarıda öldüyse alt uçta, alt yarıda öldüyse üst uçta. Her santrada (gol sonrası dahil) herkesin canı dolar, eşyalar ve kutular silinir.
-- Kutu ağırlıkları (100 üzerinden; kötüler = iyiler = 50): Mine 20, Ice 16, Dizzy 14 | Gun 18, Speed 7,
+- Kutu ağırlıkları (100 üzerinden; kötüler = iyiler = 50): Mine 22, Ice 18, Dizzy 10 | Gun 18, Speed 7,
   Shield 7, Power kick 6, Teleport 6, Bazooka 6.
 - **Dizzy** (kötü): 4 sn yön tuşları ters çalışır; kafadan kabarcıklar çıkar. Santrada ve ölünce geçer.
 - **Shield** süresiz: gol olana ya da ilk kötü şey gelene kadar kalır ve onu tek seferlik engeller (mermi,
@@ -29,13 +29,19 @@ oyuncu kutuya değince açılır.
   alır. Silah tuş basılıyken ateşler; ışınlanma ve bazuka yeni bir basış ister. Bazukalı bot kilitlenince ateşler. Botlar gitmek istedikleri yere uzak kalınca
   (200 px+) o yöne sıçrar.
 - Mevkiler (herkes topa koşmasın diye; bonus yalnızca kendi bölgesinde):
-  GK kendi ceza sahasında biraz büyük (r 19) ve çevik (1,5× ivme ve fren: aynı son hız, daha keskin dönüş), DF kendi yarısında ağır + hızlı, MF orta bölgede uzun
-  menzil + sert pas + geniş pas yardımı, FW hücum bölgesinde en hızlı + en sert şut. 1–4 tuşlarıyla değişir (takım
-  arkadaşıyla takas).
+  - GK (kale çizgisinden 140 px): sert gelen topu tutar (top hızının %20'si kalır, ayağının dibine düşer), çevik
+    (1,5× ivme ve fren). Ceza sahasında biraz büyük (r 19).
+  - DF (kendi kalesinden 340 px): ağır; hızla rakibe çarpınca omuz atar (ekstra itiş + 0,6 sn yarı hız), sonra
+    1,5 sn bekleme.
+  - MF (sahanın ortadaki %60'ı): uzun menzil, sert pas, ±15° pas yardımı, sert gelen topu yumuşak karşılar (%45).
+  - FW (orta çizginin 80 px ilerisinden): en hızlı, %25 sert şut; direğin az dışına giden şut içeri kıvrılır.
+  - Tutma / yumuşak karşılama sadece sert gelen topta (top ve çarpma hızı ≥ 2 px/tik): yavaş dokunuş, top
+    sürme ve topun etrafında dönme normal kalır, yani kaleci tutup çevirip pas atabilir.
+  - 1–4 tuşlarıyla değişir (takım arkadaşıyla takas).
 - Pas: vuruş yönü bir takım arkadaşına ±6° (orta saha kendi bölgesinde ±15°) yakınsa top ona doğru
   bükülür ve koşusunun önüne atılır; kale ağzına giden şut bükülmez. Vuruş tuşu basılı değilken
   topa değmek "hafif dokunuş"tur (top az seker, kontrol kolay). Kendi oyuncunun topa yakınken
-  vuruş yönünü gösteren ok çizilir; pas yardımı devredeyse sarı olur ve alıcıyı halkayla gösterir.
+  vuruş yönünü gösteren ok çizilir; orta sahada pas yardımı devredeyse sarı olur ve alıcıyı halkayla gösterir.
 - Botlar takımları eşitler (tek kişi gelirse 1v1 bot); mevkilerini korurlar.
 
 ## Sahalar

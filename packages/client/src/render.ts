@@ -100,10 +100,10 @@ const ARENA_LOOK: Record<
 };
 
 const ROLE_STYLE: Record<Role, [string, string]> = {
-  gk: ['GK', 'Keeper: bigger in your box'],
-  def: ['DF', 'Defender: heavier + faster in your half'],
-  mid: ['MF', 'Midfielder: longer reach + crisper passes in midfield'],
-  fwd: ['FW', 'Forward: fastest + hardest shot up front'],
+  gk: ['GK', 'Keeper: catches hard shots near your goal'],
+  def: ['DF', 'Defender: shoulder charge in your half'],
+  mid: ['MF', 'Midfielder: soft first touch + pass lock in midfield'],
+  fwd: ['FW', 'Forward: fastest, near misses curl inside the post'],
 };
 
 const HUD_H = 56;
@@ -495,11 +495,13 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         ctx.stroke();
       }
     }
-    // Aim arrow: where my kick would send the ball; turns gold and rings the teammate on an assisted pass.
+    // Aim arrow: where my kick would send the ball. For a midfielder (the playmaker) it turns gold and
+    // rings the teammate on an assisted pass; everyone else just sees the arrow.
     const mine = g.players.find((p) => p.id === pr.me);
     const aim = mine && mine.dead === 0 && mine.frozen === 0 ? kickDirection(g, mine) : null;
     if (aim) {
-      const color = aim.to ? '#FFE066' : 'rgba(255,255,255,.75)';
+      const showPass = aim.to !== null && mine?.role === 'mid';
+      const color = showPass ? '#FFE066' : 'rgba(255,255,255,.75)';
       const sx = bp.x + aim.x * (BALL.radius + 4);
       const sy = bp.y + aim.y * (BALL.radius + 4);
       const ex = sx + aim.x * 17;
@@ -517,7 +519,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.lineTo(ex - aim.y * 5, ey + aim.x * 5);
       ctx.lineTo(ex + aim.y * 5, ey - aim.x * 5);
       ctx.fill();
-      const mate = aim.to ? pr.pos(aim.to, alpha) : null;
+      const mate = showPass && aim.to ? pr.pos(aim.to, alpha) : null;
       if (mate) {
         ctx.beginPath();
         ctx.arc(mate.x, mate.y, PLAYER.radius + 8, 0, Math.PI * 2);

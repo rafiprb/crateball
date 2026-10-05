@@ -38,6 +38,8 @@ export interface Player {
   /** Ticks left with the movement keys reversed (a dizzy crate). */
   dizzy: number;
   slow: number;
+  /** Defender: ticks until the next shoulder charge can land. */
+  chargeCd: number;
   boost: number;
   shield: boolean;
   power: boolean;

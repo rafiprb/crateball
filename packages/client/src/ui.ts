@@ -53,10 +53,10 @@ const ROLE_NAME: Record<Role, string> = {
   fwd: 'Forward',
 };
 const ROLE_HINT: Record<Role, string> = {
-  gk: 'Bigger in your box',
-  def: 'Heavier + faster in your half',
-  mid: 'Longer reach + crisper passes in midfield',
-  fwd: 'Fastest + hardest shot up front',
+  gk: 'Catches hard shots near your goal, nimble there',
+  def: 'Shoulder charge in your half: shoves and slows',
+  mid: 'Soft first touch + pass lock across midfield',
+  fwd: 'Fastest; near misses curl inside the post',
 };
 
 export interface UiActions {

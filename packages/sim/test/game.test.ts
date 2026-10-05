@@ -313,6 +313,65 @@ describe('mevkiler', () => {
     };
     expect(speed(250)).toBeGreaterThan(speed(-250) * 1.15);
   });
+  it('kaleci bölgesinde sert gelen topu tutar, dışarıda top seker', () => {
+    const after = (x: number) => {
+      const g = createGame(1);
+      g.phase = 'play';
+      const k = addPlayer(g, 'k', 'K', 'red');
+      setRole(g, 'k', 'gk');
+      Object.assign(k, { x, y: 0, vx: 0, vy: 0 });
+      Object.assign(g.ball, { x: x + 80, y: 0, vx: -6, vy: 0 });
+      run(g, 30);
+      return Math.hypot(g.ball.vx, g.ball.vy);
+    };
+    expect(after(-FIELD.halfW + 40)).toBeLessThan(after(0) * 0.5);
+  });
+  it('kaleci yavaş topu tutmaz: topa koşup sürebilir', () => {
+    const g = createGame(1);
+    g.phase = 'play';
+    const k = addPlayer(g, 'k', 'K', 'red');
+    setRole(g, 'k', 'gk');
+    Object.assign(k, { x: -FIELD.halfW + 40, y: 0, vx: 0, vy: 0 });
+    Object.assign(g.ball, { x: -FIELD.halfW + 80, y: 0, vx: 0, vy: 0 });
+    run(g, 60, new Map([['k', RIGHT]]));
+    expect(g.ball.x).toBeGreaterThan(-FIELD.halfW + 150);
+  });
+  it('defans omuz atar: rakip itilir ve yavaşlar, sonra bekleme süresi', () => {
+    const g = createGame(1);
+    g.phase = 'play';
+    const d = addPlayer(g, 'd', 'D', 'red');
+    setRole(g, 'd', 'def');
+    const o = addPlayer(g, 'o', 'O', 'blue');
+    g.ball.x = 300;
+    Object.assign(d, { x: -250, y: 0, vx: 2.4, vy: 0 });
+    Object.assign(o, { x: -250 + 31, y: 0, vx: 0, vy: 0 });
+    step(g);
+    expect(o.slow).toBeGreaterThan(0);
+    expect(d.chargeCd).toBe(ROLES.def.chargeCooldown);
+    // A second bump inside the cooldown does nothing extra.
+    Object.assign(d, { x: -250, y: 0, vx: 2.4, vy: 0 });
+    Object.assign(o, { x: -250 + 31, y: 0, vx: 0, vy: 0, slow: 0 });
+    step(g);
+    expect(o.slow).toBe(0);
+  });
+  it('forvet bölgesinde direğin az dışına giden şutu içeri kıvırır', () => {
+    const shot = (px: number) => {
+      const g = createGame(1);
+      g.phase = 'play';
+      const f = addPlayer(g, 'f', 'F', 'red');
+      // Aim at just outside the far post of the goal they attack (x = +halfW).
+      const tx = FIELD.halfW - px;
+      const ty = FIELD.goalHalf + 12 - -40;
+      const n = Math.hypot(tx, ty);
+      Object.assign(f, { x: px, y: -40 });
+      Object.assign(g.ball, { x: px + (tx / n) * 26, y: -40 + (ty / n) * 26 });
+      step(g);
+      const d = kickDirection(g, f)!;
+      return g.ball.y + (d.y / d.x) * (FIELD.halfW - g.ball.x);
+    };
+    expect(Math.abs(shot(260))).toBeLessThan(FIELD.goalHalf);
+    expect(Math.abs(shot(20))).toBeGreaterThan(FIELD.goalHalf);
+  });
 });
 
 describe('pas', () => {

@@ -135,6 +135,7 @@ export function addPlayer(g: Game, id: string, name: string, team: Team, bot = f
     frozen: 0,
     dizzy: 0,
     slow: 0,
+    chargeCd: 0,
     boost: 0,
     shield: false,
     power: false,
@@ -262,8 +263,9 @@ function controlPlayer(g: Game, p: Player): void {
   if (p.slow > 0) p.slow--;
   if (p.boost > 0) p.boost--;
   if (p.dizzy > 0) p.dizzy--;
+  if (p.chargeCd > 0) p.chargeCd--;
   p.buff = inZone(p);
-  p.r = p.role === 'gk' && p.buff ? ROLES.gk.radius : PLAYER.radius;
+  p.r = p.role === 'gk' && inBox(p) ? ROLES.gk.radius : PLAYER.radius;
   const kickHeld = (p.input & KICK) !== 0;
   const useHeld = (p.input & USE) !== 0;
   if (p.frozen > 0) {
@@ -315,13 +317,17 @@ function controlPlayer(g: Game, p: Player): void {
 /** Distance along the attack direction: negative = own half. */
 const advance = (p: Player) => -side(p.team) * p.x;
 
+/** The keeper's own penalty box (where they are bigger). */
+const inBox = (p: Player) =>
+  advance(p) < -(FIELD.halfW - ROLES.gk.boxDepth) && Math.abs(p.y) < ROLES.gk.boxHalf;
+
 function inZone(p: Player): boolean {
   const u = advance(p);
   switch (p.role) {
     case 'gk':
-      return u < -(FIELD.halfW - ROLES.gk.boxDepth) && Math.abs(p.y) < ROLES.gk.boxHalf;
+      return u < -(FIELD.halfW - ROLES.gk.zoneDepth);
     case 'def':
-      return u < 0;
+      return u < -(FIELD.halfW - ROLES.def.zoneDepth);
     case 'mid':
       return Math.abs(u) < ROLES.mid.zoneHalf;
     case 'fwd':
@@ -330,9 +336,9 @@ function inZone(p: Player): boolean {
 }
 
 function accelMul(p: Player): number {
-  if (p.role === 'gk') return p.buff ? ROLES.gk.boxAgility : ROLES.gk.outsideAccel;
+  if (p.role === 'gk') return p.buff ? ROLES.gk.agility : ROLES.gk.outsideAccel;
   if (!p.buff) return 1;
-  return p.role === 'def' ? ROLES.def.accel : p.role === 'fwd' ? ROLES.fwd.accel : 1;
+  return p.role === 'fwd' ? ROLES.fwd.accel : 1;
 }
 
 function kickMul(p: Player): number {
@@ -360,6 +366,14 @@ export function kickDirection(g: Game, p: Player): { x: number; y: number; to: s
   if (nx * (goalX - b.x) > 0) {
     const yAtGoal = b.y + (ny / nx) * (goalX - b.x);
     if (Math.abs(yAtGoal) < FIELD.goalHalf) return { x: nx, y: ny, to: null };
+    // Forward in their zone: a near miss is bent inside the nearer post.
+    if (p.role === 'fwd' && p.buff) {
+      const inside = FIELD.goalHalf - ROLES.fwd.aimInside;
+      const ty = Math.max(-inside, Math.min(inside, yAtGoal)) - b.y;
+      const tx = goalX - b.x;
+      const tl = Math.sqrt(tx * tx + ty * ty) || 1;
+      if ((tx * nx + ty * ny) / tl > ROLES.fwd.aimCos) return { x: tx / tl, y: ty / tl, to: null };
+    }
   }
   const minCos = p.role === 'mid' && p.buff ? PASS.cosMid : PASS.cos;
   let best: { x: number; y: number; to: string | null } = { x: nx, y: ny, to: null };
@@ -494,7 +508,7 @@ function integrate(g: Game): void {
     p.y += p.vy;
     let pd = playerDamping(g);
     // Keeper in the box: speed bleeds off faster (with the matching extra acceleration: sharper turns).
-    if (p.role === 'gk' && p.buff) pd = 1 - (1 - pd) * ROLES.gk.boxAgility;
+    if (p.role === 'gk' && p.buff) pd = 1 - (1 - pd) * ROLES.gk.agility;
     p.vx *= pd;
     p.vy *= pd;
   }
@@ -548,6 +562,19 @@ function contact(a: Body, ar: number, am: number, ab: number, b: Body, br: numbe
   return true;
 }
 
+/** Defender in their zone running into an opponent: an extra shove and a moment's slowdown (then a
+ * cooldown before the next one). */
+function shoulderCharge(d: Player, o: Player, closing: number): void {
+  if (d.role !== 'def' || !d.buff || d.chargeCd > 0 || closing < ROLES.def.chargeMinSpeed) return;
+  d.chargeCd = ROLES.def.chargeCooldown;
+  const dx = o.x - d.x;
+  const dy = o.y - d.y;
+  const n = Math.sqrt(dx * dx + dy * dy) || 1;
+  o.vx += (dx / n) * ROLES.def.chargePush;
+  o.vy += (dy / n) * ROLES.def.chargePush;
+  o.slow = Math.max(o.slow, ROLES.def.chargeSlow);
+}
+
 const POSTS = [-1, 1].flatMap((sx) => [-1, 1].map((sy) => ({ x: sx * FIELD.halfW, y: sy * FIELD.goalHalf })));
 const STILL = { vx: 0, vy: 0 };
 
@@ -557,11 +584,39 @@ function collide(g: Game): void {
     const a = alive[i]!;
     for (let j = i + 1; j < alive.length; j++) {
       const b = alive[j]!;
-      contact(a, a.r, invMass(a), PLAYER.bounce, b, b.r, invMass(b), PLAYER.bounce);
+      const closing = Math.sqrt((a.vx - b.vx) ** 2 + (a.vy - b.vy) ** 2);
+      if (
+        contact(a, a.r, invMass(a), PLAYER.bounce, b, b.r, invMass(b), PLAYER.bounce) &&
+        a.team !== b.team
+      ) {
+        shoulderCharge(a, b, closing);
+        shoulderCharge(b, a, closing);
+      }
     }
-    const touch = a.input & KICK ? PLAYER.bounce : PLAYER.softTouchBounce;
-    if (contact(a, a.r, invMass(a), touch, g.ball, BALL.radius, BALL.invMass, BALL.bounce))
+    const kicking = (a.input & KICK) !== 0;
+    const touch = kicking ? PLAYER.bounce : PLAYER.softTouchBounce;
+    const b = g.ball;
+    const flying = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    const hitSpeed = Math.sqrt((b.vx - a.vx) ** 2 + (b.vy - a.vy) ** 2);
+    if (contact(a, a.r, invMass(a), touch, b, BALL.radius, BALL.invMass, BALL.bounce)) {
       g.lastTouch = a.id;
+      // Keeper's safe hands / midfielder's soft first touch: a ball that arrives hard keeps only part
+      // of its own speed, so it drops at their feet instead of bouncing away. Slow touches (running
+      // into a loose ball, dribbling, turning round it) are untouched, so they can still play it on.
+      const hard = flying >= ROLES.cushionMin && hitSpeed >= ROLES.cushionMin;
+      const keep =
+        kicking || !a.buff || !hard
+          ? 1
+          : a.role === 'gk'
+            ? ROLES.gk.catch
+            : a.role === 'mid'
+              ? ROLES.mid.firstTouch
+              : 1;
+      if (keep < 1) {
+        b.vx *= keep;
+        b.vy *= keep;
+      }
+    }
     if (g.phase === 'kickoff' && (Math.abs(g.ball.x) > 0.01 || Math.abs(g.ball.y) > 0.01)) g.phase = 'play';
     confinePlayer(g, a);
   }
