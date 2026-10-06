@@ -534,11 +534,33 @@ li > button.kick:hover {
   overflow-y: auto;
 }
 
-#stop-match {
+#match-bar {
   position: fixed;
   top: 12px;
   left: 16px;
   z-index: 5;
+  display: flex;
+  gap: 8px;
+}
+#leave-match {
+  font:
+    700 13px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  padding: 4px 12px;
+  border-radius: 10px;
+  border: 2px solid #3a4470;
+  background: rgba(14, 18, 40, 0.85);
+  color: #fff4e0;
+  cursor: pointer;
+}
+#leave-match[hidden] {
+  display: none;
+}
+#leave-match.armed {
+  background: #3a4470;
+}
+#stop-match {
   font:
     700 13px 'Baloo 2',
     system-ui,

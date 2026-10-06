@@ -83,6 +83,19 @@ test('iki oyuncu aynı odada; gecikmeli istemcide kendi hareketi RTT beklemeden 
   // a starved server counts stand-in ticks against the client's sequence numbers.
   expect(s.net.rtt).toBeGreaterThan(100);
   expect(s.pred.corrections - c0).toBeLessThan(40);
+
+  // A guest can walk out of a running match (two clicks on Leave); the host sees them gone.
+  await expect(b.locator('#stop-match')).toBeHidden();
+  await b.click('#leave-match');
+  await b.click('#leave-match');
+  await expect.poll(async () => (await state(b)).room).toBeNull();
+  await expect
+    .poll(async () => (await state(a))?.room?.players.filter((p) => !p.bot).length ?? 0, { timeout: 15_000 })
+    .toBe(1);
+  // The host reloads mid-match: still the host, Stop match still there.
+  await a.reload();
+  await expect.poll(async () => (await state(a))?.room?.state, { timeout: 15_000 }).toBe('playing');
+  await expect(a.locator('#stop-match')).toBeVisible();
 });
 
 test('lobi: oda kur, Find Room ile bul, host sürükleyerek yer değiştirir, mevki seçilir, maç başlar', async ({

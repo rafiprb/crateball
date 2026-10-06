@@ -76,6 +76,7 @@ const toMenu = () => {
   chat.mode('off');
   chat.mount(null);
   stopBtn.hidden = true;
+  leaveBtn.hidden = true;
   room = null;
   code = null;
   pred.reset();
@@ -217,7 +218,10 @@ function onRoom(r: RoomInfo) {
   const typing = chat.focus();
   chat.mode(r.state === 'playing' ? 'game' : 'lobby');
   if (r.state === 'playing') chat.mount(null);
-  stopBtn.hidden = !(r.state === 'playing' && r.host === pred.me);
+  // Until `joined` names us (a reloaded page gets the room first), the welcome's id is ours too.
+  const meId = pred.me ?? conn.clientId;
+  stopBtn.hidden = !(r.state === 'playing' && r.host === meId);
+  leaveBtn.hidden = r.state !== 'playing';
   // Unrelated room updates (someone joins, a role change) must not disarm a half-done stop.
   if (stopBtn.hidden) {
     stopBtn.classList.remove('armed');
@@ -262,6 +266,37 @@ const chat = createChat(
   (text) => conn.send({ t: 'chat', text }),
   () => keyboard.release(),
 );
+/** In a match, top left: Leave (everyone) and Stop match (host). Both take two clicks: the first arms. */
+const matchBar = document.createElement('div');
+matchBar.id = 'match-bar';
+const twoClick = (btn: HTMLButtonElement, label: string, armed: string, go: () => void) => {
+  let disarmAt: ReturnType<typeof setTimeout> | undefined;
+  btn.addEventListener('click', () => {
+    btn.blur();
+    if (btn.classList.contains('armed')) {
+      go();
+      return;
+    }
+    btn.classList.add('armed');
+    btn.textContent = armed;
+    clearTimeout(disarmAt);
+    disarmAt = setTimeout(() => {
+      btn.classList.remove('armed');
+      btn.textContent = label;
+    }, 3000);
+  });
+};
+const leaveBtn = document.createElement('button');
+leaveBtn.id = 'leave-match';
+leaveBtn.type = 'button';
+leaveBtn.hidden = true;
+leaveBtn.textContent = 'Leave';
+twoClick(leaveBtn, 'Leave', 'Click again to leave', () => {
+  leaveBtn.classList.remove('armed');
+  leaveBtn.textContent = 'Leave';
+  conn.send({ t: 'leave' });
+  toMenu();
+});
 /** Host only, in a match: two clicks (the first arms it) end the match for everyone. */
 const stopBtn = document.createElement('button');
 stopBtn.id = 'stop-match';
@@ -283,7 +318,8 @@ stopBtn.addEventListener('click', () => {
     stopBtn.textContent = 'Stop match';
   }, 3000);
 });
-document.body.append(stopBtn);
+matchBar.append(leaveBtn, stopBtn);
+document.body.append(matchBar);
 
 const ROLE_KEYS: Record<string, Role> = {
   Digit1: 'gk',
