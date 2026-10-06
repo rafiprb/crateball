@@ -72,7 +72,7 @@ describe('tahmin', () => {
       return 20 - c.pos('ball', 1)!.x; // offset still left
     };
     const far = shownAfter(-300);
-    const near = shownAfter(-40);
+    const near = shownAfter(-18); // within touching distance of the ball (at x 20)
     expect(near).toBeLessThan(far);
     expect(far).toBeGreaterThan(12); // ~200 ms half-life
     expect(near).toBeLessThan(10); // ~90 ms half-life

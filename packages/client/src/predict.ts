@@ -29,10 +29,11 @@ const BALL_MAX_OFFSET = 140;
  * tight, but a bump from a collision closes slower (down to ≈ 120 ms) so it reads as a push. */
 const SMOOTH_RATE = 7.5;
 /** The ball away from us (someone else is playing it): its corrections come from guessing their keys and
- * are often 20-40 px. A slower glide (≈ 200 ms half-life) reads as movement instead of a jerk. Near our own
- * player the normal rate applies, so our own touches stay crisp. */
+ * are often 20-40 px. A slower glide (≈ 200 ms half-life) reads as movement instead of a jerk. Only within
+ * touching distance of our own player (radius 15 + ball 10 + kick reach and a margin) does the normal rate
+ * apply, so our own touches stay crisp; an opponent dribbling a few metres away still glides. */
 const BALL_FAR_RATE = 3.4;
-const BALL_NEAR_PX = 110;
+const BALL_NEAR_PX = 45;
 const SMOOTH_RATE_ME = 14;
 const SMOOTH_RATE_ME_MIN = 5.8;
 /** Below this own-player offset (px) the fast rate applies; above it the rate slows in proportion. */
