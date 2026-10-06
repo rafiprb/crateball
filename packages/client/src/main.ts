@@ -79,6 +79,7 @@ const toMenu = () => {
   leaveBtn.hidden = true;
   room = null;
   code = null;
+  rememberRoom(null);
   pred.reset();
   history.replaceState(null, '', `/${params.has('debug') ? '?debug' : ''}`);
   ui.menu();
@@ -88,6 +89,24 @@ const lag = import.meta.env.DEV ? Number(params.get('lag') ?? 0) : 0;
 const jitter = import.meta.env.DEV ? Number(params.get('jitter') ?? 0) : 0;
 const { laggySocket } =
   import.meta.env.DEV && (lag > 0 || jitter > 0) ? await import('./lag') : { laggySocket: null };
+/** The room this tab was last in (sessionStorage): a reload of /r/CODE goes straight back in, while a
+ * shared link opened fresh first shows the invite screen (name + Join). */
+const lastRoom = (() => {
+  try {
+    return sessionStorage.getItem('crateball-room');
+  } catch {
+    return null;
+  }
+})();
+const rejoin = pathCode !== undefined && pathCode === lastRoom;
+const rememberRoom = (c: string | null) => {
+  try {
+    if (c) sessionStorage.setItem('crateball-room', c);
+    else sessionStorage.removeItem('crateball-room');
+  } catch {
+    /* storage blocked */
+  }
+};
 /** Per tab (sessionStorage): a reload or a dropped connection gets the same player back. */
 const sessionToken = (() => {
   try {
@@ -131,7 +150,7 @@ const conn = connect({
           public: false,
           settings: DEFAULT_SETTINGS,
         });
-      else if (pathCode && ui.name !== 'Player') {
+      else if (pathCode && rejoin && ui.name !== 'Player') {
         joinPending = true;
         conn.send({ t: 'join', code: pathCode, name: ui.name });
       }
@@ -173,6 +192,7 @@ const conn = connect({
       case 'joined':
         joinPending = false;
         code = m.code;
+        rememberRoom(m.code);
         pred.setMe(m.playerId);
         history.replaceState(null, '', `/r/${m.code}${debugQuery}`);
         if (room) onRoom(room);
@@ -260,7 +280,8 @@ const ui = createUi(
   },
   { name: params.get('name') ?? undefined, muted: mutedPref },
 );
-ui.menu(pathCode && CODE_RE.test(pathCode) ? pathCode : undefined);
+if (pathCode && CODE_RE.test(pathCode) && !rejoin) ui.invite(pathCode);
+else ui.menu(pathCode && CODE_RE.test(pathCode) ? pathCode : undefined);
 
 const chat = createChat(
   (text) => conn.send({ t: 'chat', text }),

@@ -781,3 +781,17 @@ fieldset.weights {
     grid-template-columns: 1fr;
   }
 }
+
+/* Invite screen (opened from a room link): the code big in the middle. */
+.invite {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 2px;
+}
+.invite .code {
+  font-size: 34px;
+  padding: 2px 18px;
+}
+#screen-invite .sub {
+  text-align: center;
+}

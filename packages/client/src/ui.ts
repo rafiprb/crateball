@@ -130,6 +130,8 @@ export interface UiActions {
 export interface Ui {
   readonly name: string;
   menu(prefillCode?: string): void;
+  /** Opened from a room link: the room, a nickname field and a big Join. */
+  invite(code: string): void;
   lobby(room: RoomInfo, me: string | null): void;
   hide(): void;
   readonly screen: string;
@@ -437,6 +439,38 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         h('label', { class: 'check' }, mute, 'Mute sounds (M)'),
       );
       if (prefill) code.focus();
+    },
+    invite(code) {
+      const info = h('p', { class: 'sub' }, '');
+      const join = () => needName() && act.join(code);
+      const field = nameField();
+      field.querySelector('input')?.addEventListener('keydown', (e) => e.key === 'Enter' && join());
+      show(
+        'invite',
+        h('h1', {}, 'Crateball'),
+        h('p', { class: 'sub' }, 'You were invited to a room.'),
+        h('div', { class: 'invite' }, h('span', { class: 'code', id: 'invite-code' }, code)),
+        info,
+        field,
+        button('Join', join, 'primary'),
+        button('Back to menu', () => {
+          history.replaceState(null, '', '/');
+          ui.menu();
+        }),
+      );
+      const input = root.querySelector<HTMLInputElement>('#name');
+      if (input && !input.value) input.focus();
+      // Public rooms are listed: show which one it is and whether a match is on.
+      void fetch('/rooms')
+        .then(async (res) => (await res.json()) as RoomListing[])
+        .then((list) => {
+          const r = list.find((x) => x.code === code);
+          if (!r) return;
+          info.textContent =
+            `${r.name} · ${r.humans}/${r.max} players` +
+            (r.state === 'playing' ? ' · match on: you watch until the next one' : '');
+        })
+        .catch(() => {});
     },
     lobby(room, me) {
       const isHost = room.host === me;

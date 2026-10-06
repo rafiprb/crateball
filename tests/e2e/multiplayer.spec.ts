@@ -40,7 +40,10 @@ test('iki oyuncu aynı odada; gecikmeli istemcide kendi hareketi RTT beklemeden 
   await a.goto(`/?name=A&autoplay`);
   await expect.poll(async () => (await state(a))?.room?.state, { timeout: 15_000 }).toBe('playing');
   const code = (await state(a)).room!.code;
+  // A shared link opens the invite screen: name prefilled from ?name, one click on Join.
   await b.goto(`/r/${code}?name=B`);
+  await expect(b.locator('#invite-code')).toHaveText(code);
+  await b.getByRole('button', { name: 'Join', exact: true }).click();
   // Arriving mid-match: B watches. The host stops the match (two clicks), B takes a seat, host restarts.
   await expect.poll(async () => (await state(b))?.room?.spectators?.length ?? 0, { timeout: 15_000 }).toBe(1);
   await a.click('#stop-match');
