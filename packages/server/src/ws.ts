@@ -26,8 +26,10 @@ export const CLOSE_TOO_MANY = 4010;
 
 /** Abuse limits. Normal play sends ~62 messages/s (60 inputs + ping + stats). */
 export const LIMITS = {
-  /** Token bucket per connection: burst size and refill per second. */
-  msgBurst: 240,
+  /** Token bucket per connection: burst size and refill per second. The burst covers ~10 s of normal
+   * traffic: after a network stall TCP hands over everything the client sent meanwhile at once, and
+   * that is a laggy player, not a flood. A real flood (over 2x normal, sustained) is still cut. */
+  msgBurst: 720,
   msgPerSec: 120,
   /** Open connections from one address. */
   connectionsPerIp: 12,
@@ -125,6 +127,7 @@ export function attachWebSocket(
     let clog = log.child({ clientId });
     let token: string | null = null;
     let tokens = LIMITS.msgBurst;
+    let rateLimited = false;
     let refilledAt = Date.now();
     let lastStatsAt = 0;
     let lastReportAt = 0;
@@ -196,7 +199,9 @@ export function attachWebSocket(
       const now = Date.now();
       tokens = Math.min(LIMITS.msgBurst, tokens + ((now - refilledAt) / 1000) * LIMITS.msgPerSec);
       refilledAt = now;
+      if (rateLimited) return; // closing: whatever was still in flight is ignored (and not logged again)
       if (--tokens < 0) {
+        rateLimited = true;
         clog.warn('mesaj sınırı aşıldı, bağlantı kesildi');
         socket.close(CLOSE_RATE_LIMIT, 'rate limit');
         return;

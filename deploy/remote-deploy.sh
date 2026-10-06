@@ -23,19 +23,32 @@ docker image tag crateball:latest crateball:previous 2>/dev/null || true
 (cd "$DIR.new/deploy" && APP_VERSION="$VERSION" docker compose build game)
 
 if [ "$FORCE" != "force" ]; then
+  # A restart wipes every room. Wait until no match is on, and also give people sitting in a lobby
+  # (right after a match, say) up to LOBBY_WAIT seconds to leave before cutting them off.
   waited=0
+  lobby_waited=0
+  LOBBY_WAIT=600
   while :; do
     if docker compose -f "$DIR/deploy/compose.yml" ps --status running -q game 2>/dev/null | grep -q .; then
       # Fail closed: if the running game does not answer, assume a match may be on and wait.
-      playing=$(docker compose -f "$DIR/deploy/compose.yml" exec -T game wget -qO- http://localhost:8080/health 2>/dev/null \
-        | sed -n 's/.*"playing":\([0-9]*\).*/\1/p')
+      health=$(docker compose -f "$DIR/deploy/compose.yml" exec -T game wget -qO- http://localhost:8080/health 2>/dev/null || true)
+      playing=$(printf '%s' "$health" | sed -n 's/.*"playing":\([0-9]*\).*/\1/p')
+      players=$(printf '%s' "$health" | sed -n 's/.*"players":\([0-9]*\).*/\1/p')
       playing=${playing:-unknown}
+      players=${players:-unknown}
     else
       playing=0 # nothing running yet (first deploy, or it is down anyway)
+      players=0
     fi
-    [ "$playing" = "0" ] && break
+    if [ "$playing" = "0" ]; then
+      [ "$players" = "0" ] && break
+      [ "$lobby_waited" -ge "$LOBBY_WAIT" ] && { echo "still $players in lobbies after $LOBBY_WAIT s; deploying"; break; }
+      echo "no match, but $players in lobbies — waiting…"
+      lobby_waited=$((lobby_waited + 15))
+    else
+      echo "match(es) running: $playing — waiting…"
+    fi
     [ "$waited" -ge 1800 ] && { echo "matches still running (or game not answering) after 30 min; deploy with force" >&2; rm -rf "$DIR.new"; exit 5; }
-    echo "match(es) running: $playing — waiting…"
     sleep 15
     waited=$((waited + 15))
   done

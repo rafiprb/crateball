@@ -664,6 +664,23 @@ describe('WebSocket sınırları', () => {
     expect(await c.closed).toBe(4008);
   });
 
+  it('ağ takılmasından sonra toplu gelen birkaç saniyelik girdi bağlantıyı kesmez', async () => {
+    const { wsUrl } = await boot();
+    const c = client(wsUrl);
+    await c.opened;
+    hello(c);
+    await c.next(); // welcome
+    // ~8 s of normal traffic (60 inputs + a ping per second) arriving at once.
+    for (let i = 0; i < 500; i++) c.socket.send(encode({ t: 'ping', id: i }));
+    let last = -1;
+    while (last < 499) {
+      const m = await c.next();
+      if (m.t === 'pong') last = m.id;
+    }
+    expect(c.socket.readyState).toBe(WebSocket.OPEN);
+    c.socket.close();
+  });
+
   it('aynı oturum anahtarıyla dönen host aynı kimlik ve host olarak devam eder (#6)', async () => {
     const { wsUrl } = await boot();
     const until = async <T extends ServerMessage['t']>(c: ReturnType<typeof client>, t: T) => {

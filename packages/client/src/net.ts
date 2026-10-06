@@ -6,6 +6,9 @@ import {
   type ServerMessage,
 } from '@crateball/protocol';
 
+/** Unsent bytes on the socket above which inputs are dropped (about 40 inputs, under a second). */
+const STALL_BYTES = 1024;
+
 /** `taken`: this tab connected again elsewhere (a duplicated tab); this one stops. */
 export type NetStatus = 'connecting' | 'open' | 'closed' | 'version_mismatch' | 'taken';
 
@@ -17,6 +20,8 @@ export const STALL_MS = 6000;
 export interface SocketLike {
   send(data: string): void;
   close(): void;
+  /** Bytes queued but not yet sent (a real WebSocket has it; test doubles may leave it out). */
+  readonly bufferedAmount?: number;
   onopen: (() => void) | null;
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev?: { code?: number }) => void) | null;
@@ -133,6 +138,9 @@ export function connect(o: ConnectionOptions): Connection {
       return attempts;
     },
     send(m) {
+      // Stalled link (data piling up unsent): skip inputs instead of queueing seconds of them to arrive
+      // in one burst. The server stands in with the last keys meanwhile; the next input carries on.
+      if (m.t === 'in' && (socket?.bufferedAmount ?? 0) > STALL_BYTES) return;
       if (socket && status === 'open') socket.send(encode(m));
       // A click before the handshake finishes (slow link) must not vanish; per-tick traffic is dropped.
       else if (m.t !== 'in' && m.t !== 'ping') queued.push(m);
