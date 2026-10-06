@@ -1,5 +1,6 @@
 #!/bin/sh
-# Builds the Windows desktop app and uploads it to the Crateball Demo depot on Steam.
+# Builds the Windows and macOS desktop apps and uploads them to the Crateball Demo on Steam
+# (depot 4248751 = Windows, 4248752 = macOS).
 # Usage (from the repo root):  sh desktop/steam/upload.sh <steam-username> [branch]
 # SteamCMD asks for the password and the Steam Guard code itself (or reuses its cached login); nothing
 # is stored here. Without a branch the build is uploaded NOT live: set it live in Steamworks
@@ -12,8 +13,9 @@ BRANCH=${2:-}
 cd "$(dirname "$0")/.."
 command -v steamcmd >/dev/null || { echo "steamcmd not found: brew install --cask steamcmd" >&2; exit 1; }
 npm run build:win
+npm run build:mac
 VDF="$(pwd)/out/app_build_demo.vdf"
 sed "s/\"SetLive\" \"\"/\"SetLive\" \"$BRANCH\"/" steam/app_build_demo.vdf > "$VDF"
 # ContentRoot/BuildOutput in the template are relative to steam/; the generated copy lives in out/.
-sed -i '' 's#"\.\./out/#"./#' "$VDF"
+sed -i '' 's#"\.\./out/"#"./"#; s#"\.\./out/steam-build/"#"./steam-build/"#' "$VDF"
 steamcmd +login "$USER_NAME" +run_app_build "$VDF" +quit

@@ -2,7 +2,7 @@
 {
 	"AppID" "4248750"
 	"Desc" "Crateball Demo"
-	"ContentRoot" "../out/Crateball-win32-x64/"
+	"ContentRoot" "../out/"
 	"BuildOutput" "../out/steam-build/"
 	"SetLive" ""
 	"Preview" "0"
@@ -12,7 +12,16 @@
 		{
 			"FileMapping"
 			{
-				"LocalPath" "*"
+				"LocalPath" "Crateball-win32-x64/*"
+				"DepotPath" "."
+				"recursive" "1"
+			}
+		}
+		"4248752"
+		{
+			"FileMapping"
+			{
+				"LocalPath" "Crateball-darwin-universal/*"
 				"DepotPath" "."
 				"recursive" "1"
 			}
