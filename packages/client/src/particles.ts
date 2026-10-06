@@ -34,6 +34,7 @@ const ITEM_COLORS: Record<BlastKind, string[]> = {
   bazooka: ['#7A8B5A', '#B8C890', '#FF9A3D'],
   rocket: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
   block: ['#7AF0FF', '#E0FDFF', '#FFFFFF'],
+  save: ['#7CFF7A', '#E0FFE0', '#FFFFFF'],
   warp: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
   erupt: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
 };
@@ -294,6 +295,13 @@ export function createParticles(): Particles {
             // Teleport departure/arrival: a purple swirl, no crate involved.
             burst(e.x, e.y, 24, [40, 180], colors, { shape: 1, size: 2.5, life: 0.5, drag: 5 });
             ring(e.x, e.y, colors[0]!, 16, 0.35);
+            break;
+          }
+          if (e.kind === 'save') {
+            // The keeper smothers it: a quick green ring and a puff, no crate debris.
+            ring(e.x, e.y, '#7CFF7A', 22, 0.35);
+            burst(e.x, e.y, 14, [40, 140], colors, { size: 3, life: 0.4, drag: 6 });
+            shake = Math.max(shake, 2);
             break;
           }
           if (e.kind === 'block') {

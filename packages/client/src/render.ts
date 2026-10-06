@@ -48,6 +48,7 @@ const ITEM_STYLE: Record<BlastKind, [string, string]> = {
   bazooka: ['#B8C890', 'BAZOOKA!'],
   rocket: ['#FF6A3D', 'BOOM!'],
   block: ['#7AF0FF', 'BLOCKED!'],
+  save: ['#7CFF7A', 'SAVE!'],
   warp: ['#C77DFF', ''],
   erupt: ['#FF6A3D', 'ERUPTION!'],
 };
@@ -498,12 +499,35 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       }
     }
     // Aim arrow: where my kick would send the ball. For a midfielder (the playmaker) it turns gold and
-    // rings the teammate on an assisted pass; everyone else just sees the arrow.
+    // rings the teammate on an assisted pass; for a forward in their zone it turns green when the shot is
+    // on target (near misses included: the finisher bends those in) and marks the spot on the goal line.
     const mine = g.players.find((p) => p.id === pr.me);
     const aim = mine && mine.dead === 0 && mine.frozen === 0 ? kickDirection(g, mine) : null;
     if (aim) {
-      const showPass = aim.to !== null && mine?.role === 'mid' && g.settings.roles !== false;
-      const color = showPass ? '#FFE066' : 'rgba(255,255,255,.75)';
+      const rolesOn = g.settings.roles !== false;
+      const showPass = aim.to !== null && mine?.role === 'mid' && rolesOn;
+      let onTarget: number | null = null;
+      if (mine?.role === 'fwd' && mine.buff && rolesOn && aim.to === null) {
+        const goalX = (mine.team === 'red' ? 1 : -1) * FIELD.halfW;
+        if (aim.x * (goalX - bp.x) > 0) {
+          const y = bp.y + (aim.y / aim.x) * (goalX - bp.x);
+          if (Math.abs(y) < FIELD.goalHalf) onTarget = y;
+        }
+      }
+      const color = showPass ? '#FFE066' : onTarget !== null ? '#7CFF7A' : 'rgba(255,255,255,.75)';
+      if (onTarget !== null && mine) {
+        const goalX = (mine.team === 'red' ? 1 : -1) * FIELD.halfW;
+        const pulse = 1 + Math.sin(now / 90) * 0.15;
+        ctx.strokeStyle = 'rgba(124,255,122,.85)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(goalX, onTarget, 7 * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(goalX, onTarget - 12 * pulse);
+        ctx.lineTo(goalX, onTarget + 12 * pulse);
+        ctx.stroke();
+      }
       const sx = bp.x + aim.x * (BALL.radius + 4);
       const sy = bp.y + aim.y * (BALL.radius + 4);
       const ex = sx + aim.x * 17;
@@ -659,7 +683,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.font = '600 12px Nunito, system-ui, sans-serif';
     ctx.fillStyle = '#FFF4E0';
     ctx.fillText(
-      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Chat: Enter · Role: 1 GK 2 DF 3 MF 4 FW · Report a glitch: R',
+      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Chat: Enter · Role: 1 GK 2 DF 3 MF 4 FW 5 none · Report a glitch: R',
       12,
       h - 14,
     );

@@ -103,6 +103,11 @@ export function createSound(): Sound {
           noise(0.05, 0.6, 'bandpass', 2000, 0.08);
           tone('square', 220, 180, 0.06, 0.15, 0.08);
           break;
+        case 'save':
+          // A gloved thud, then a short bright "got it".
+          noise(0.06, 0.7, 'lowpass', 600);
+          tone('triangle', 660, 880, 0.12, 0.3, 0.04);
+          break;
         case 'block':
           // A bright "ting" off the shield, then the glassy shatter.
           tone('sine', 1760, 1700, 0.25, 0.4);

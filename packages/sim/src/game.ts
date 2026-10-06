@@ -635,6 +635,7 @@ function collide(g: Game): void {
       if (keep < 1) {
         b.vx *= keep;
         b.vy *= keep;
+        if (a.role === 'gk') g.blasts.push({ x: a.x, y: a.y, kind: 'save', t: ITEMS.blastShow });
       }
     }
     if (g.phase === 'kickoff' && (Math.abs(g.ball.x) > 0.01 || Math.abs(g.ball.y) > 0.01)) g.phase = 'play';

@@ -381,6 +381,19 @@ describe('mevkiler', () => {
       return Math.hypot(g.ball.vx, g.ball.vy);
     };
     expect(after(-FIELD.halfW + 40)).toBeLessThan(after(0) * 0.5);
+    // The catch shows up as a SAVE blast for everyone.
+    const g = createGame(1);
+    g.phase = 'play';
+    const k = addPlayer(g, 'k', 'K', 'red');
+    setRole(g, 'k', 'gk');
+    Object.assign(k, { x: -FIELD.halfW + 40, y: 0, vx: 0, vy: 0 });
+    Object.assign(g.ball, { x: -FIELD.halfW + 120, y: 0, vx: -6, vy: 0 });
+    let saves = 0;
+    for (let i = 0; i < 30; i++) {
+      step(g);
+      saves += g.blasts.filter((b) => b.kind === 'save' && b.t === ITEMS.blastShow - 1).length;
+    }
+    expect(saves).toBe(1);
   });
   it('kaleci yavaş topu tutmaz: topa koşup sürebilir', () => {
     const g = createGame(1);

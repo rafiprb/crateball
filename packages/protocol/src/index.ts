@@ -1,6 +1,6 @@
 import type { ArenaKind, Game, ItemKind, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */

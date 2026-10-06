@@ -48,7 +48,9 @@ oyuncu kutuya değince açılır.
 - Pas: vuruş yönü bir takım arkadaşına ±6° (orta saha kendi bölgesinde ±15°) yakınsa top ona doğru
   bükülür ve koşusunun önüne atılır; kale ağzına giden şut bükülmez. Vuruş tuşu basılı değilken
   topa değmek "hafif dokunuş"tur (top az seker, kontrol kolay). Kendi oyuncunun topa yakınken
-  vuruş yönünü gösteren ok çizilir; orta sahada pas yardımı devredeyse sarı olur ve alıcıyı halkayla gösterir.
+  vuruş yönünü gösteren ok çizilir; orta sahada pas yardımı devredeyse sarı olur ve alıcıyı halkayla gösterir,
+  forvet bölgesindeyken şut kaleyi tutuyorsa (kıvrılanlar dahil) yeşil olur ve kale çizgisinde gideceği yeri
+  işaretler. Kaleci sert topu tutunca herkes "SAVE!" görür ve duyar.
 - Botlar takımları eşitler (tek kişi gelirse 1v1 bot); mevkilerini korurlar.
 
 ## Sahalar
