@@ -6,9 +6,9 @@
   "main": "main.mjs",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-packager . Crateball --platform=win32 --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --app-copyright=RafiBuilds",
-    "build:mac": "electron-packager . Crateball --platform=darwin --arch=arm64,x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam",
-    "build:linux": "electron-packager . Crateball --platform=linux --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam"
+    "build:win": "electron-packager . Crateball --platform=win32 --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --ignore=^/icons --app-copyright=RafiBuilds --app-version=$npm_package_version --icon=icons/Crateball.ico --win32metadata.CompanyName=RafiBuilds --win32metadata.ProductName=Crateball --win32metadata.FileDescription=Crateball --win32metadata.InternalName=Crateball --win32metadata.OriginalFilename=Crateball.exe",
+    "build:mac": "electron-packager . Crateball --platform=darwin --arch=universal --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --ignore=^/icons --app-copyright=RafiBuilds --app-version=$npm_package_version --icon=icons/Crateball.icns --app-bundle-id=com.rafibuilds.crateball --app-category-type=public.app-category.sports-games",
+    "build:linux": "electron-packager . Crateball --platform=linux --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --ignore=^/icons --app-copyright=RafiBuilds --app-version=$npm_package_version"
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",

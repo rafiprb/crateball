@@ -1,12 +1,19 @@
 #!/bin/sh
 # Builds the Windows desktop app and uploads it to the Crateball Demo depot on Steam.
-# Usage (from the repo root):  sh desktop/steam/upload.sh <steam-username>
-# SteamCMD asks for the password and the Steam Guard code itself; nothing is stored here.
-# The build lands on the default branch NOT live ("SetLive" is empty): make it live in Steamworks
-# (SteamPipe > Builds) once it has been tested.
+# Usage (from the repo root):  sh desktop/steam/upload.sh <steam-username> [branch]
+# SteamCMD asks for the password and the Steam Guard code itself (or reuses its cached login); nothing
+# is stored here. Without a branch the build is uploaded NOT live: set it live in Steamworks
+# (SteamPipe > Builds) once tested. With a branch (e.g. beta) it goes live on that branch right away;
+# the branch must already exist in Steamworks. The default branch is never set from here.
 set -eu
-USER_NAME=${1:?usage: sh desktop/steam/upload.sh <steam-username>}
+USER_NAME=${1:?usage: sh desktop/steam/upload.sh <steam-username> [branch]}
+BRANCH=${2:-}
+[ "$BRANCH" = "default" ] && { echo "set the default branch live in Steamworks, not from here" >&2; exit 2; }
 cd "$(dirname "$0")/.."
 command -v steamcmd >/dev/null || { echo "steamcmd not found: brew install --cask steamcmd" >&2; exit 1; }
 npm run build:win
-steamcmd +login "$USER_NAME" +run_app_build "$(pwd)/steam/app_build_demo.vdf" +quit
+VDF="$(pwd)/out/app_build_demo.vdf"
+sed "s/\"SetLive\" \"\"/\"SetLive\" \"$BRANCH\"/" steam/app_build_demo.vdf > "$VDF"
+# ContentRoot/BuildOutput in the template are relative to steam/; the generated copy lives in out/.
+sed -i '' 's#"\.\./out/#"./#' "$VDF"
+steamcmd +login "$USER_NAME" +run_app_build "$VDF" +quit
