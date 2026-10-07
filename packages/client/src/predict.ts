@@ -78,9 +78,14 @@ export function createPredictor(): Predictor {
   let game: Game | null = null;
   /** The last snapshot, kept to roll back to when a relayed input lands in our predicted past. */
   let base: Game | null = null;
-  /** Relayed key changes of other players, per id, in tick order: [tick, bits]. Only those at or after
-   * `base.tick` matter; older ones are already in the snapshot. */
+  /** Relayed key changes of other players, per id, in tick order: [tick, bits]; a new one replaces those
+   * at or after its tick (the server re-times or cancels changes that way). The first entry is the one in
+   * effect at `base.tick`: it is played every tick, because the snapshot's `input` can be wrong for the
+   * next step (a kickoff zeroes it while the key is still held). */
   const remote = new Map<string, Array<[number, number]>>();
+  /** A relayed change landed in our predicted past: re-simulate before the next use (once per frame,
+   * however many arrived). */
+  let stale = false;
   let me: string | null = null;
   let seq = 0;
   let pending: Array<[number, number]> = [];
@@ -157,8 +162,15 @@ export function createPredictor(): Predictor {
     }
   };
 
+  const flush = () => {
+    if (!stale) return;
+    stale = false;
+    rebuild();
+  };
+
   return {
     get game() {
+      flush();
       return game;
     },
     get me() {
@@ -182,6 +194,7 @@ export function createPredictor(): Predictor {
       game = null;
       base = null;
       remote.clear();
+      stale = false;
       pending = [];
       prev = new Map();
       cur = new Map();
@@ -192,6 +205,7 @@ export function createPredictor(): Predictor {
       pending = [];
     },
     tick(bits) {
+      flush();
       if (!game) return null;
       seq++;
       pending.push([seq, bits]);
@@ -205,24 +219,25 @@ export function createPredictor(): Predictor {
       pending = pending.filter(([s]) => s > ack);
       base = cloneGame(g);
       for (const [id, changes] of remote) {
-        // Changes before the snapshot's tick are in it already (each player's `input`).
-        const keep = changes.filter(([k]) => k >= g.tick);
-        if (keep.length > 0) remote.set(id, keep);
-        else remote.delete(id);
+        // Older changes are history, except the newest of them: the one still in effect.
+        if (!g.players.some((p) => p.id === id)) remote.delete(id);
+        else while (changes.length > 1 && changes[1]![0] <= g.tick) changes.shift();
       }
+      stale = false;
       rebuild();
     },
     remoteInput(id, k, bits) {
-      if (!base || !game || id === me || k < base.tick) return;
+      if (!base || !game || id === me) return;
       const changes = remote.get(id) ?? [];
-      // Arrives in order from one server; a duplicate tick replaces (the server re-timed it).
+      // Arrives in order from one server; it replaces whatever was announced from its tick on.
       while (changes.length > 0 && changes[changes.length - 1]![0] >= k) changes.pop();
       changes.push([k, bits]);
       remote.set(id, changes);
-      // Still ahead of our prediction: it is played when we get there. Already behind: re-simulate now.
-      if (k < game.tick) rebuild();
+      // Still ahead of our prediction: it is played when we get there. Already behind: re-simulate.
+      if (k < game.tick) stale = true;
     },
     pos(id, alpha) {
+      flush();
       drawnAlpha = alpha;
       const c = cur.get(id);
       if (!c) return null;
@@ -234,6 +249,7 @@ export function createPredictor(): Predictor {
       };
     },
     decay(dt) {
+      flush();
       const k = Math.exp(-dt * SMOOTH_RATE);
       const mine = me ? cur.get(me) : undefined;
       const ball = cur.get('ball');

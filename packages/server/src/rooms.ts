@@ -54,6 +54,10 @@ export const LEAD_BLOCK = 30;
 const LEAD_BLOCKS = 4;
 export const LEAD_TARGET = 1;
 const LEAD_MAX = 30;
+/** Input relay budget per player (messages): a burst and a refill per second. A person changes keys a few
+ * times a second; a client flooding changes only loses its relay (others fall back to snapshots). */
+export const RELAY_BURST = 20;
+export const RELAY_PER_SEC = 20;
 const TICK_MS = 1000 / TICK_HZ;
 const MAX_CATCHUP = 5;
 /** A room stats log line every 5 s of play. */
@@ -87,8 +91,17 @@ interface Member {
   slackTicks: number;
   slackMins: number[];
   lead: number;
-  /** Input relay: the keys last relayed to the others (-1: none yet this match). */
-  relayed: number;
+  /** Input relay: what everyone else has been told about this player's keys, as they keep it: [tick,
+   * bits] changes in order (a new one replaces those at or after its tick), starting with the one in
+   * effect now. */
+  sched: Array<[tick: number, bits: number]>;
+  /** The schedule may be wrong (queue trimmed or cleared, budget ran out): resend it at the next tick. */
+  relayDirty: boolean;
+  relayTokens: number;
+  /** Newest sequence number taken: from the queue, or late (each late sequence corrects once). */
+  lateSeq: number;
+  /** Tick of the last late relay: at most one per tick. */
+  lateRelayAt: number;
   /** Set while the socket is gone: the player keeps their slot (and host role) until it fires. */
   awayTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -246,29 +259,85 @@ export function createRooms(
   const broadcastSnap = (room: Room) => {
     const json = encodeGame(room.game);
     for (const m of room.members.values())
-      m.send(encodeSnap(room.game.tick, m.ack, m.queue.length, m.lead, json), true);
+      // Never more surplus than is actually waiting right now (a stall drained it meanwhile).
+      m.send(encodeSnap(room.game.tick, m.ack, m.queue.length, Math.min(m.lead, m.queue.length), json), true);
   };
 
-  /** A fresh input timeline (match start, reconnect): nothing measured or relayed yet. */
+  /** Clock sync: nothing measured, no feedback (match start, reconnect, a long silence). */
   const resetSlack = (m: Member) => {
     m.slackMin = Infinity;
     m.slackTicks = 0;
     m.slackMins = [];
     m.lead = 0;
-    m.relayed = -1;
+  };
+
+  /** A fresh input timeline (match start, reconnect): the relay starts over too. */
+  const resetTimeline = (m: Member) => {
+    resetSlack(m);
+    m.sched = []; // nothing told yet: the first input applied is announced in any case
+    m.relayDirty = false;
+    m.lateSeq = 0;
+    m.lateRelayAt = -1;
   };
 
   /**
    * Input relay: a change of keys goes to everyone else the moment it arrives, tagged with the tick the
    * server will apply it at. Their predictions then learn of a kick a queue length plus up to a snapshot
    * interval earlier, and a change still in their future costs them no correction at all. Only changes
-   * are sent (a few per second per player); the same keys are in the next snapshots anyway.
+   * are sent (a few per second per player), within a budget per player.
+   *
+   * Receivers keep each player's changes as [tick, bits], a new one replacing those at or after its tick;
+   * `sched` mirrors exactly that. Every tick `verifyRelay` checks the input really applied against it and,
+   * if they differ (a queue trimmed or cleared, a late input, keys released after a long silence, budget
+   * ran out), resends the schedule from this tick: the input applied now, then the queued changes. So a
+   * wrong announcement lives at most until the tick it was about, and a trim cancels it at once.
    */
-  const relay = (room: Room, m: Member, k: number, bits: number) => {
-    if (bits === m.relayed || m.spectator) return;
-    m.relayed = bits;
+  const sendRelay = (room: Room, m: Member, k: number, bits: number, force = false): boolean => {
+    if (m.relayTokens < 1 && !force) {
+      m.relayDirty = true;
+      return false;
+    }
+    m.relayTokens = Math.max(0, m.relayTokens - 1);
+    while (m.sched.length > 0 && m.sched[m.sched.length - 1]![0] >= k) m.sched.pop();
+    m.sched.push([k, bits]);
     const raw = encode({ t: 'ri', id: m.id, k, b: bits });
-    for (const o of room.members.values()) if (o !== m) o.send(raw, true);
+    for (const o of room.members.values()) if (o !== m) o.send(raw);
+    return true;
+  };
+
+  /** A new arrival: announce it if it changes the keys (nothing while a resend is due anyway). */
+  const relay = (room: Room, m: Member, k: number, bits: number) => {
+    if (m.spectator || m.relayDirty) return;
+    if (m.sched.at(-1)?.[1] === bits && m.sched.at(-1)![0] <= k) return;
+    sendRelay(room, m, k, bits);
+  };
+
+  /** Bits the others believe this player plays in the step from tick `t` (undefined: never told). */
+  const believed = (m: Member, t: number): number | undefined => {
+    let b: number | undefined;
+    for (const [k, v] of m.sched) if (k <= t) b = v;
+    return b;
+  };
+
+  /** After choosing the input applied in the step from tick `t`: correct the others if they were told
+   * otherwise, then forget changes that are history. */
+  const verifyRelay = (room: Room, m: Member, t: number, applied: number) => {
+    m.relayTokens = Math.min(RELAY_BURST, m.relayTokens + RELAY_PER_SEC / TICK_HZ);
+    if (m.spectator) return;
+    if (m.relayDirty || believed(m, t) !== applied) {
+      m.relayDirty = false;
+      // Replaces everything from t on: what is applied now, then each queued change at its tick. Changes
+      // already announced for later ticks are cancelled even over budget (announcing them took budget).
+      const ghosts = (m.sched.at(-1)?.[0] ?? -1) > t;
+      let ok = sendRelay(room, m, t, applied, ghosts);
+      let prevBits = applied;
+      m.queue.forEach(([, bits], i) => {
+        if (ok && bits !== prevBits) ok = sendRelay(room, m, t + 1 + i, bits);
+        prevBits = bits;
+      });
+      if (!ok) m.relayDirty = true;
+    }
+    while (m.sched.length > 1 && m.sched[1]![0] <= t) m.sched.shift();
   };
 
   const noteSlack = (m: Member, slack: number) => {
@@ -293,10 +362,14 @@ export function createRooms(
     }
     const inputs = new Map<string, number>();
     for (const m of room.members.values()) {
-      if (m.queue.length > QUEUE_MAX) m.queue.splice(0, m.queue.length - QUEUE_KEEP);
+      if (m.queue.length > QUEUE_MAX) {
+        m.queue.splice(0, m.queue.length - QUEUE_KEEP);
+        m.relayDirty = true; // the rest now lands on earlier ticks than announced
+      }
       const next = m.queue.shift();
       if (next) {
         m.ack = next[0];
+        m.lateSeq = Math.max(m.lateSeq, next[0]);
         m.last = next[1];
         m.gap = 0;
         inputs.set(m.id, next[1]);
@@ -314,9 +387,15 @@ export function createRooms(
         // Silent for longer than jitter explains (tab in the background, connection stalled): stop
         // counting, or every input after the client wakes up would arrive "late" and its own
         // prediction would be thrown away. The keys count as released until it is heard from again.
-        if (m.gap === STAND_IN_TICKS + 1) m.last = 0;
+        if (m.gap === STAND_IN_TICKS + 1) {
+          m.last = 0;
+          // No inputs, no measure: an old surplus must not keep slowing a client that is not there.
+          resetSlack(m);
+        }
         inputs.set(m.id, m.last);
       }
+      const applied = inputs.get(m.id);
+      if (applied !== undefined) verifyRelay(room, m, g.tick, applied);
     }
     const t0 = performance.now();
     step(g, inputs);
@@ -418,9 +497,15 @@ export function createRooms(
       slackTicks: 0,
       slackMins: [],
       lead: 0,
-      relayed: -1,
+      sched: [],
+      relayDirty: false,
+      relayTokens: RELAY_BURST,
+      lateSeq: 0,
+      lateRelayAt: -1,
       awayTimer: null,
     });
+    // Someone arriving mid-match knows nobody's keys yet: everyone's schedule is resent next tick.
+    if (room.state === 'playing') for (const o of room.members.values()) o.relayDirty = true;
     room.emptySince = null;
     byClient.set(id, room);
     rebalance(room);
@@ -500,7 +585,9 @@ export function createRooms(
     // A reloaded page restarts its sequence numbers; a fresh count avoids treating them as late.
     m.ack = 0;
     m.queue = [];
-    resetSlack(m);
+    resetTimeline(m);
+    // A reloaded page lost everyone's relayed keys too.
+    for (const o of room.members.values()) o.relayDirty = true;
     log.info({ room: room.code, id }, 'oyuncu geri döndü');
     announce(room);
     // A reloaded page lost its chat log; a client that kept it skips lines it already has (by number).
@@ -519,9 +606,12 @@ export function createRooms(
       if (!room || !m) return;
       m.send = () => {};
       m.queue = [];
-      // Nothing to stand in for any more: the keys count as released from now on.
+      // Nothing to stand in for any more: the keys count as released from now on, and any queued change
+      // already announced to the others is void.
       m.last = 0;
       m.gap = STAND_IN_TICKS + 1;
+      m.relayDirty = true;
+      resetSlack(m);
       const p = room.game.players.find((o) => o.id === id);
       if (p) p.input = 0;
       if (m.awayTimer) clearTimeout(m.awayTimer);
@@ -588,15 +678,25 @@ export function createRooms(
       // Arrived after a stand-in already played its tick: still the freshest intent, while the
       // stand-in window lasts. After it the keys were released; a straggler must not latch them again.
       if (seq <= m.ack) {
-        if (m.gap <= STAND_IN_TICKS) {
+        // Each late sequence corrects once, and only if newer than anything already taken: a client
+        // resending an old number with other keys cannot make the server (and everyone's prediction) churn.
+        if (m.gap <= STAND_IN_TICKS && seq > m.lateSeq) {
+          m.lateSeq = seq;
           m.last = bits;
-          // Stands in from the next tick on, unless a newer input is already waiting.
-          if (m.queue.length === 0) relay(room, m, room.game.tick, bits);
+          // Stands in from the next tick on, unless a newer input is already waiting. One relay per tick
+          // at most; a later one in the same tick is caught by the check when it is applied.
+          if (m.queue.length === 0 && m.lateRelayAt !== room.game.tick) {
+            m.lateRelayAt = room.game.tick;
+            relay(room, m, room.game.tick, bits);
+          }
         }
       } else if (seq > (m.queue.at(-1)?.[0] ?? m.ack)) {
         m.queue.push([seq, bits]);
         // Bounded on arrival too, not only at the next tick: a flood cannot grow it.
-        if (m.queue.length > QUEUE_MAX * 2) m.queue.splice(0, m.queue.length - QUEUE_MAX);
+        if (m.queue.length > QUEUE_MAX * 2) {
+          m.queue.splice(0, m.queue.length - QUEUE_MAX);
+          m.relayDirty = true;
+        }
         // One input per tick: the last in the queue is taken in the step from tick + its index.
         relay(room, m, room.game.tick + m.queue.length - 1, bits);
       }
@@ -674,7 +774,7 @@ export function createRooms(
         m.queue = [];
         m.last = 0;
         m.gap = 0;
-        resetSlack(m);
+        resetTimeline(m);
       }
       // Settings per match start: `pnpm crate-stats` counts which crate mixes people actually pick.
       const humans = room.game.players.filter((p) => !p.bot).length;

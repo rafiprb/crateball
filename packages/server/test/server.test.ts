@@ -522,6 +522,220 @@ describe('girdi aktarımı', () => {
   });
 });
 
+describe('girdi aktarımı: inceleme düzeltmeleri', () => {
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: false,
+  };
+  type Relay = { t: 'ri'; id: string; k: number; b: number };
+  const setup = async () => {
+    const mod = await import('../src/rooms');
+    const rooms = mod.createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
+    const sent: Record<string, string[]> = { a: [], b: [], c: [] };
+    const sendTo = (id: string) => (r: string) => sent[id]!.push(r);
+    const room = rooms.create('a', 'A', 'R', false, settings, sendTo('a'));
+    if (typeof room === 'string') throw new Error(room);
+    rooms.join(room.code, 'b', 'B', sendTo('b'));
+    rooms.start('a');
+    const relays = (to: string) =>
+      sent[to]!.filter((r) => r.startsWith('{"t":"ri"')).map((r) => JSON.parse(r) as Relay);
+    /** What a receiver believes `id` plays in the step from tick t (it keeps changes the same way). */
+    const believed = (to: string, id: string, t: number) => {
+      const s: Array<[number, number]> = [];
+      for (const r of relays(to))
+        if (r.id === id) {
+          while (s.length > 0 && s.at(-1)![0] >= r.k) s.pop();
+          s.push([r.k, r.b]);
+        }
+      let b: number | undefined;
+      for (const [k, v] of s) if (k <= t) b = v;
+      return b;
+    };
+    const member = (id: string) => room.members.get(id)!;
+    /** Ticks and checks after each: the receiver was told what was really applied (no later than the
+     * step itself), and what it was told about the queued ticks matches the queue. */
+    const tickChecked = (n: number, to = 'a', id = 'b') => {
+      for (let i = 0; i < n; i++) {
+        const t = room.game.tick;
+        rooms.tickAll();
+        expect(believed(to, id, t)).toBe(member(id).last);
+        if (!member(id).relayDirty)
+          member(id).queue.forEach(([, bits], j) => expect(believed(to, id, room.game.tick + j)).toBe(bits));
+      }
+    };
+    return { ...mod, rooms, room, sent, sendTo, relays, believed, member, tickChecked };
+  };
+
+  it('kuyruk tick başında kırpılınca ileriye duyurulmuş tuşlar iptal edilir (hayalet vuruş yok)', async () => {
+    const { rooms, tickChecked, believed, room } = await setup();
+    rooms.input('b', 1, 8);
+    tickChecked(1);
+    // A stall ends: 11 inputs at once, keys changing among them (16 = kick).
+    const bits = [1, 1, 2, 2, 4, 4, 16, 16, 8, 8, 1];
+    bits.forEach((b, i) => rooms.input('b', 2 + i, b));
+    const kickAt = room.game.tick + 6; // announced: the kick in the step from here
+    tickChecked(1); // > 10 waiting: trimmed to the last 4, they now land on the next ticks
+    expect(believed('a', 'b', kickAt)).not.toBe(16);
+    for (let s = 13; s < 30; s++) {
+      rooms.input('b', s, s % 3 === 0 ? 2 : 4);
+      tickChecked(1);
+    }
+    rooms.stop();
+  });
+
+  it('gelirken kırpılan sel kuyruğu da (21+) yeniden duyurulur', async () => {
+    const { rooms, tickChecked } = await setup();
+    rooms.input('b', 1, 8);
+    tickChecked(1);
+    for (let s = 2; s < 30; s++) rooms.input('b', s, Math.floor(s / 5) % 2 ? 1 : 16);
+    tickChecked(15);
+    rooms.stop();
+  });
+
+  it('kopma ve yeniden bağlanmada kuyruktaki duyurulmuş tuşlar geçersiz olur', async () => {
+    const { rooms, room, tickChecked, believed, sendTo } = await setup();
+    rooms.input('b', 1, 8);
+    tickChecked(1);
+    for (let s = 2; s < 8; s++) rooms.input('b', s, s < 5 ? 8 : 16);
+    rooms.disconnect('b');
+    tickChecked(1);
+    expect(believed('a', 'b', room.game.tick + 5)).toBe(0); // the queued kick is void, keys released
+    tickChecked(5);
+    rooms.reattach('b', sendTo('b'));
+    for (let s = 1; s < 10; s++) {
+      rooms.input('b', s, s < 5 ? 4 : 1);
+      tickChecked(1);
+    }
+    rooms.stop();
+  });
+
+  it('uzun sessizlikte tuş bırakılınca bu da aktarılır; aynı tuşa dönüş yeniden gider', async () => {
+    const { rooms, room, tickChecked, relays, STAND_IN_TICKS } = await setup();
+    rooms.input('b', 1, 8);
+    tickChecked(1);
+    tickChecked(STAND_IN_TICKS + 5); // silent: stand-ins, then released
+    expect(relays('a').at(-1)).toMatchObject({ id: 'b', b: 0 });
+    const ack = room.members.get('b')!.ack;
+    rooms.input('b', ack + 1, 8); // the same key as before the silence
+    expect(relays('a').at(-1)).toMatchObject({ id: 'b', b: 8 });
+    tickChecked(3);
+    rooms.stop();
+  });
+
+  it('bütçe bitmişken kırpılan kuyruğun ileriye duyurulmuş tuşları yine iptal edilir', async () => {
+    const { rooms, room, tickChecked, believed, member } = await setup();
+    rooms.input('b', 1, 8);
+    tickChecked(1);
+    // Every input a different key: the budget runs out on the way, then the queue is trimmed.
+    for (let s = 2; s < 14; s++) rooms.input('b', s, s % 2 ? 1 : 16);
+    member('b').relayTokens = 0;
+    const t = room.game.tick;
+    rooms.tickAll();
+    expect(believed('a', 'b', t)).toBe(member('b').last);
+    for (let j = 1; j < 12; j++) expect([member('b').last, undefined]).toContain(believed('a', 'b', t + j));
+    rooms.stop();
+  });
+
+  it('eski sıra numarasıyla tuş seli tek düzeltme sayılır; aktarım oyuncu başına bütçeli', async () => {
+    const { rooms, relays, member, tickChecked, RELAY_BURST, RELAY_PER_SEC } = await setup();
+    rooms.input('b', 1, 8);
+    tickChecked(2); // the second tick stands in: ack 2, queue empty
+    const before = relays('a').length;
+    for (let i = 0; i < 720; i++) rooms.input('b', 2, i % 2 ? 1 : 2);
+    expect(member('b').last).toBe(2); // the first one counted, the 719 repeats did not
+    expect(relays('a').length - before).toBeLessThanOrEqual(1);
+    // New sequence numbers with alternating keys: only the budget is relayed.
+    const start = relays('a').length;
+    for (let i = 0; i < 720; i++) rooms.input('b', 3 + i, i % 2 ? 1 : 2);
+    expect(relays('a').length - start).toBeLessThanOrEqual(RELAY_BURST);
+    for (let i = 0; i < 60; i++) rooms.tickAll();
+    expect(relays('a').length - start).toBeLessThanOrEqual(RELAY_BURST + RELAY_PER_SEC + 1);
+    // Once the flood stops and the budget refills, the schedule is right again.
+    for (let i = 0; i < 120; i++) rooms.tickAll();
+    for (let s = 0; s < 10; s++) {
+      rooms.input('b', member('b').ack + 1, 4);
+      tickChecked(1);
+    }
+    rooms.stop();
+  });
+
+  it('maç ortasında gelen izleyici herkesin tuşlarını öğrenir; kendi girdisi aktarılmaz', async () => {
+    const { rooms, room, sendTo, relays, believed, tickChecked } = await setup();
+    rooms.input('a', 1, 4);
+    rooms.input('b', 1, 8);
+    tickChecked(1);
+    rooms.join(room.code, 'c', 'C', sendTo('c'));
+    expect(room.members.get('c')!.spectator).toBe(true);
+    rooms.input('c', 1, 16);
+    rooms.input('a', 2, 4);
+    rooms.input('b', 2, 8);
+    tickChecked(1, 'c');
+    expect(believed('c', 'a', room.game.tick - 1)).toBe(4);
+    expect(relays('a').some((r) => r.id === 'c')).toBe(false);
+    expect(relays('b').some((r) => r.id === 'c')).toBe(false);
+    rooms.stop();
+  });
+
+  it('maç ortasında çıkan oyuncunun aktarımı biter, oda akmaya devam eder', async () => {
+    const { rooms, room, relays } = await setup();
+    rooms.input('b', 1, 8);
+    rooms.tickAll();
+    rooms.leave('b');
+    const n = relays('a').length;
+    for (let i = 0; i < 30; i++) rooms.tickAll();
+    expect(relays('a').length).toBe(n);
+    expect(room.game.players.some((p) => p.id === 'b')).toBe(false);
+    rooms.stop();
+  });
+});
+
+describe('saat eşitleme: bayat geri bildirim', () => {
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: false,
+  };
+  const ahead = async () => {
+    const { createRooms, LEAD_BLOCK } = await import('../src/rooms');
+    const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
+    const sent: string[] = [];
+    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.push(r));
+    if (typeof room === 'string') throw new Error(room);
+    rooms.start('a');
+    const lead = () =>
+      (JSON.parse(sent.filter((r) => r.startsWith('{"t":"snap"')).at(-1)!) as { lead: number }).lead;
+    let s = 0;
+    for (let i = 0; i < 6; i++) rooms.input('a', ++s, 8);
+    for (let t = 0; t < LEAD_BLOCK * 4; t++) {
+      rooms.input('a', ++s, 8);
+      rooms.tickAll();
+    }
+    expect(lead()).toBe(5);
+    return { rooms, room, lead };
+  };
+
+  it('sekme askıya alınınca (uzun sessizlik) fazlalık bildirimi sıfırlanır', async () => {
+    const { rooms, room, lead } = await ahead();
+    for (let i = 0; i < 120; i++) rooms.tickAll();
+    expect(lead()).toBe(0);
+    expect(room.members.get('a')!.lead).toBe(0);
+    rooms.stop();
+  });
+
+  it('gönderim yönü takılıp kuyruk boşalınca bildirilen fazlalık bekleyen girdiyi aşmaz', async () => {
+    const { rooms, room, lead } = await ahead();
+    for (let i = 0; i < 8; i++) rooms.tickAll(); // uplink stalled: the 6 spare inputs run out
+    expect(room.members.get('a')!.queue.length).toBe(0);
+    expect(lead()).toBe(0);
+    rooms.stop();
+  });
+});
+
 describe('inceleme düzeltmeleri (sunucu)', () => {
   const settings: Settings = {
     minutes: 3,

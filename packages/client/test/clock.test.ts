@@ -22,4 +22,13 @@ describe('saat eşitleme', () => {
     c.feedback(-5);
     expect(c.tickMs()).toBe(TICK_MS);
   });
+  it('snapshot gelmezse (tek yönlü takılma) eski fazlalık bildirimiyle yavaşlamaya devam etmez', () => {
+    let t = 0;
+    const c = createTickClock(() => t);
+    c.feedback(3);
+    t = 100;
+    expect(c.tickMs()).toBeCloseTo(TICK_MS * 1.03, 9);
+    t = 600; // downlink stalled: no snapshot for half a second
+    expect(c.tickMs()).toBe(TICK_MS);
+  });
 });

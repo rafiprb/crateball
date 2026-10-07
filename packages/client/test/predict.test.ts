@@ -191,15 +191,72 @@ describe('girdi aktarımı', () => {
     expect(c.corrections).toBe(0);
   });
 
-  it('snapshot öncesine ait aktarım yok sayılır; kendi girdimiz aktarımla ezilmez', () => {
+  it('kendi girdimiz aktarımla ezilmez; snapshot içindeki eski aktarım sonucu bozmaz', () => {
     const { server, c, start } = setup();
-    for (let i = 0; i < 3; i++) step(server, new Map([['me', 0]]));
+    c.remoteInput('r', start, RIGHT);
+    serverRun(server, 3, start);
     c.snapshot(0, cloneGame(server));
-    c.remoteInput('r', start + 1, RIGHT); // already inside that snapshot
     c.remoteInput('me', server.tick, RIGHT);
     c.tick(0);
     step(server, new Map([['me', 0]]));
     expect(hashState(c.game)).toBe(hashState(server));
+  });
+
+  it('başlama vuruşu girdiyi sıfırlasa da basılı tutulan tuş tahminde sürer', () => {
+    const { server, c, start } = setup();
+    c.remoteInput('r', start, RIGHT);
+    const held = () =>
+      step(
+        server,
+        new Map([
+          ['me', 0],
+          ['r', RIGHT],
+        ]),
+      );
+    held();
+    // The server's kickoff reset zeroes every input inside the step; the server still applies RIGHT next.
+    const snap = cloneGame(server);
+    snap.players.find((p) => p.id === 'r')!.input = 0;
+    server.players.find((p) => p.id === 'r')!.input = 0;
+    c.snapshot(0, snap);
+    for (let i = 0; i < 5; i++) {
+      c.tick(0);
+      held();
+    }
+    expect(hashState(c.game)).toBe(hashState(server));
+  });
+
+  it('sunucu ileride duyurduğu değişikliği geri alınca (kırpma) tahmin onu oynamaz', () => {
+    const { server, c, start } = setup();
+    c.remoteInput('r', start + 4, KICK | RIGHT); // announced for later…
+    c.remoteInput('r', start, RIGHT); // …then re-sent from an earlier tick: replaces it
+    for (let i = 0; i < 8; i++) c.tick(0);
+    for (let i = 0; i < 8; i++)
+      step(
+        server,
+        new Map([
+          ['me', 0],
+          ['r', RIGHT],
+        ]),
+      );
+    expect(hashState(c.game)).toBe(hashState(server));
+  });
+
+  it('aynı karede gelen birçok aktarım tek yeniden simülasyon; giden oyuncunun kaydı silinir', () => {
+    const { server, c, start } = setup();
+    for (let i = 0; i < 6; i++) c.tick(0);
+    const before = c.corrections;
+    for (let i = 0; i < 50; i++) c.remoteInput('r', start + 1 + (i % 3), i % 2 ? RIGHT : 0);
+    expect(c.corrections).toBe(before); // nothing re-simulated yet
+    c.pos('ball', 1);
+    // Gone from the match: its relayed keys are dropped with the next snapshot, nothing breaks.
+    const gone = cloneGame(server);
+    gone.players = gone.players.filter((p) => p.id !== 'r');
+    c.snapshot(6, gone);
+    c.remoteInput('r', gone.tick + 1, RIGHT);
+    c.tick(0);
+    step(gone, new Map([['me', 0]]));
+    expect(hashState(c.game)).toBe(hashState(gone));
   });
 });
 

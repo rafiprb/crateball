@@ -8,9 +8,10 @@
  * What it reports per client:
  * - ball corrections before smoothing (what `takeMaxCorrection` reports), per snapshot and per 2 s window
  *   (the window max is what prod telemetry logs as `ballCorrectionMaxPx`);
- * - the rendered ball against the server's true ball at the same moment: visual error, "jump" (how far a
- *   frame's rendered motion differs from the true motion) and "back slide" (rendered motion against the
- *   direction the ball really moves);
+ * - the rendered ball against the server's true ball at the same wall-clock moment: visual error, "jump"
+ *   (how far a frame's rendered motion differs from the true motion) and "back slide" (rendered motion
+ *   against the direction the ball really moves); and, separately, the prediction error (rendered ball
+ *   against the true ball at the tick the client predicts, which ignores how far ahead it predicts);
  * - pending inputs, server queue and starved ticks, like the prod stats.
  *
  * Run: `pnpm netsim [seconds] [seeds]` (tests/netsim/run.ts).
@@ -157,16 +158,18 @@ export interface ClientReport {
   pending: [number, number];
   serverQueue: [number, number];
   starvedPer300: number;
-  /** Ball correction per snapshot: p50 / p95 / p99 / max (px), over snapshots with any correction. */
+  /** Ball correction per frame that had one (snapshot or relayed input): p50 / p95 / p99 / max (px). */
   ballCorr: [number, number, number, number];
   /** Prod-style: max ball correction per 2 s window, median / p95. */
   ballCorrWindow: [number, number];
   /** Own player correction per snapshot p95 / max. */
   meCorr: [number, number];
-  /** Rendered ball vs the true ball at the same moment: mean / p95 / p99 (px). */
+  /** Rendered ball vs the server's true ball at the same wall-clock moment: mean / p95 / p99 (px). */
   ballErr: [number, number, number];
   /** Same, only while the ball is within touching distance of our own player (own-touch crispness). */
   ballErrNear: [number, number];
+  /** Prediction error: rendered ball vs the true ball at the tick the client shows, mean / p95 / p99. */
+  predErr: [number, number, number];
   /** Per-frame deviation of rendered from true motion: p99 / max (px), frames above 4 px per minute. */
   jump: [number, number, number];
   /** Rendered motion against the true motion: total px per minute, frames above 0.5 px per minute, max.
@@ -181,6 +184,25 @@ export interface ClientReport {
   relayKBps: number;
 }
 
+/** Server truth per tick: [tick] → positions by id ('ball' or a player id). */
+export type Truth = Map<number, Map<string, [number, number]>>;
+
+/** Interpolated position between ticks `tick - 1` and `tick` (the frame a client draws at `alpha`). */
+export function truthAtTick(truth: Truth, tick: number, alpha: number, id: string): [number, number] | null {
+  const a = truth.get(tick - 1)?.get(id);
+  const b = truth.get(tick)?.get(id);
+  if (!a || !b) return null;
+  return [a[0] + (b[0] - a[0]) * alpha, a[1] + (b[1] - a[1]) * alpha];
+}
+
+/** Position at wall-clock time `ms`, given that tick `t0` happened at time 0 and one tick every TICK_MS:
+ * what is really on the pitch at that moment, between the last tick and the next. */
+export function truthAtTime(truth: Truth, t0: number, ms: number, id: string): [number, number] | null {
+  const f = t0 + ms / TICK_MS;
+  const tick = Math.floor(f) + 1;
+  return truthAtTick(truth, tick, f - (tick - 1), id);
+}
+
 export function runSim(o: SimOptions): ClientReport[] {
   const rand = rng(o.seed);
   const q = createQueue();
@@ -193,7 +215,7 @@ export function runSim(o: SimOptions): ClientReport[] {
   const rooms = createRooms(log, { seed: () => o.seed, random: rand, now: () => now });
 
   // Server truth per tick: ball and every player.
-  const truth = new Map<number, Map<string, [number, number]>>();
+  const truth: Truth = new Map();
   const recordTruth = (g: Game) => {
     const m = new Map<string, [number, number]>([['ball', [g.ball.x, g.ball.y]]]);
     for (const p of g.players) m.set(p.id, [p.x, p.y]);
@@ -216,6 +238,7 @@ export function runSim(o: SimOptions): ClientReport[] {
     down: (now: number) => number;
     acc: number;
     clock: ReturnType<typeof createTickClock>;
+    hadSnap: boolean;
     samples: Sample[];
     ballCorr: number[];
     meCorr: number[];
@@ -244,7 +267,8 @@ export function runSim(o: SimOptions): ClientReport[] {
       up: createLink(spec.link, rand, stalls, true),
       down: createLink(spec.link, rand, stalls, false),
       acc: 0,
-      clock: createTickClock(),
+      clock: createTickClock(() => now),
+      hadSnap: false,
       samples: [],
       ballCorr: [],
       meCorr: [],
@@ -267,20 +291,11 @@ export function runSim(o: SimOptions): ClientReport[] {
     if (m.t === 'snap') {
       c.pred.snapshot(m.ack, m.g);
       c.clock.feedback(m.lead);
-      const corr = c.pred.takeMaxCorrection();
+      c.hadSnap = true;
       if (now < warm) return;
-      if (corr.ball > 0.5) c.ballCorr.push(corr.ball);
-      c.meCorr.push(corr.me);
-      c.windowMax = Math.max(c.windowMax, corr.ball);
       c.pending.push(c.pred.pending);
       c.queue.push(m.q);
-    } else if (m.t === 'ri') {
-      c.pred.remoteInput(m.id, m.k, m.b);
-      const corr = c.pred.takeMaxCorrection();
-      if (now < warm) return;
-      if (corr.ball > 0.5) c.ballCorr.push(corr.ball);
-      c.windowMax = Math.max(c.windowMax, corr.ball);
-    }
+    } else if (m.t === 'ri') c.pred.remoteInput(m.id, m.k, m.b);
   };
 
   const settings = { ...DEFAULT_SETTINGS, minutes: 0, scoreLimit: 99 };
@@ -299,6 +314,7 @@ export function runSim(o: SimOptions): ClientReport[] {
   }
   rooms.start(host.id);
   recordTruth(room.game);
+  const t0 = room.game.tick;
 
   // Server: 60 Hz on the reference clock.
   const prevStarved = new Map<string, number>();
@@ -343,6 +359,14 @@ export function runSim(o: SimOptions): ClientReport[] {
       const b = c.pred.pos('ball', alpha);
       if (g && b && now >= warm)
         c.samples.push({ t: now, tick: g.tick, alpha, ball: [b.x, b.y], v: [g.ball.vx, g.ball.vy] });
+      // Corrections (snapshots and relayed inputs, re-simulated at most once a frame) of this frame.
+      const corr = c.pred.takeMaxCorrection();
+      if (now >= warm) {
+        if (corr.ball > 0.5) c.ballCorr.push(corr.ball);
+        if (c.hadSnap) c.meCorr.push(corr.me);
+        c.windowMax = Math.max(c.windowMax, corr.ball);
+      }
+      c.hadSnap = false;
       if (now >= warm) {
         if (c.windowStart === 0) c.windowStart = now;
         if (now - c.windowStart >= 2000) {
@@ -363,17 +387,12 @@ export function runSim(o: SimOptions): ClientReport[] {
     ev.fn();
   }
 
-  const at = (tick: number, alpha: number, id: string): [number, number] | null => {
-    const a = truth.get(tick - 1)?.get(id);
-    const b = truth.get(tick)?.get(id);
-    if (!a || !b) return null;
-    return [a[0] + (b[0] - a[0]) * alpha, a[1] + (b[1] - a[1]) * alpha];
-  };
   const minutes = (end - warm) / 60_000;
   const r1 = (x: number) => Math.round(x * 10) / 10;
 
   return clients.map((c) => {
     const err: number[] = [];
+    const predErr: number[] = [];
     const errNear: number[] = [];
     const jump: number[] = [];
     let back = 0;
@@ -385,14 +404,16 @@ export function runSim(o: SimOptions): ClientReport[] {
     let ownMax = 0;
     let prev: { r: [number, number]; t: [number, number] } | null = null;
     for (const s of c.samples) {
-      const t = at(s.tick, s.alpha, 'ball');
+      const predicted = truthAtTick(truth, s.tick, s.alpha, 'ball');
+      if (predicted) predErr.push(Math.hypot(s.ball[0] - predicted[0], s.ball[1] - predicted[1]));
+      const t = truthAtTime(truth, t0, s.t, 'ball');
       if (!t) {
         prev = null;
         continue;
       }
       const e = Math.hypot(s.ball[0] - t[0], s.ball[1] - t[1]);
       err.push(e);
-      const me = at(s.tick, s.alpha, c.id);
+      const me = truthAtTime(truth, t0, s.t, c.id);
       if (me && Math.hypot(me[0] - t[0], me[1] - t[1]) < 45) errNear.push(e);
       if (prev) {
         const dr = [s.ball[0] - prev.r[0], s.ball[1] - prev.r[1]];
@@ -424,7 +445,7 @@ export function runSim(o: SimOptions): ClientReport[] {
       }
       prev = { r: s.ball, t };
     }
-    const mean = err.reduce((a, b) => a + b, 0) / Math.max(1, err.length);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
     const serverTicks = ((end - warm) / 1000) * TICK_HZ;
     return {
       name: c.spec.name,
@@ -440,8 +461,9 @@ export function runSim(o: SimOptions): ClientReport[] {
       ],
       ballCorrWindow: [r1(percentile(c.windows, 50)), r1(percentile(c.windows, 95))],
       meCorr: [r1(percentile(c.meCorr, 95)), r1(Math.max(0, ...c.meCorr))],
-      ballErr: [r1(mean), r1(percentile(err, 95)), r1(percentile(err, 99))],
+      ballErr: [r1(mean(err)), r1(percentile(err, 95)), r1(percentile(err, 99))],
       ballErrNear: [r1(percentile(errNear, 50)), r1(percentile(errNear, 95))],
+      predErr: [r1(mean(predErr)), r1(percentile(predErr, 95)), r1(percentile(predErr, 99))],
       jump: [r1(percentile(jump, 99)), r1(Math.max(0, ...jump)), r1(bigJumps / minutes)],
       backSlide: [r1(back / minutes), r1(backFrames / minutes), r1(backMax)],
       slideVsOwn: [r1(own / minutes), r1(ownFrames / minutes), r1(ownMax)],

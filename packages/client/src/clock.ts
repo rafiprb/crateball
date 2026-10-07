@@ -5,6 +5,8 @@ const TICK_MS = 1000 / TICK_HZ;
  * sheds a tick of surplus lead in about half a second. */
 const RATE_PER_TICK = 0.01;
 const MAX_RATE = 0.03;
+/** Feedback older than this (no snapshots: a stalled downlink) is not acted on any more. */
+const FEEDBACK_TTL_MS = 250;
 
 /**
  * The client's tick clock, kept in step with the server's input queue (clock sync).
@@ -16,15 +18,18 @@ const MAX_RATE = 0.03;
  * never jumps (dropping a queued input instead would shift it back a whole tick): it just runs a little
  * slower for a second or two. Arriving late needs nothing here: the server stands in for missing ticks.
  */
-export function createTickClock() {
+export function createTickClock(now: () => number = () => performance.now()) {
   let lead = 0;
+  let at = -Infinity;
   return {
-    /** Latest `lead` from a snapshot; 0 when not in a match. */
+    /** Latest `lead` from a snapshot. */
     feedback(l: number) {
       lead = l;
+      at = now();
     },
     /** Length (ms) of the next local tick. */
     tickMs(): number {
+      if (now() - at > FEEDBACK_TTL_MS) return TICK_MS;
       return TICK_MS * (1 + Math.max(0, Math.min(MAX_RATE, lead * RATE_PER_TICK)));
     },
   };
