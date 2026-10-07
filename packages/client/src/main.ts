@@ -9,6 +9,7 @@ import { connect, type NetStatus } from './net';
 import { createParticles } from './particles';
 import { createPredictor } from './predict';
 import { createRenderer } from './render';
+import { createResults } from './results';
 import { createSound } from './sound';
 import { createTelemetry } from './telemetry';
 import { createUi } from './ui';
@@ -34,6 +35,7 @@ resize();
 
 const pred = createPredictor();
 const clock = createTickClock();
+const results = createResults();
 const fx = createParticles();
 const sound = createSound();
 const track = createEventTracker(() => pred.me);
@@ -146,6 +148,7 @@ const toMenu = () => {
   code = null;
   rememberRoom(null);
   pred.reset();
+  results.hide();
   history.replaceState(null, '', `/${params.has('debug') ? '?debug' : ''}`);
   ui.menu();
   showMaintenance();
@@ -323,6 +326,8 @@ const conn = connect({
           pred.snapshot(m.ack, m.g, m.h);
           clock.feedback(m.lead);
           work.snap = Math.max(work.snap, performance.now() - ts);
+          // The final whistle: the results from the server's own numbers.
+          if (m.g.phase === 'over') results.show(m.g, pred.me ?? conn.clientId);
           queueAvg = queueAvg * 0.9 + m.q * 0.1;
         }
         break;
@@ -390,8 +395,11 @@ function onRoom(r: RoomInfo) {
     stopBtn.classList.remove('armed');
     stopBtn.textContent = 'Stop match';
   }
-  if (r.state === 'playing') ui.hide();
-  else {
+  if (r.state === 'playing') {
+    ui.hide();
+    // The next match is on: whoever was still reading the last one's results is needed on the pitch.
+    if (!wasPlaying) results.hide();
+  } else {
     if (wasPlaying) pred.reset();
     ui.lobby(r, pred.me);
     chat.mount(document.getElementById('chat-slot'), typing);
@@ -591,6 +599,7 @@ function getState() {
   return {
     frame: stats.frame,
     screen: ui.screen,
+    results: results.visible,
     room,
     net: {
       status: conn.status,
@@ -654,6 +663,13 @@ if (import.meta.env.DEV) {
             : { type: 'item', x: me.x, y: me.y, kind: kind as BlastKind },
       );
     return fx.count;
+  });
+  // The results screen with made-up numbers (design work and the e2e test).
+  const { demoResults } = await import('./results-demo');
+  bridge.register('results', (winner: unknown) => {
+    const me = pred.me ?? conn.clientId;
+    results.show(demoResults(me, winner === 'blue' ? 'blue' : 'red'), me);
+    return results.visible;
   });
   window.__game = bridge;
   const overlay = dev.createDebugOverlay(document.body);

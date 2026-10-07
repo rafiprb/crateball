@@ -18,6 +18,7 @@ canvas#game {
 }
 #banner {
   position: fixed;
+  z-index: 10;
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
@@ -867,4 +868,236 @@ fieldset.weights {
 }
 #screen-invite .sub {
   text-align: center;
+}
+
+/* Results screen (end of a match): the winner's colour behind, one card per team. It sits above the
+   lobby, so it stays up after the room has gone back there. */
+#results {
+  --team: #4a7de8;
+  --team-deep: #1c306e;
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  padding: 24px 16px;
+  overflow-y: auto;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 64px, transparent 64px 128px),
+    radial-gradient(130% 100% at 50% 0%, var(--team) 0%, var(--team-deep) 100%);
+  animation: results-in 0.35s ease-out;
+}
+#results.red {
+  --team: #e8574a;
+  --team-deep: #7a1f1c;
+}
+#results[hidden] {
+  display: none;
+}
+.results {
+  /* Centred while it fits; when it does not, it starts at the top and scrolls. */
+  margin: auto;
+  width: min(900px, 100%);
+  display: grid;
+  gap: 14px;
+}
+.results h1 {
+  margin: 0;
+  text-align: center;
+  font:
+    800 clamp(40px, min(8vw, 10vh), 80px) / 1 'Baloo 2',
+    system-ui,
+    sans-serif;
+  color: #fff4e0;
+  text-shadow:
+    0 4px 0 rgba(0, 0, 0, 0.25),
+    0 0 48px rgba(255, 244, 224, 0.35);
+  animation: results-pop 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.results .why {
+  margin: -8px 0 6px;
+  text-align: center;
+  font:
+    700 20px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  letter-spacing: 1px;
+  opacity: 0.9;
+}
+.rteam {
+  --c: #4a7de8;
+  --c-text: #8eb0ff;
+  padding: 10px 14px 8px;
+  border-radius: 18px;
+  border-top: 4px solid var(--c);
+  background: rgba(13, 19, 48, 0.86);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.rteam.red {
+  --c: #e8574a;
+  --c-text: #ff8a7e;
+}
+.rteam header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rteam h3 {
+  margin: 0;
+  font:
+    800 22px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  color: var(--c-text);
+}
+.rteam .rscore {
+  min-width: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--c);
+  text-align: center;
+  font:
+    800 22px 'Baloo 2',
+    system-ui,
+    sans-serif;
+}
+.rteam .tag.win {
+  background: #ffe066;
+  color: #1b2133;
+}
+.rtable {
+  overflow-x: auto;
+}
+.rtable table {
+  width: 100%;
+  min-width: 620px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+.rtable th {
+  padding: 4px 4px 0;
+  vertical-align: bottom;
+  text-align: center;
+  font:
+    800 13px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #aab0d0;
+  cursor: help;
+}
+.rtable th small {
+  display: block;
+  font:
+    600 11px Nunito,
+    system-ui,
+    sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+}
+.rtable th.who,
+.rtable td.who {
+  width: 30%;
+  text-align: left;
+  cursor: auto;
+}
+.rtable td {
+  padding: 7px 4px;
+  background: rgba(255, 255, 255, 0.05);
+  text-align: center;
+  font-size: 17px;
+  font-weight: 800;
+}
+.rtable td:first-child {
+  padding-left: 8px;
+  border-radius: 10px 0 0 10px;
+}
+.rtable td:last-child {
+  border-radius: 0 10px 10px 0;
+}
+.rtable tr.me td {
+  background: rgba(255, 224, 102, 0.16);
+}
+.rtable td.who div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* Tags sit right after the name (not pushed to the end as in the lobby). */
+.rtable td.who .pname {
+  flex: 0 1 auto;
+}
+.rtable td .of {
+  opacity: 0.5;
+  font-weight: 700;
+}
+.rtable td.zero > span {
+  opacity: 0.4;
+}
+.rtable td .good {
+  color: #7cff7a;
+}
+.rtable td .bad {
+  color: #ff8a7e;
+}
+.mvp {
+  flex: none;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: linear-gradient(#ffe066, #ffb547);
+  box-shadow: 0 2px 0 #b8862a;
+  color: #3a2400;
+  font:
+    800 13px/1.5 'Baloo 2',
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.5px;
+}
+.results footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
+}
+.results footer button {
+  font:
+    700 21px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  border: 0;
+  border-radius: 12px;
+  padding: 7px 18px;
+  background: linear-gradient(#ffb760, #ff9a3d);
+  color: #3a1a06;
+  box-shadow: 0 4px 0 #c8641f;
+  cursor: pointer;
+}
+.results footer button:hover {
+  filter: brightness(1.1);
+}
+.results .countdown {
+  font-weight: 700;
+  opacity: 0.85;
+}
+@keyframes results-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes results-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #results,
+  .results h1 {
+    animation: none;
+  }
 }

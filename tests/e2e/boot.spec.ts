@@ -130,3 +130,20 @@ test('ana menüde sohbet kutusu yok; lobide var, çıkınca gider', async ({ pag
   await page.getByRole('button', { name: 'Leave' }).click();
   await expect(page.locator('#chat')).toBeHidden();
 });
+
+test('maç sonu ekranı: iki takımın istatistikleri, MVP ve lobiye dönüş', async ({ page }) => {
+  await page.goto('/?name=Deniz');
+  await page.waitForFunction(() => !!window.__game);
+  await page.evaluate(() => window.__game?.cmd('results', 'blue'));
+  const results = page.locator('#results');
+  await expect(results).toBeVisible();
+  await expect(results).toHaveClass('blue');
+  await expect(results.getByRole('heading', { level: 1 })).toHaveText('BLUE WINS!');
+  await expect(results.locator('.rteam')).toHaveCount(2);
+  await expect(results.locator('tbody tr')).toHaveCount(6);
+  await expect(results.locator('.mvp')).toHaveCount(1);
+  await expect(results.locator('tr', { has: page.locator('.mvp') }).locator('.pname')).toHaveText('Deniz');
+  await expect(results.locator('.countdown')).toContainText('Closes in');
+  await results.getByRole('button', { name: 'Back to lobby' }).click();
+  await expect(results).toBeHidden();
+});

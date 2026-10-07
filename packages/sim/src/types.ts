@@ -53,6 +53,31 @@ export interface Player {
   goals: number;
   /** Tick of the last kick (client plays the sound once per value). */
   kickTick: number;
+  stats: Stats;
+}
+
+/** One player's match numbers for the results screen. Nothing in the game reads them back. */
+export interface Stats {
+  /** Spells on the ball: a kick, or a contact after someone else had it or after STATS.touchGap off it. */
+  touches: number;
+  /** Kicks at the opponents' goal (see STATS.shotBand), and those of them heading inside the posts.
+   * A goal is always a shot on target, even one dribbled in. */
+  shots: number;
+  onTarget: number;
+  /** Keeper only: touches that stopped a ball rolling into the own goal. */
+  saves: number;
+  /** Crates opened: helpful ones and harmful ones (ITEM_BAD). */
+  goodCrates: number;
+  badCrates: number;
+  /** Hit points taken off opponents (bullets and rockets). */
+  damage: number;
+  /** Damage the shield took instead of you. */
+  absorbed: number;
+  deaths: number;
+  /** Bookkeeping, not shown: tick of the latest contact with the ball, and whether the touch that
+   * started this spell was a shot (0 no, 1 wide, 2 on target). */
+  ballAt: number;
+  shot: 0 | 1 | 2;
 }
 
 export interface Body {

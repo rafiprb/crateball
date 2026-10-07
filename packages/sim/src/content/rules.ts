@@ -54,7 +54,19 @@ export const MATCH = {
   goalPause: sec(2.5),
   /** Nobody kicked off: the ball becomes live anyway. */
   kickoffLimit: sec(5),
-  overPause: sec(6),
+  /** After the final whistle the room goes back to the lobby this soon; the results screen stays on top
+   * of it (each player closes it, or it goes by itself after `resultsShow`). */
+  overPause: sec(2),
+  resultsShow: sec(30),
+};
+
+/** Match stats on the results screen. */
+export const STATS = {
+  /** Contact with the ball is a new touch after this long off it, so a dribble counts once. */
+  touchGap: sec(0.5),
+  /** A kick is a shot when it would roll over the goal line within this far of the middle (the keeper's
+   * box); on target when that is inside the posts. */
+  shotBand: 140,
 };
 
 export type ItemKind =
@@ -202,6 +214,10 @@ export const ITEM_KINDS: readonly ItemKind[] = [
   'teleport',
   'bazooka',
 ];
+
+/** Helpful crates first, then the harmful ones (the lobby lists them in this order; stats count them). */
+export const ITEM_GOOD: readonly ItemKind[] = ['gun', 'boost', 'shield', 'power', 'teleport', 'bazooka'];
+export const ITEM_BAD: readonly ItemKind[] = ['mine', 'ice', 'dizzy'];
 
 /** The standard mix (CRATES.loot) as a settings weight table. */
 export function defaultWeights(): Record<ItemKind, number> {

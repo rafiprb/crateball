@@ -4,6 +4,7 @@ export { hashState } from './hash';
 export { nextRandom } from './rng';
 export { gunTarget, hasWeapon } from './aim';
 export { botInput } from './bot';
+export { mvp, mvpScore, newStats } from './stats';
 export { duckFits, inHotLava, inPuddle, inWater, lavaHeat, puddleScale, shoreY } from './arena';
 export {
   addPlayer,
