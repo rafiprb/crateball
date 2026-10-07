@@ -58,7 +58,8 @@ export interface Predictor {
   reset(): void;
   /** One local tick with this input; returns the sequence number to send. */
   tick(bits: number): number | null;
-  snapshot(ack: number, g: Game): void;
+  /** `held`: each human's input in effect in the last step, per the server (wins over relayed history). */
+  snapshot(ack: number, g: Game, held?: Readonly<Record<string, number>>): void;
   /** Relayed input: player `id` presses `bits` in the step from tick `k` on. */
   remoteInput(id: string, k: number, bits: number): void;
   /** Interpolated + smoothed render position of a player id or 'ball'. */
@@ -80,8 +81,9 @@ export function createPredictor(): Predictor {
   let base: Game | null = null;
   /** Relayed key changes of other players, per id, in tick order: [tick, bits]; a new one replaces those
    * at or after its tick (the server re-times or cancels changes that way). The first entry is the one in
-   * effect at `base.tick`: it is played every tick, because the snapshot's `input` can be wrong for the
-   * next step (a kickoff zeroes it while the key is still held). */
+   * effect at `base.tick`, from the snapshot's `held` (authoritative): it is played every tick, because
+   * the state's `input` can be wrong for the next step (a kickoff zeroes it while the key is held).
+   * Relays may arrive before our first snapshot (joining mid-match): they are kept until it comes. */
   const remote = new Map<string, Array<[number, number]>>();
   /** A relayed change landed in our predicted past: re-simulate before the next use (once per frame,
    * however many arrived). */
@@ -213,7 +215,7 @@ export function createPredictor(): Predictor {
       advance(bits);
       return seq;
     },
-    snapshot(ack, g) {
+    snapshot(ack, g, held = {}) {
       // The server counted stand-in ticks for us (we were late): continue numbering after them.
       if (ack > seq) seq = ack;
       pending = pending.filter(([s]) => s > ack);
@@ -223,18 +225,26 @@ export function createPredictor(): Predictor {
         if (!g.players.some((p) => p.id === id)) remote.delete(id);
         else while (changes.length > 1 && changes[1]![0] <= g.tick) changes.shift();
       }
+      // What the server says is in effect replaces relayed history (a relay it held back over budget, or
+      // one we never got); relayed changes for the step from this tick on still apply after it.
+      for (const p of g.players) {
+        const b = Object.hasOwn(held, p.id) ? held[p.id] : undefined;
+        if (b === undefined || p.id === me) continue;
+        const future = (remote.get(p.id) ?? []).filter(([k]) => k >= g.tick);
+        remote.set(p.id, [[g.tick - 1, b], ...future]);
+      }
       stale = false;
       rebuild();
     },
     remoteInput(id, k, bits) {
-      if (!base || !game || id === me) return;
+      if (id === me) return;
       const changes = remote.get(id) ?? [];
       // Arrives in order from one server; it replaces whatever was announced from its tick on.
       while (changes.length > 0 && changes[changes.length - 1]![0] >= k) changes.pop();
       changes.push([k, bits]);
       remote.set(id, changes);
       // Still ahead of our prediction: it is played when we get there. Already behind: re-simulate.
-      if (k < game.tick) stale = true;
+      if (game && k < game.tick) stale = true;
     },
     pos(id, alpha) {
       flush();

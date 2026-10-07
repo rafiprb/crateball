@@ -102,6 +102,8 @@ interface Member {
   lateSeq: number;
   /** Tick of the last late relay: at most one per tick. */
   lateRelayAt: number;
+  /** Input in effect in the last step (what snapshots report as held: see `h`). */
+  applied: number;
   /** Set while the socket is gone: the player keeps their slot (and host role) until it fires. */
   awayTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -258,9 +260,18 @@ export function createRooms(
 
   const broadcastSnap = (room: Room) => {
     const json = encodeGame(room.game);
+    // Every human's input in effect, authoritative: a kickoff zeroes `input` in the state while the key
+    // stays held, and a relay the budget held back must not outlive the snapshot either.
+    const held: Record<string, number> = {};
+    for (const m of room.members.values())
+      if (!m.spectator && room.game.players.some((p) => p.id === m.id)) held[m.id] = m.applied;
+    const heldJson = JSON.stringify(held);
     for (const m of room.members.values())
       // Never more surplus than is actually waiting right now (a stall drained it meanwhile).
-      m.send(encodeSnap(room.game.tick, m.ack, m.queue.length, Math.min(m.lead, m.queue.length), json), true);
+      m.send(
+        encodeSnap(room.game.tick, m.ack, m.queue.length, Math.min(m.lead, m.queue.length), heldJson, json),
+        true,
+      );
   };
 
   /** Clock sync: nothing measured, no feedback (match start, reconnect, a long silence). */
@@ -271,11 +282,15 @@ export function createRooms(
     m.lead = 0;
   };
 
-  /** A fresh input timeline (match start, reconnect): the relay starts over too. */
-  const resetTimeline = (m: Member) => {
+  /** A fresh input timeline (match start, reconnect). On a reconnect the others still hold what they
+   * were told about this player: keep it, so that the next tick cancels whatever no longer holds. */
+  const resetTimeline = (m: Member, keepSched = false) => {
     resetSlack(m);
-    m.sched = []; // nothing told yet: the first input applied is announced in any case
-    m.relayDirty = false;
+    if (keepSched) m.relayDirty = true;
+    else {
+      m.sched = []; // nothing told yet: the first input applied is announced in any case
+      m.relayDirty = false;
+    }
     m.lateSeq = 0;
     m.lateRelayAt = -1;
   };
@@ -360,6 +375,7 @@ export function createRooms(
       announce(room);
       return;
     }
+    const t0 = performance.now(); // the tick's cost includes relay checks and resends
     const inputs = new Map<string, number>();
     for (const m of room.members.values()) {
       if (m.queue.length > QUEUE_MAX) {
@@ -394,10 +410,14 @@ export function createRooms(
         }
         inputs.set(m.id, m.last);
       }
-      const applied = inputs.get(m.id);
-      if (applied !== undefined) verifyRelay(room, m, g.tick, applied);
+      if (m.spectator) continue;
+      // Not heard from yet (or dropped before its first input was taken): its `input` simply carries on.
+      // Checked all the same, so that inputs announced before a drop are cancelled.
+      const p = g.players.find((o) => o.id === m.id);
+      if (!p) continue;
+      m.applied = inputs.get(m.id) ?? p.input;
+      verifyRelay(room, m, g.tick, m.applied);
     }
-    const t0 = performance.now();
     step(g, inputs);
     if (g.tick % SNAP_EVERY === 0) broadcastSnap(room);
     room.stepMsMax = Math.max(room.stepMsMax, performance.now() - t0);
@@ -502,6 +522,7 @@ export function createRooms(
       relayTokens: RELAY_BURST,
       lateSeq: 0,
       lateRelayAt: -1,
+      applied: 0,
       awayTimer: null,
     });
     // Someone arriving mid-match knows nobody's keys yet: everyone's schedule is resent next tick.
@@ -585,7 +606,7 @@ export function createRooms(
     // A reloaded page restarts its sequence numbers; a fresh count avoids treating them as late.
     m.ack = 0;
     m.queue = [];
-    resetTimeline(m);
+    resetTimeline(m, true);
     // A reloaded page lost everyone's relayed keys too.
     for (const o of room.members.values()) o.relayDirty = true;
     log.info({ room: room.code, id }, 'oyuncu geri döndü');

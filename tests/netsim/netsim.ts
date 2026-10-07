@@ -289,7 +289,7 @@ export function runSim(o: SimOptions): ClientReport[] {
     const m = decodeServerMessage(raw);
     if (!m) return;
     if (m.t === 'snap') {
-      c.pred.snapshot(m.ack, m.g);
+      c.pred.snapshot(m.ack, m.g, m.h);
       c.clock.feedback(m.lead);
       c.hadSnap = true;
       if (now < warm) return;

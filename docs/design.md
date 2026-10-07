@@ -119,10 +119,13 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
     (`tick + kuyruktaki yeri`) diğerlerine yollar. Alıcı her oyuncu için `[tick, tuş]` listesi tutar; yeni
     gelen, kendi tick'i ve sonrasındakilerin yerini alır. Tahminimizin henüz gelmediği bir tick'se zamanı
     gelince oynanır (düzeltme yok); geçtiğimiz bir tick'se son snapshot'a geri sarılır (karede en çok bir
-    kez). Yürürlükteki son değişiklik snapshot'tan sonra da oynanır: başlama vuruşu `input`'u sıfırlasa da
-    basılı tuş sürer.
+    kez). Snapshot her insan oyuncunun son adımda yürürlükteki girdisini de taşır (`h`, otoriter): alıcı
+    listenin başını bununla değiştirir ve snapshot'tan sonra da oynar. Böylece başlama vuruşu `input`'u
+    sıfırlasa da basılı tuş sürer, bütçe yüzünden aktarılmamış bir değişiklik de en geç sonraki
+    snapshot'ta düzelir. İlk snapshot'tan önce gelen aktarımlar (yeni izleyici, yenilenen sayfa) saklanır.
     - Sunucu alıcıların listesinin aynısını (`sched`) tutar ve her tick uyguladığı girdiyi onunla
-      karşılaştırır; farklıysa (kuyruk kırpıldı ya da boşaldı, geç girdi, uzun sessizlikte tuş bırakıldı)
+      karşılaştırır (henüz girdisi alınmamış oyuncu dahil); farklıysa (kuyruk kırpıldı ya da boşaldı, geç
+      girdi, uzun sessizlikte tuş bırakıldı; yeniden bağlanmada eski liste unutulmaz)
       listeyi o tick'ten yeniden yollar. Kırpma/kopma listeyi hemen "kirli" yapar, ileriye duyurulmuş
       tuşlar (hayalet vuruş) en geç bir sonraki tick'te iptal edilir.
     - Kötüye kullanıma karşı: her geç sıra numarası bir kez düzeltir (eski numarayla sel işe yaramaz), geç

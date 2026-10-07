@@ -226,7 +226,7 @@ const conn = connect({
       case 'snap':
         if (room?.state === 'playing') {
           const ts = performance.now();
-          pred.snapshot(m.ack, m.g);
+          pred.snapshot(m.ack, m.g, m.h);
           clock.feedback(m.lead);
           work.snap = Math.max(work.snap, performance.now() - ts);
           queueAvg = queueAvg * 0.9 + m.q * 0.1;

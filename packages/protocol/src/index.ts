@@ -121,8 +121,9 @@ export type ServerMessage =
   | { t: 'chat'; n: number; id: string; name: string; team: Seat; text: string }
   /** Authoritative state at `tick`; `ack` = last input sequence of yours already applied; `q` = your inputs
    * still queued on the server; `lead` = clock-sync feedback: how many ticks further ahead of the server you
-   * run than your link's jitter needs (tick a little slower while it is above 0). */
-  | { t: 'snap'; tick: number; ack: number; q: number; lead: number; g: Game }
+   * run than your link's jitter needs (tick a little slower while it is above 0); `h` = each human player's
+   * input in effect in the last step (authoritative; the state's `input` is zeroed by a kickoff). */
+  | { t: 'snap'; tick: number; ack: number; q: number; lead: number; h: Record<string, number>; g: Game }
   /** Input relay: player `id` changed its keys to `b`, applied on the server in the step from tick `k`.
    * Sent the moment it reaches the server (only changes), so other clients' predictions learn of a kick
    * before the snapshot that contains it. */
@@ -144,6 +145,16 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const isUint = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 /** Clock-sync feedback in ticks; above 60 (1 s) is not a sane value. */
 const isLead = (v: unknown): v is number => isUint(v) && v <= 60;
+/** Held inputs per player id: at most a room's worth, each an input byte; anything else is dropped. */
+function decodeHeld(v: unknown): Record<string, number> {
+  if (!isObj(v)) return {};
+  const entries = Object.entries(v);
+  if (entries.length > 16) return {};
+  // fromEntries defines own properties: a "__proto__" key cannot reach the prototype.
+  return Object.fromEntries(
+    entries.filter((e): e is [string, number] => e[0].length <= 64 && isUint(e[1]) && e[1] < 64),
+  );
+}
 const isStr = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max;
 
 function parse(raw: string): Obj | null {
@@ -328,8 +339,15 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
 }
 
 /** Server encodes the game once per tick and wraps it per client (ack differs). */
-export function encodeSnap(tick: number, ack: number, q: number, lead: number, gameJson: string): string {
-  return `{"t":"snap","tick":${tick},"ack":${ack},"q":${q},"lead":${lead},"g":${gameJson}}`;
+export function encodeSnap(
+  tick: number,
+  ack: number,
+  q: number,
+  lead: number,
+  heldJson: string,
+  gameJson: string,
+): string {
+  return `{"t":"snap","tick":${tick},"ack":${ack},"q":${q},"lead":${lead},"h":${heldJson},"g":${gameJson}}`;
 }
 
 /** Positions/velocities rounded to 1/1000 px: smaller packets, harmless for prediction. */
@@ -406,6 +424,7 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
             ack: m.ack,
             q: isUint(m.q) ? m.q : 0,
             lead: isLead(m.lead) ? m.lead : 0,
+            h: decodeHeld(m.h),
             g: m.g,
           }
         : null;

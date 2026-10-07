@@ -137,16 +137,31 @@ describe('oyun mesajları', () => {
     expect(decodeServerMessage('{"t":"ri","id":"abc","k":120,"b":64}')).toBeNull();
     expect(decodeServerMessage('{"t":"ri","id":"abc","k":-1,"b":1}')).toBeNull();
   });
+  it('snap içindeki tutulan girdiler doğrulanır; bozuk olan atılır, prototipe dokunulmaz', async () => {
+    const { createGame } = await import('@crateball/sim');
+    const { encodeGame, encodeSnap } = await import('../src/index');
+    const g = encodeGame(createGame(1));
+    const h = (json: string) => {
+      const m = decodeServerMessage(encodeSnap(1, 1, 0, 0, json, g));
+      return m?.t === 'snap' ? m.h : null;
+    };
+    expect(h('{"a":64,"b":3,"c":-1}')).toEqual({ b: 3 });
+    expect(h('[1,2]')).toEqual({});
+    const proto = h('{"__proto__":{"x":1},"d":2}')!;
+    expect(Object.getPrototypeOf(proto)).toBe(Object.prototype);
+    expect(proto).toEqual({ d: 2 });
+  });
   it('snap sarmalayıcısı çözülür', async () => {
     const { createGame } = await import('@crateball/sim');
     const { encodeGame, encodeSnap } = await import('../src/index');
     const g = createGame(1);
     g.ball.x = 1 / 3;
-    const m = decodeServerMessage(encodeSnap(4, 9, 2, 3, encodeGame(g)));
+    const m = decodeServerMessage(encodeSnap(4, 9, 2, 3, '{"p1":8,"p2":0}', encodeGame(g)));
+    expect(m?.t === 'snap' && m.h).toEqual({ p1: 8, p2: 0 });
     expect(m?.t === 'snap' && m.ack === 9 && m.lead === 3 && m.g.ball.x).toBe(0.333);
     // Clock-sync feedback that is not a sane tick count is ignored (0), not trusted.
     for (const lead of [500, -2, 1.5]) {
-      const wild = decodeServerMessage(encodeSnap(4, 9, 2, lead, encodeGame(g)));
+      const wild = decodeServerMessage(encodeSnap(4, 9, 2, lead, '{}', encodeGame(g)));
       expect(wild?.t === 'snap' && wild.lead).toBe(0);
     }
   });
