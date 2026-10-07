@@ -405,6 +405,123 @@ describe('girdi kuyruğu', () => {
   });
 });
 
+describe('saat eşitleme (uyarlanır girdi tamponu)', () => {
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: false,
+  };
+  const setup = async () => {
+    const { createRooms, LEAD_BLOCK, LEAD_TARGET } = await import('../src/rooms');
+    const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
+    const sent: Record<string, string[]> = { a: [], b: [] };
+    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.a!.push(r));
+    if (typeof room === 'string') throw new Error(room);
+    rooms.join(room.code, 'b', 'B', (r) => sent.b!.push(r));
+    rooms.start('a');
+    const lead = (id: 'a' | 'b') =>
+      (JSON.parse(sent[id]!.filter((r) => r.startsWith('{"t":"snap"')).at(-1)!) as { lead: number }).lead;
+    return { rooms, room, sent, lead, LEAD_BLOCK, LEAD_TARGET };
+  };
+
+  it('hep fazladan girdisi bekleyen istemciye fazlası bildirilir; tam zamanında gelene 0', async () => {
+    const { rooms, lead, LEAD_BLOCK, LEAD_TARGET } = await setup();
+    // a: 6 inputs ahead all the time (as after a long Wi-Fi stall). b: each input just in time.
+    for (let s = 1; s <= 6; s++) rooms.input('a', s, 8);
+    for (let t = 1; t <= LEAD_BLOCK * 4; t++) {
+      rooms.input('a', t + 6, 8);
+      rooms.input('b', t, 4);
+      rooms.tickAll();
+    }
+    expect(lead('a')).toBe(6 - LEAD_TARGET);
+    expect(lead('b')).toBe(0);
+    rooms.stop();
+  });
+
+  it('pencerede bir kez bile dibe vuran (seğiren) istemcinin tamponu küçültülmez', async () => {
+    const { rooms, lead, LEAD_BLOCK } = await setup();
+    let s = 0;
+    for (let i = 0; i < 3; i++) rooms.input('a', ++s, 8);
+    for (let t = 1; t <= LEAD_BLOCK * 4; t++) {
+      // Clumps of four every fourth tick: 3, 2, 1, 0 left waiting, again and again.
+      if (t % 4 === 0) for (let i = 0; i < 4; i++) rooms.input('a', ++s, 8);
+      rooms.tickAll();
+    }
+    expect(lead('a')).toBe(0);
+    rooms.stop();
+  });
+
+  it('maç yeniden başlayınca ölçüm sıfırlanır', async () => {
+    const { rooms, room, lead, LEAD_BLOCK } = await setup();
+    for (let s = 1; s <= 6; s++) rooms.input('a', s, 8);
+    for (let t = 1; t <= LEAD_BLOCK * 4; t++) {
+      rooms.input('a', t + 6, 8);
+      rooms.tickAll();
+    }
+    expect(lead('a')).toBeGreaterThan(0);
+    room.state = 'lobby';
+    rooms.start('a');
+    expect(lead('a')).toBe(0);
+    rooms.stop();
+  });
+});
+
+describe('girdi aktarımı', () => {
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: false,
+  };
+  type Relay = { t: 'ri'; id: string; k: number; b: number };
+  const setup = async () => {
+    const { createRooms } = await import('../src/rooms');
+    const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
+    const sent: Record<string, string[]> = { a: [], b: [] };
+    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.a!.push(r));
+    if (typeof room === 'string') throw new Error(room);
+    rooms.join(room.code, 'b', 'B', (r) => sent.b!.push(r));
+    rooms.start('a');
+    const relays = (id: 'a' | 'b') =>
+      sent[id]!.filter((r) => r.startsWith('{"t":"ri"')).map((r) => JSON.parse(r) as Relay);
+    return { rooms, room, relays };
+  };
+
+  it('tuş değişikliği gelir gelmez diğerlerine, uygulanacağı tick ile gider; aynı tuş tekrar gitmez', async () => {
+    const { rooms, room, relays } = await setup();
+    rooms.input('b', 1, 8);
+    expect(relays('a')).toEqual([{ t: 'ri', id: 'b', k: room.game.tick, b: 8 }]);
+    expect(relays('b')).toEqual([]); // not to the sender
+    rooms.input('b', 2, 8); // same keys: nothing new
+    rooms.input('b', 3, 4); // third in the queue: applied two steps later
+    const k = room.game.tick + 2;
+    expect(relays('a').at(-1)).toEqual({ t: 'ri', id: 'b', k, b: 4 });
+    expect(relays('a')).toHaveLength(2);
+    // The relayed tick is the one the server really applies it in: the step from tick k.
+    const p = room.game.players.find((o) => o.id === 'b')!;
+    while (room.game.tick < k) rooms.tickAll();
+    expect(p.input).toBe(8);
+    rooms.tickAll();
+    expect(p.input).toBe(4);
+    rooms.stop();
+  });
+
+  it('geç gelen girdi yerine geçecekse bir sonraki tick ile aktarılır', async () => {
+    const { rooms, room, relays } = await setup();
+    rooms.input('b', 1, 8);
+    rooms.tickAll();
+    rooms.tickAll(); // b starved: stand-in, its ack counts on
+    rooms.input('b', 2, 1); // late: stands in from the next tick
+    expect(relays('a').at(-1)).toEqual({ t: 'ri', id: 'b', k: room.game.tick, b: 1 });
+    rooms.tickAll();
+    expect(room.game.players.find((o) => o.id === 'b')!.input).toBe(1);
+    rooms.stop();
+  });
+});
+
 describe('inceleme düzeltmeleri (sunucu)', () => {
   const settings: Settings = {
     minutes: 3,

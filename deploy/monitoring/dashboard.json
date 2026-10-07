@@ -14,13 +14,15 @@
         "name": "prom",
         "label": "Metrikler",
         "type": "datasource",
-        "query": "prometheus"
+        "query": "prometheus",
+        "regex": "/^grafanacloud-.*-prom$/"
       },
       {
         "name": "loki",
         "label": "Loglar",
         "type": "datasource",
-        "query": "loki"
+        "query": "loki",
+        "regex": "/^grafanacloud-.*-logs$/"
       }
     ]
   },

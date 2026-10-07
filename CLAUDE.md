@@ -21,6 +21,7 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 | `pnpm dev` | Sunucu (3000) + istemci (5173). Tarayıcı: `http://localhost:5173/?name=Y` (menü), `?name=Y&autoplay&debug` (oda kurup hemen başlatır), `/r/KOD?name=Z` (katıl) |
 | `pnpm verify` | format + typecheck + lint + birim + e2e. **Bir iş bunu geçmeden bitmiş sayılmaz.** |
 | `pnpm test` / `pnpm e2e` | Sadece Vitest / sadece Playwright |
+| `pnpm netsim [sn] [tohum]` | Ağ ölçümü: gerçek sunucu odası + 4 tahminci, sanal saat ve modellenmiş bağlantılarla; top düzeltmesi, çizilen topun hatası, kuyruk tablosu (`tests/netsim`) |
 | `pnpm build` | `dist/client` + `dist/server/server.mjs` |
 | `pnpm docker:prod` | Prod imajını yerelde kurup smoke testini koşar (`docker smoke OK`) |
 | `pnpm deploy` | (`.deploy.env` gerekir) Commit'lenmiş HEAD'i VPS'e gönderir, orada derler. Maç oynanıyorsa bekler; `pnpm deploy --force` beklemez (açık odalar silinir) |
@@ -47,7 +48,7 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 ## Debug akışı
 
 - Dev: tüm loglar tek dosyada, `logs/dev.log` (sunucu + tarayıcı konsolu, `"src":"client"`).
-- Prod telemetri: her istemci oyunda 2 sn'de bir `istemci istatistik` (fps, en uzun kare, ping, bekleyen girdi, kendi oyuncusunun düzeltmesi px) yollar; sunucu 5 sn'de bir `oda istatistik` (girdisiz tick, en yavaş tick) yazar. Oyuncu **R**'ye (ya da F9) basınca son ~10 sn `oyuncu raporu (R)` olarak loglanır. `pnpm watch` bunları süzer.
+- Prod telemetri: her istemci oyunda 2 sn'de bir `istemci istatistik` (fps, en uzun kare, ping, bekleyen girdi, kendi oyuncusunun düzeltmesi px) yollar; sunucu 5 sn'de bir `oda istatistik` (girdisiz tick, kuyruk, saat eşitleme `lead`'i, en yavaş tick) yazar. Oyuncu **R**'ye (ya da F9) basınca son ~10 sn `oyuncu raporu (R)` olarak loglanır. `pnpm watch` bunları süzer.
 - `window.__game` (dev): `getState()` → `{ frame, screen, room, net(rtt), render(particles), pred(pending, corrections), sim(...) }`; `cmd('fx', 'mine'|'ice'|'goal'…)` efekt dener. F1: FPS, bağlantı+RTT, bekleyen girdi, düzeltme sayısı.
 - Gecikme denemesi (yalnızca dev): URL'ye `&lag=100&jitter=20` ekle (tek yön ms; ping ≈ 2×lag). F1'de RTT/pending/corrections. Otomatik test: `tests/e2e/multiplayer.spec.ts` içindeki `withLatency`.
 - Determinizm: aynı seed + aynı girdi → aynı `hashState`; şüphede `packages/sim/test/game.test.ts`.

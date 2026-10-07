@@ -1,6 +1,6 @@
 import type { ArenaKind, Game, ItemKind, Role, Settings, Team } from '@crateball/sim';
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */
@@ -119,8 +119,14 @@ export type ServerMessage =
   | { t: 'room'; room: RoomInfo }
   /** `n` numbers the room's lines, so a replayed line is not shown twice. */
   | { t: 'chat'; n: number; id: string; name: string; team: Seat; text: string }
-  /** Authoritative state at `tick`; `ack` = last input sequence of yours already applied; `q` = your inputs still queued on the server (clock-sync feedback). */
-  | { t: 'snap'; tick: number; ack: number; q: number; g: Game };
+  /** Authoritative state at `tick`; `ack` = last input sequence of yours already applied; `q` = your inputs
+   * still queued on the server; `lead` = clock-sync feedback: how many ticks further ahead of the server you
+   * run than your link's jitter needs (tick a little slower while it is above 0). */
+  | { t: 'snap'; tick: number; ack: number; q: number; lead: number; g: Game }
+  /** Input relay: player `id` changed its keys to `b`, applied on the server in the step from tick `k`.
+   * Sent the moment it reaches the server (only changes), so other clients' predictions learn of a kick
+   * before the snapshot that contains it. */
+  | { t: 'ri'; id: string; k: number; b: number };
 
 type Obj = Record<string, unknown>;
 const ERROR_CODES: readonly string[] = [
@@ -136,6 +142,8 @@ const ERROR_CODES: readonly string[] = [
 ];
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isUint = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+/** Clock-sync feedback in ticks; above 60 (1 s) is not a sane value. */
+const isLead = (v: unknown): v is number => isUint(v) && v <= 60;
 const isStr = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max;
 
 function parse(raw: string): Obj | null {
@@ -320,8 +328,8 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
 }
 
 /** Server encodes the game once per tick and wraps it per client (ack differs). */
-export function encodeSnap(tick: number, ack: number, q: number, gameJson: string): string {
-  return `{"t":"snap","tick":${tick},"ack":${ack},"q":${q},"g":${gameJson}}`;
+export function encodeSnap(tick: number, ack: number, q: number, lead: number, gameJson: string): string {
+  return `{"t":"snap","tick":${tick},"ack":${ack},"q":${q},"lead":${lead},"g":${gameJson}}`;
 }
 
 /** Positions/velocities rounded to 1/1000 px: smaller packets, harmless for prediction. */
@@ -386,9 +394,20 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
         (m.team === 'red' || m.team === 'blue' || m.team === 'spec')
         ? { t: 'chat', n: m.n, id: m.id, name: m.name, team: m.team, text: m.text }
         : null;
+    case 'ri':
+      return isStr(m.id, 64) && isUint(m.k) && isUint(m.b) && m.b < 64
+        ? { t: 'ri', id: m.id, k: m.k, b: m.b }
+        : null;
     case 'snap':
       return isUint(m.tick) && isUint(m.ack) && isGame(m.g)
-        ? { t: 'snap', tick: m.tick, ack: m.ack, q: isUint(m.q) ? m.q : 0, g: m.g }
+        ? {
+            t: 'snap',
+            tick: m.tick,
+            ack: m.ack,
+            q: isUint(m.q) ? m.q : 0,
+            lead: isLead(m.lead) ? m.lead : 0,
+            g: m.g,
+          }
         : null;
     default:
       return null;
