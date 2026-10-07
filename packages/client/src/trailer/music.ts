@@ -30,7 +30,10 @@ const LEAD2 = [76, 79, 81, 79, 76, 74, 72, 74, 77, 81, 79, 77, 76, 74, 71, 74]; 
 const LEAD = [76, 74, 72, 74, 76, 79, 76, 72, 77, 76, 72, 69, 72, 74, 71, 67]; // 16 eighths over 2 bars
 const hz = (m: number) => 440 * 2 ** ((m - 69) / 12);
 
-export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
+export function renderMusic(ctx: BaseAudioContext, dest: AudioNode): void {
+  // Everything goes through a gate: half a beat of silence right before each drop makes it land.
+  const out = ctx.createGain();
+  out.connect(dest);
   const bus = ctx.createGain();
   bus.gain.value = 0.9;
   // Side-chain feel: the music bus ducks on every kick in the drops.
@@ -44,9 +47,9 @@ export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
   const delay = ctx.createDelay(1);
   delay.delayTime.value = BEAT * 0.75;
   const fb = ctx.createGain();
-  fb.gain.value = 0.35;
+  fb.gain.value = 0.25;
   const wet = ctx.createGain();
-  wet.gain.value = 0.3;
+  wet.gain.value = 0.2;
   delay.connect(fb).connect(delay);
   delay.connect(wet).connect(out);
 
@@ -190,8 +193,8 @@ export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
       for (let i = 0; i < 4; i++) {
         kick(at(b, i));
         hat(at(b, i + 0.5), 0.14, i % 2 === 1);
-        hat(at(b, i + 0.25), 0.05);
-        hat(at(b, i + 0.75), 0.05);
+        hat(at(b, i + 0.25), 0.03);
+        hat(at(b, i + 0.75), 0.03);
         synth(at(b, i + 0.5), BEAT * 0.45, [root - 12], {
           vol: dark ? 0.2 : 0.16,
           cutoff: dark ? 500 : 700,
@@ -226,7 +229,9 @@ export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
   drop(SECTION.traps, SECTION.arenas, false, true);
   drop(SECTION.arenas, SECTION.brk, true);
 
-  // Break: pads only, echo, a muffled kick on the last beats to lead back in.
+  // Break: one hit on the cut, then pads only, a clap roll on the last beats to lead back in.
+  kick(at(SECTION.brk), 0.9);
+  crash(at(SECTION.brk), 0.3);
   for (let b: number = SECTION.brk; b < SECTION.drop2; b++) {
     synth(
       at(b),
@@ -241,6 +246,15 @@ export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
   drop(SECTION.drop2, SECTION.drop2 + 2, true);
   drop(SECTION.drop2 + 2, SECTION.outro, true, false, LEAD2);
 
+  // The gaps before the drops.
+  for (const b of [SECTION.drop, SECTION.drop2]) {
+    const t = at(b);
+    out.gain.setValueAtTime(1, t - BEAT * 0.5);
+    out.gain.linearRampToValueAtTime(0, t - BEAT * 0.5 + 0.01);
+    out.gain.setValueAtTime(0, t - 0.002);
+    out.gain.linearRampToValueAtTime(1, t);
+  }
+
   // End card: the crate whistles down through the first beat (no silent gap after the drop), lands on
   // beat 1 (a thud), bursts open on beat 2 (the big hit), then rings out.
   {
@@ -253,12 +267,14 @@ export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
     f.frequency.setValueAtTime(6000, t0);
     f.frequency.exponentialRampToValueAtTime(200, t0 + BEAT);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.18, t0);
-    g.gain.linearRampToValueAtTime(0.05, t0 + BEAT);
+    g.gain.setValueAtTime(0.1, t0);
+    g.gain.linearRampToValueAtTime(0.03, t0 + BEAT);
     sw.connect(f).connect(g).connect(bus);
     sw.start(t0);
     sw.stop(t0 + BEAT + 0.02);
   }
+  kick(at(SECTION.outro), 0.9); // the cut to the end card
+  crash(at(SECTION.outro), 0.25);
   const land = at(SECTION.outro, 1);
   kick(land, 0.6);
   noise(land, 0.3, 0.2, 'lowpass', 300);

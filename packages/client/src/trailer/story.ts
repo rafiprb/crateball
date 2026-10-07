@@ -11,7 +11,8 @@
 // - Two text positions: statements top centre, feature tags in the lower third on the left. The
 //   camera puts the action away from them (Segment.subject). Everything inside the 10% title-safe area.
 // - At most three words per beat; every line stays up at least a beat and a half.
-// - Hard cuts inside a group, a wipe between groups, a flash where the music changes section.
+// - Every cut is instant and on a kick, with a short zoom punch; a quick flash where the music changes
+//   section. No wipes or fades (they read slow against the beat).
 // - End card: lock-up, one call to action, the address and a legal line, held for 3+ seconds.
 import type { Key, MatchSpec } from './match';
 import { BAR, BEAT, SECTION } from './music';
@@ -35,7 +36,6 @@ import {
   slam,
   tag,
   vignette,
-  wipe,
   type Bit,
 } from './fx';
 
@@ -67,7 +67,7 @@ export interface Segment {
   /** Draws over the shot; `lt` = seconds since the segment started. */
   over?: (o: CanvasRenderingContext2D, lt: number, t: number, dt: number) => void;
   /** How the segment comes in. */
-  enter?: 'cut' | 'wipe' | 'flash';
+  enter?: 'cut' | 'flash';
 }
 
 const bar = (b: number, beat = 0) => b * BAR + beat * BEAT;
@@ -165,7 +165,7 @@ add({
 add({
   t0: bar(SECTION.build + 1),
   t1: bar(SECTION.drop),
-  enter: 'wipe',
+  enter: 'cut',
   subject: TOP_SUBJECT,
   clear: [TOP_RECT],
   shot: shot(only(9, ['gun', 'bazooka', 'teleport'], false), 'loot', 970, beats(2), [1.75, 1.95]),
@@ -218,7 +218,7 @@ loot.forEach((f, i) => feature(SECTION.drop + i, f, i === 0 ? 'flash' : 'cut'));
 add({
   t0: bar(SECTION.traps),
   t1: bar(SECTION.traps + 1),
-  enter: 'wipe',
+  enter: 'cut',
   subject: TOP_SUBJECT,
   clear: [TOP_RECT],
   shot: shot(only(6, ['dizzy']), 'dizzy', 1972, beats(2), [1.9, 2.05]),
@@ -273,7 +273,7 @@ const arenas: Feature[] = [
     color: GOLD,
   },
 ];
-arenas.forEach((f, i) => feature(SECTION.arenas + i, f, i === 0 ? 'wipe' : 'cut'));
+arenas.forEach((f, i) => feature(SECTION.arenas + i, f, 'cut'));
 
 // ── Break: a goal in slow motion, then it blurs behind the pitch to friends ─────────────────────
 add({
@@ -401,14 +401,12 @@ add({
 
 export const DURATION = bar(SECTION.end);
 
-/** Transition drawn over the first moments of a segment. */
+/** Transition drawn over the first frames of a segment: a quick flash where the music changes section. */
 export function enterFx(o: CanvasRenderingContext2D, s: Segment, lt: number): void {
-  // Flash starts at 85%, not pure white, and clears in 0.3 s.
-  if (s.enter === 'flash') flash(o, 0.08 + lt / 0.3);
-  // A wipe straddles the cut: its first half runs over the end of the previous segment.
-  if (s.enter === 'wipe') wipe(o, 0.5 + lt / 0.5);
+  if (s.enter === 'flash') flash(o, 0.35 + lt / 0.12);
 }
-export function exitFx(o: CanvasRenderingContext2D, next: Segment | undefined, untilNext: number): void {
-  if (next?.enter === 'wipe' && untilNext < 0.25) wipe(o, 0.5 - untilNext / 0.5);
+/** Zoom punch on every cut (scale of the whole frame): in a few frames, gone in a tenth of a second. */
+export function punch(s: Segment, lt: number): number {
+  return 1 + (s.enter === 'flash' ? 0.07 : 0.045) * Math.exp(-lt / 0.05);
 }
 export { vignette };

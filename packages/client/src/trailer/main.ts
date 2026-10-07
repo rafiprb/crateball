@@ -15,7 +15,7 @@ import { createSound } from '../sound';
 import { OUT_H, OUT_W } from './fx';
 import { KEYS, dryRun, replay, scan, where, type Key, type MatchSpec, type Moment } from './match';
 import { BEAT, impact, renderMusic, toWav } from './music';
-import { DURATION, SEGMENTS, enterFx, exitFx, vignette, type Segment } from './story';
+import { DURATION, SEGMENTS, enterFx, punch, vignette, type Segment } from './story';
 
 declare global {
   interface Window {
@@ -240,7 +240,9 @@ function drawShot(s: Segment, t: number, lt: number) {
     acc -= 1;
     for (const e of r.advance()) {
       fx.emit(e);
-      if (e.type !== 'scrape' && e.type !== 'locked') sounds.push({ t, e });
+      // Only the event the shot is about makes a game sound; the rest of the match stays under the music.
+      if (s.shot.key && KEYS[s.shot.key](e) && Math.abs(frameInSeg - (cur.key?.frame ?? -99)) < 2)
+        sounds.push({ t, e });
     }
   }
   fx.ambient(r.game, (id) => r.pred.pos(id, acc), speed / FPS);
@@ -305,10 +307,12 @@ function frame(i: number): void {
   }
   if (s !== seg) startSegment(s);
   const lt = t - s.t0;
+  const k = punch(s, lt);
+  o.setTransform(k, 0, 0, k, (OUT_W * (1 - k)) / 2, (OUT_H * (1 - k)) / 2);
   if (s.shot) drawShot(s, t, lt);
   s.over?.(o, lt, t, 1 / FPS);
+  o.setTransform(1, 0, 0, 1, 0, 0);
   enterFx(o, s, lt);
-  exitFx(o, SEGMENTS[idx + 1], s.t1 - t);
   frameInSeg++;
 }
 
@@ -386,7 +390,7 @@ async function audio(): Promise<string> {
   comp.connect(master).connect(ctx.destination);
   renderMusic(ctx, comp);
   const sfx = ctx.createGain();
-  sfx.gain.value = 0.7;
+  sfx.gain.value = 0.6;
   sfx.connect(comp);
   for (const h of hits) impact(ctx, comp, h.t, h.big);
   let when = 0;

@@ -1,4 +1,4 @@
-// Motion graphics for the trailer: slammed words, sliding tags, wipes, the logo. All drawn on the
+// Motion graphics for the trailer: slammed words, sliding tags, flashes, the logo. All drawn on the
 // 1920x1080 output canvas in plain 2D.
 
 export const OUT_W = 1920;
@@ -126,28 +126,6 @@ export function backdrop(o: Ctx, t: number, tint = 1): void {
   for (let x = -2200 + shift; x < 2200; x += step) {
     o.fillStyle = Math.round((x - shift) / step) % 2 ? RED : BLUE;
     o.fillRect(x, -1600, step / 2, 3200);
-  }
-  o.restore();
-}
-
-/** Two diagonal bands (red, then blue) sweeping across; together they cover the screen at k = 0.5,
- * which is where the cut happens. */
-export function wipe(o: Ctx, k: number): void {
-  if (k <= 0 || k >= 1) return;
-  const inOut = (x: number) => (x < 0.5 ? 4 * x ** 3 : 1 - (-2 * x + 2) ** 3 / 2);
-  o.save();
-  o.translate(OUT_W / 2, OUT_H / 2);
-  o.rotate(-0.35);
-  for (const [i, c] of [
-    [0, RED],
-    [1, BLUE],
-  ] as const) {
-    const p = inOut(clamp01(k * 1.1 - i * 0.1));
-    const x = -3300 + 6600 * p;
-    o.fillStyle = c;
-    o.fillRect(x - 1300, -1400, 2600, 2800);
-    o.fillStyle = INK;
-    o.fillRect(x + 1300, -1400, 18, 2800);
   }
   o.restore();
 }
