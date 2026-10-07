@@ -32,6 +32,18 @@ Measure before deciding anything about capacity (no scaling work without numbers
   set them just under the measured capacity, and make them configurable by env so they can be raised
   on launch day without a code change.
 - **"Servers are full" screen.** A refused join should say so and suggest trying again, not fail silently.
+- **Admission queue when the server is full.** Lives wherever the caps are counted (the server today,
+  the coordinator later). A full room (6/6) is not this: that stays spectate-then-take-a-seat.
+  - Two thresholds: up to 90% everyone gets in; from 90% new rooms and quick play queue while joins
+    into an existing room with a free seat (invites) still go straight in; at 100% everyone queues,
+    invites first, but every third free slot goes to the regular queue so nobody waits forever.
+  - The client shows its place and an estimated wait (slots free up mostly when matches end, so the
+    estimate comes from matches about to finish).
+  - A dropped connection keeps its place for 30 s. If an invited player's room closes or fills while
+    they wait, they move to the regular queue and are told why.
+  - No per-IP limits (offices share one IP). The queue itself is capped (for example 1000); beyond
+    that the client says to try again later. Lobby browsers and spectators count against the socket
+    cap, not players; keep the socket cap above the player cap so the queue can connect.
 - **Grafana alerts** (Alerting, contact point chosen by the owner: Telegram, Discord/Slack or e-mail):
   players above 80% of the cap, server not answering for 2 min, slowest tick above 10 ms, disk or
   memory nearly full. Shipped as an importable file like the dashboard.
