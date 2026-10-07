@@ -375,7 +375,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.roundRect(-r, -r, r * 2, r * 2, 4);
       ctx.stroke();
       ctx.restore();
-      text('?', c.x, c.y + bob - 1, 18, '#FFF4E0', 800);
+      // Baloo's "?" sits high on its middle baseline: nudged down onto the centre of the box.
+      text('?', c.x, c.y + bob + 2, 18, '#FFF4E0', 800);
     }
     for (const b of g.bullets) {
       if (b.rocket) {
