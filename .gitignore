@@ -12,3 +12,6 @@ playwright-report/
 
 # Server address and SSH details stay local
 .deploy.env
+
+# Rendered trailers (scripts/trailer.mjs)
+marketing/out/

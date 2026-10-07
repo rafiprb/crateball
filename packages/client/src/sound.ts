@@ -15,16 +15,35 @@ export interface Sound {
   debug(): { state: string; played: number; muted: boolean };
 }
 
-export function createSound(): Sound {
-  let ctx: AudioContext | null = null;
+/** Rendering into a given context instead of the speakers (the trailer renders audio offline): effects
+ * start at `now()` on that context's timeline and go to `out`. */
+export interface SoundTarget {
+  ctx: BaseAudioContext;
+  out: AudioNode;
+  now: () => number;
+}
+
+export function createSound(target?: SoundTarget): Sound {
+  let ctx: BaseAudioContext | null = null;
   let master: GainNode | null = null;
   let noiseBuf: AudioBuffer | null = null;
   let muted = false;
   let played = 0;
+  const now = () => (target ? target.now() : (ctx?.currentTime ?? 0));
+  const open = (c: BaseAudioContext, out: AudioNode) => {
+    ctx = c;
+    master = c.createGain();
+    master.gain.value = muted ? 0 : 0.5;
+    master.connect(out);
+    noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  };
+  if (target) open(target.ctx, target.out);
 
   const tone = (type: OscillatorType, f0: number, f1: number, dur: number, vol: number, at = 0) => {
     if (!ctx || !master) return;
-    const t = ctx.currentTime + at;
+    const t = now() + at;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = type;
@@ -39,7 +58,7 @@ export function createSound(): Sound {
 
   const noise = (dur: number, vol: number, filter: BiquadFilterType, freq: number, at = 0) => {
     if (!ctx || !master || !noiseBuf) return;
-    const t = ctx.currentTime + at;
+    const t = now() + at;
     const src = ctx.createBufferSource();
     src.buffer = noiseBuf;
     const f = ctx.createBiquadFilter();
@@ -148,7 +167,7 @@ export function createSound(): Sound {
   const setAmbient = (kind: ArenaKind | null) => {
     if (kind === ambientKind || !ctx || !master || !noiseBuf) return;
     ambientKind = kind;
-    const t = ctx.currentTime;
+    const t = now();
     if (ambient) {
       const old = ambient;
       old.gain.gain.setTargetAtTime(0, t, 0.4);
@@ -194,16 +213,11 @@ export function createSound(): Sound {
     },
     unlock() {
       if (ctx) {
-        void ctx.resume();
+        if (ctx instanceof AudioContext) void ctx.resume();
         return;
       }
-      ctx = new AudioContext();
-      master = ctx.createGain();
-      master.gain.value = muted ? 0 : 0.5;
-      master.connect(ctx.destination);
-      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = noiseBuf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const live = new AudioContext();
+      open(live, live.destination);
     },
     debug() {
       return { state: ctx?.state ?? 'not created', played, muted };
@@ -211,7 +225,7 @@ export function createSound(): Sound {
     play(e) {
       played++;
       // A context can be created or left suspended (tab switch, OS audio route change): retry.
-      if (ctx && ctx.state !== 'running') void ctx.resume();
+      if (ctx instanceof AudioContext && ctx.state !== 'running') void ctx.resume();
       switch (e.type) {
         case 'kick':
           sfx.kick(e.power);
