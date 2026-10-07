@@ -1145,3 +1145,36 @@ describe('uzun sessizlik', () => {
     rooms.stop();
   });
 });
+
+describe('gizli ganimet (sunucu)', () => {
+  it('her adımdan önce sırrı yeniler; snapshot onu içermez', async () => {
+    const { createRooms } = await import('../src/rooms');
+    let n = 0;
+    const secrets: number[] = [];
+    const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }), {
+      secret: () => {
+        const v = (++n * 2654435761) >>> 0;
+        secrets.push(v);
+        return v;
+      },
+    });
+    const sent: string[] = [];
+    const room = rooms.create(
+      'a',
+      'A',
+      'R',
+      false,
+      { minutes: 3, scoreLimit: 5, crates: 'normal', weights: defaultWeights(), bots: false },
+      (r) => sent.push(r),
+    );
+    if (typeof room === 'string') throw new Error(room);
+    rooms.start('a');
+    for (let i = 0; i < 4; i++) rooms.tickAll();
+    expect(secrets).toHaveLength(4);
+    for (const raw of sent.filter((r) => r.startsWith('{"t":"snap"'))) {
+      expect((JSON.parse(raw) as { g: { lootRng: unknown } }).g.lootRng).toBeNull();
+      for (const s of secrets) expect(raw).not.toContain(`:${s},`);
+    }
+    rooms.stop();
+  });
+});

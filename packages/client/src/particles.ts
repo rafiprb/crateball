@@ -37,6 +37,7 @@ const ITEM_COLORS: Record<BlastKind, string[]> = {
   save: ['#7CFF7A', '#E0FFE0', '#FFFFFF'],
   warp: ['#C77DFF', '#F2E0FF', '#8A4FFF'],
   erupt: ['#FF6A3D', '#FFB760', '#FFE066', '#3A2A22'],
+  crate: ['#C88A4A', '#E8C48A', '#FFF4E0'],
 };
 const TEAM = { red: ['#E8574A', '#FFB0A8', '#FFF4E0'], blue: ['#4A7DE8', '#A8C4FF', '#FFF4E0'] };
 const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)]!;

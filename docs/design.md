@@ -162,6 +162,13 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   şey duymazsa yeniden bağlanır. Aynı sekme (oturum anahtarı) yeni bağlantıyla gelirse eski bağlantı
   hâlâ açık görünse de yeri devralır; eskisi 4011 ile kapanır ("başka sekmede açık").
 - Sim yalnızca `+ - * / sqrt` kullanır (trig yok) → motorlar arası aynı sonuç.
+- Gizli bilgi: kutudan ne çıkacağı ortak `rng`'den çekilseydi her istemci (izleyici dahil) snapshot'tan bir
+  sonraki ganimeti hesaplayıp kötü kutudan kaçabilirdi. Ganimet ayrı `lootRng`'den çekilir; sunucu onu her
+  adımdan önce crypto ile yeniler ve snapshot'a koymaz. İstemcinin tahmini kutuyu açar (nötr `crate`
+  patlaması, tahta sesi), eşyanın etkisi ve ismi sonraki snapshot'la gelir. Hava (yağmur gölleri, lav
+  akıntıları, rüzgâr), kutuların çıkış yeri/zamanı ve saha sırası ortak `rng`'de kalır: herkes için aynı,
+  açık tehlikeler; tahmin edilmeleri akıcı tahmin için gerekli, önceden bilinmeleri yalnızca birkaç
+  saniyelik konum bilgisi verir.
 
 ## Yayın
 

@@ -247,6 +247,10 @@ export function createSound(target?: SoundTarget): Sound {
           tone('sine', 1900, 700, 0.1, 0.14, 0.07);
           sweep(0.2, 0.4, 6000, 1400, 0, 4);
           break;
+        case 'crate':
+          // Opened in our prediction, contents not known yet: just the wood cracking.
+          noise(0.05, 0.5, 'bandpass', 1200);
+          break;
       }
     },
   };

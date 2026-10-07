@@ -29,7 +29,7 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 
 ## Mimari kuralları (lint ile zorlanır)
 
-- `packages/sim`: saf ve deterministik oyun (fizik, kutular, botlar, mevkiler). `Math.random`, `Date`, DOM, `ws`, `node:*`, diğer `@crateball/*` yasak. Rastgelelik durumdaki `rng` alanından (`nextRandom`), karşılaştırma `hashState`. Trig fonksiyonu kullanma (motorlar arası determinizm).
+- `packages/sim`: saf ve deterministik oyun (fizik, kutular, botlar, mevkiler). `Math.random`, `Date`, DOM, `ws`, `node:*`, diğer `@crateball/*` yasak. Rastgelelik durumdaki `rng` alanından (`nextRandom`), karşılaştırma `hashState`. Kutu ganimeti ayrı, gizli `lootRng`'den: sunucu her adımdan önce crypto ile yeniler, snapshot'a girmez (istemcide `null`: tahmin kutuyu açar, eşya sonraki snapshot'la gelir). Trig fonksiyonu kullanma (motorlar arası determinizm).
 - `packages/protocol`: yalnızca `@crateball/sim` tiplerine bağlı. Ağdan gelen her şey `decode*` ile doğrulanır.
 - `packages/server`: odalar (`rooms.ts`: kod, host, lobi/maç durumu, botlar, takas), 60 Hz tick, girdi kuyruğu, 30 Hz snapshot, `GET /rooms`. Render koduna bağlanamaz.
 - `packages/client`: Canvas 2D (`render.ts`), tahmin/geri sarma (`predict.ts`), menü/lobi DOM (`ui.ts`), olay çıkarımı (`events.ts`) → ses (`sound.ts`) + parçacık (`particles.ts`), klavye (`input.ts`). Sunucuya bağlanamaz.

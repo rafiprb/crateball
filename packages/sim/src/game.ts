@@ -47,6 +47,7 @@ export function createGame(seed: number, settings: Settings = DEFAULT_SETTINGS):
     settings: { ...settings },
     tick: 0,
     rng: seed >>> 0,
+    lootRng: (seed ^ 0x9e3779b9) >>> 0,
     nextId: 1,
     phase: 'kickoff',
     phaseT: 0,
@@ -787,7 +788,10 @@ function updateCrates(g: Game): void {
   g.crates = g.crates.filter((c) => {
     const opener = g.players.find((p) => p.dead === 0 && dist2(p, c) < (p.r + CRATES.radius) ** 2);
     if (!opener) return true;
-    openCrate(g, opener, c.x, c.y, rollLoot(g));
+    // A client's prediction does not know the contents (the server's loot randomness is never sent):
+    // the crate opens, the item arrives with the next snapshot.
+    if (g.lootRng === null) g.blasts.push({ x: c.x, y: c.y, kind: 'crate', t: ITEMS.blastShow });
+    else openCrate(g, opener, c.x, c.y, rollLoot(g));
     return false;
   });
 }
@@ -815,7 +819,9 @@ export function rollLoot(g: Game): ItemKind {
   const custom = w ? ITEM_KINDS.map((k) => [k, w[k] ?? 0] as const).filter(([, n]) => n > 0) : [];
   const table = custom.length ? custom : CRATES.loot;
   const total = table.reduce((s, [, n]) => s + n, 0);
-  let r = rand(g) * total;
+  const [v, next] = nextRandom(g.lootRng ?? 0);
+  g.lootRng = next;
+  let r = v * total;
   for (const [kind, w] of table) {
     if ((r -= w) < 0) return kind;
   }

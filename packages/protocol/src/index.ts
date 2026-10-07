@@ -351,8 +351,9 @@ export function encodeSnap(
 }
 
 /** Positions/velocities rounded to 1/1000 px: smaller packets, harmless for prediction. */
+/** For clients: the loot randomness stays on the server (see `Game.lootRng`). */
 export function encodeGame(g: Game): string {
-  return JSON.stringify(g, (_k, v: unknown) =>
+  return JSON.stringify({ ...g, lootRng: null }, (_k, v: unknown) =>
     typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v,
   );
 }

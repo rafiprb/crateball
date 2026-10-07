@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import type { Logger } from 'pino';
 import {
   CODE_ALPHABET,
@@ -242,10 +243,19 @@ export function info(room: Room): RoomInfo {
 
 export function createRooms(
   log: Logger,
-  opts: { seed?: () => number; random?: () => number; now?: () => number } = {},
+  opts: {
+    seed?: () => number;
+    random?: () => number;
+    now?: () => number;
+    /** Secret randomness for loot (32 bits per call). Default: crypto, never derivable from anything
+     * clients see. */
+    secret?: () => number;
+  } = {},
 ): Rooms {
   const seed = opts.seed ?? (() => Date.now() >>> 0);
-  const random = opts.random ?? Math.random;
+  // Room codes from crypto randomness: a private room's code must not be guessable from earlier ones.
+  const random = opts.random ?? (() => randomInt(0, 0x100000000) / 0x100000000);
+  const secret = opts.secret ?? (() => randomInt(0, 0x100000000));
   const now = opts.now ?? Date.now;
   const rooms = new Map<string, Room>();
   const byClient = new Map<string, Room>();
@@ -418,6 +428,9 @@ export function createRooms(
       m.applied = inputs.get(m.id) ?? p.input;
       verifyRelay(room, m, g.tick, m.applied);
     }
+    // Fresh secret loot randomness every step: snapshots carry the public `rng` (weather, spawns), so loot
+    // must not follow from it, nor from any state a client could reconstruct from past openings.
+    g.lootRng = secret();
     step(g, inputs);
     if (g.tick % SNAP_EVERY === 0) broadcastSnap(room);
     room.stepMsMax = Math.max(room.stepMsMax, performance.now() - t0);

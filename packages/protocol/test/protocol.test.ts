@@ -151,6 +151,16 @@ describe('oyun mesajları', () => {
     expect(Object.getPrototypeOf(proto)).toBe(Object.prototype);
     expect(proto).toEqual({ d: 2 });
   });
+  it('snapshot ganimet rastgeleliğini taşımaz (yalnızca sunucuda)', async () => {
+    const { createGame } = await import('@crateball/sim');
+    const { encodeGame } = await import('../src/index');
+    const g = createGame(1);
+    g.lootRng = 123456;
+    const json = encodeGame(g);
+    expect((JSON.parse(json) as { lootRng: unknown }).lootRng).toBeNull();
+    expect(json).not.toContain('123456');
+    expect(g.lootRng).toBe(123456); // the server's own state is untouched
+  });
   it('snap sarmalayıcısı çözülür', async () => {
     const { createGame } = await import('@crateball/sim');
     const { encodeGame, encodeSnap } = await import('../src/index');

@@ -54,6 +54,7 @@ const ITEM_STYLE: Record<BlastKind, [string, string]> = {
   save: ['#7CFF7A', 'SAVE!'],
   warp: ['#C77DFF', ''],
   erupt: ['#FF6A3D', 'ERUPTION!'],
+  crate: ['#FFF4E0', ''],
 };
 
 /** Ground colours and the line shown at kickoff for each arena. */

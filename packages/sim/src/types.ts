@@ -91,6 +91,9 @@ export interface Game {
   settings: Settings;
   tick: number;
   rng: number;
+  /** Loot draws only. The server keeps it secret (fresh crypto randomness before every step, never
+   * sent); `null` on clients, where an opened crate's contents are unknown until a snapshot says. */
+  lootRng: number | null;
   nextId: number;
   phase: Phase;
   phaseT: number;

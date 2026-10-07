@@ -1028,3 +1028,52 @@ describe('silah otomatik nişan', () => {
     expect(t.y).toBeGreaterThan(20);
   });
 });
+
+describe('gizli ganimet', () => {
+  /** A crate right under player `p`, opened in the next step. */
+  const withCrate = (lootRng: number | null) => {
+    const g = createGame(3, { ...DEFAULT_SETTINGS, crates: 'normal' });
+    const p = addPlayer(g, 'p', 'P', 'red');
+    g.phase = 'play';
+    g.crates.push({ id: 99, x: p.x, y: p.y });
+    g.nextCrate = 1e9;
+    g.lootRng = lootRng;
+    return { g, p };
+  };
+
+  it('tahminde (gizli akış yok) kutu açılır ama içi bilinmez: eşya verilmez', () => {
+    const { g, p } = withCrate(null);
+    const before = { ...p };
+    step(g);
+    expect(g.crates).toHaveLength(0);
+    expect(g.blasts.map((b) => b.kind)).toEqual(['crate']);
+    expect([p.gun, p.shield, p.power, p.teleport, p.bazooka, p.frozen, p.dizzy, p.boost]).toEqual([
+      before.gun,
+      before.shield,
+      before.power,
+      before.teleport,
+      before.bazooka,
+      before.frozen,
+      before.dizzy,
+      before.boost,
+    ]);
+  });
+
+  it('ganimet ortak rastgelelikten değil gizli akıştan gelir; ortak akış etkilenmez', () => {
+    const kinds = new Set<string>();
+    const publicRng = new Set<number>();
+    for (let secret = 1; secret <= 40; secret++) {
+      const { g } = withCrate(secret * 2654435761);
+      step(g);
+      kinds.add(g.blasts[0]!.kind);
+      publicRng.add(g.rng);
+    }
+    // Same public state, different secret: different items; the public stream (weather, spawns) is
+    // identical, so a client's prediction stays in step without knowing the loot.
+    expect(kinds.size).toBeGreaterThan(3);
+    expect(publicRng.size).toBe(1);
+    const predicted = withCrate(null);
+    step(predicted.g);
+    expect(publicRng.has(predicted.g.rng)).toBe(true);
+  });
+});
