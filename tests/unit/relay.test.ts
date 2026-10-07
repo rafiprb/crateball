@@ -217,3 +217,25 @@ describe('ilk snapshot öncesi aktarım ve tick süresi', () => {
     expect(room.stepMsMax).toBeGreaterThanOrEqual(8);
   });
 });
+
+describe('maç yeniden başlarken', () => {
+  it('ilk snapshot önceki maçtan basılı kalmış tuşları taşımaz', () => {
+    const rooms = createRooms(log);
+    const inbox: string[] = [];
+    const room = rooms.create('a', 'A', 'R', false, settings, (r) => inbox.push(r));
+    if (typeof room === 'string') throw new Error(room);
+    rooms.stop();
+    rooms.join(room.code, 'b', 'B', () => {});
+    rooms.start('a');
+    for (let s = 1; s <= 5; s++) {
+      rooms.input('b', s, 56); // KICK | USE | RIGHT held
+      rooms.tickAll();
+    }
+    expect(rooms.stopMatch('a')).toBeNull();
+    inbox.length = 0;
+    expect(rooms.start('a')).toBeNull();
+    const first = inbox.map((r) => decodeServerMessage(r)).find((m) => m?.t === 'snap');
+    expect(first?.t === 'snap' && first.h.b).toBe(0);
+    expect(room.game.players.find((p) => p.id === 'b')!.input).toBe(0);
+  });
+});

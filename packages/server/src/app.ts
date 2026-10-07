@@ -4,7 +4,8 @@ import type { Logger } from 'pino';
 import type { ServerConfig } from './config';
 import { createHttpHandler, type Route } from './http';
 import { createRooms } from './rooms';
-import { attachWebSocket } from './ws';
+import { createLogBudget } from './log-budget';
+import { LIMITS, attachWebSocket } from './ws';
 
 export { loadConfig, type ServerConfig } from './config';
 export { createLogger } from './logger';
@@ -17,14 +18,16 @@ export interface RunningServer {
 export async function startServer(
   cfg: ServerConfig,
   log: Logger,
-  opts: { helloTimeoutMs?: number } = {},
+  opts: { helloTimeoutMs?: number; now?: () => number } = {},
 ): Promise<RunningServer> {
   // Derleme sabiti: prod paketinde (esbuild define) bu dal ve dev-log modülü tamamen silinir.
   let devLog: Route | null = null;
   if (process.env.NODE_ENV !== 'production') {
     if (cfg.mode === 'development') devLog = (await import('./dev-log')).createDevLogRoute(log);
   }
-  const rooms = createRooms(log);
+  // One budget for every log line clients can cause, in the rooms and on the sockets.
+  const budget = createLogBudget(log, LIMITS.logBurst, LIMITS.logPerSec, opts.now);
+  const rooms = createRooms(log, { budget, now: opts.now });
   const handler = createHttpHandler(
     cfg,
     devLog,
@@ -43,6 +46,7 @@ export async function startServer(
     version: cfg.version,
     production: cfg.mode === 'production',
     origins: cfg.extraOrigins,
+    budget,
   });
   try {
     await new Promise<void>((resolve, reject) => {

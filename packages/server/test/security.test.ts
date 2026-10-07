@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 /** Boots a server whose log lines are collected (to count what clients can make it write). */
-async function boot(over: Partial<ServerConfig> = {}) {
+async function boot(over: Partial<ServerConfig> = {}, now?: () => number) {
   const lines: string[] = [];
   const out = new Writable({
     write: (c: Buffer, _e, cb) => {
@@ -37,7 +37,7 @@ async function boot(over: Partial<ServerConfig> = {}) {
     extraOrigins: [],
     ...over,
   };
-  running = await startServer(cfg, createLogger(cfg, { stdout: out }));
+  running = await startServer(cfg, createLogger(cfg, { stdout: out }), { now });
   return { url: `ws://127.0.0.1:${running.port}/ws`, lines };
 }
 
@@ -360,5 +360,91 @@ describe('kimlik, atma, özel oda (#7, #8, #14)', () => {
     await friend.until('welcome');
     friend.socket.send(encode({ t: 'join', code, name: 'F' }));
     expect((await friend.until('joined')).code).toBe(code);
+  });
+});
+
+describe('atma kalıcılığı ve log bütçesi (#3, #4)', () => {
+  const create = (c: ReturnType<typeof client>) =>
+    c.socket.send(encode({ t: 'create', name: 'Host', roomName: 'R', public: false, settings }));
+
+  it('atılan sekme dakikalık temizlikten sonra aynı anahtarla dönse de hâlâ atılmış', async () => {
+    LIMITS.sweepMs = 30;
+    let t = Date.now();
+    const { url } = await boot({}, () => t);
+    const host = client(url);
+    await host.opened;
+    host.hello();
+    await host.until('welcome');
+    create(host);
+    const { code } = await host.until('joined');
+    const g = client(url, { 'x-forwarded-for': '192.0.2.5' });
+    await g.opened;
+    g.hello();
+    const gw = await g.until('welcome');
+    g.socket.send(encode({ t: 'join', code, name: 'G' }));
+    await g.until('joined');
+    host.socket.send(encode({ t: 'kick', id: gw.clientId }));
+    await g.until('error');
+    g.socket.close();
+    await g.closed;
+    t += 61_000; // past the old one-minute token cleanup, well inside the 30-minute ban
+    await sleep(120); // several sweeps run
+    const back = client(url, { 'x-forwarded-for': '192.0.2.5' });
+    await back.opened;
+    back.hello(gw.token);
+    const bw = await back.until('welcome');
+    expect(bw.token).toBe(gw.token);
+    back.socket.send(encode({ t: 'join', code, name: 'G' }));
+    expect((await back.until('error')).code).toBe('kicked');
+  });
+
+  it('meşru mesajlarla oda/maç çalkalama logu bütçeyi aşamaz; aşan satırlar özetlenir', async () => {
+    LIMITS.logBurst = 40;
+    LIMITS.logPerSec = 1;
+    LIMITS.sweepMs = 100;
+    const { url, lines } = await boot();
+    const hosts = Array.from({ length: 30 }, (_, i) => client(url, { 'x-forwarded-for': `198.18.0.${i}` }));
+    await Promise.all(hosts.map((h) => h.opened));
+    for (const h of hosts) h.hello();
+    await Promise.all(hosts.map((h) => h.until('welcome')));
+    for (const h of hosts) create(h);
+    await Promise.all(hosts.map((h) => h.until('joined')));
+    for (let round = 0; round < 3; round++)
+      for (const h of hosts) {
+        h.socket.send(encode({ t: 'start' }));
+        h.socket.send(encode({ t: 'stop' }));
+      }
+    for (const h of hosts) h.socket.close();
+    await Promise.all(hosts.map((h) => h.closed));
+    await sleep(250);
+    const lifecycle = lines.filter((l) =>
+      /oyuncu bağlandı|oda kuruldu|odaya girdi|maç başladı|maçı durdurdu|ws kapandı|boş oda kapandı/.test(l),
+    );
+    expect(lifecycle.length).toBeLessThanOrEqual(45);
+    expect(lines.some((l) => l.includes('log bütçesi aşıldı'))).toBe(true);
+  });
+
+  it('normal yükte panonun satırları yazılır (bütçe yalnızca kötüye kullanımda devreye girer)', async () => {
+    const { url, lines } = await boot();
+    const host = client(url);
+    await host.opened;
+    host.hello();
+    await host.until('welcome');
+    create(host);
+    const { code } = await host.until('joined');
+    const g = client(url);
+    await g.opened;
+    g.hello();
+    await g.until('welcome');
+    g.socket.send(encode({ t: 'join', code, name: 'G' }));
+    await g.until('joined');
+    host.socket.send(encode({ t: 'start' }));
+    await host.until('snap');
+    for (const m of ['oyuncu bağlandı', 'oda kuruldu', 'oyuncu odaya girdi', 'maç başladı'])
+      expect(
+        lines.some((l) => l.includes(m)),
+        m,
+      ).toBe(true);
+    expect(lines.some((l) => l.includes('log bütçesi aşıldı'))).toBe(false);
   });
 });

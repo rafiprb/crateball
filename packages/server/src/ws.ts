@@ -10,7 +10,8 @@ import {
   type ErrorCode,
   type ServerMessage,
 } from '@crateball/protocol';
-import type { Rooms } from './rooms';
+import { createLogBudget, type LogBudget } from './log-budget';
+import { BAN_MS, type Rooms } from './rooms';
 
 export const HELLO_TIMEOUT_MS = 5000;
 export const CLOSE_HELLO_TIMEOUT = 4000;
@@ -76,9 +77,14 @@ export const LIMITS = {
   idleMs: 90_000,
   /** Heartbeat ping (and the sweep for idle or backed-up sockets) every N ms. */
   heartbeatMs: 5000,
-  /** Server-wide budget for log lines a client can cause: burst and per second. */
-  logBurst: 200,
-  logPerSec: 20,
+  /** Server-wide budget for log lines clients can cause (connections, rooms, matches, telemetry,
+   * warnings): burst and per second. A busy evening (~600 people) logs a few lines a second. */
+  logBurst: 400,
+  logPerSec: 40,
+  /** Housekeeping (expired admission records, issued tokens, the dropped-lines summary) every N ms. */
+  sweepMs: 60_000,
+  /** Issued reconnect tokens remembered at most (oldest first); each lives as long as a ban can. */
+  maxSessions: 50_000,
   /** Remembered addresses (admission maps) at most; the oldest are forgotten first. */
   maxTrackedIps: 20_000,
 };
@@ -149,9 +155,18 @@ export function attachWebSocket(
   server: Server,
   log: Logger,
   rooms: Rooms,
-  opts: { helloTimeoutMs?: number; version?: string; production?: boolean; origins?: string[] } = {},
+  opts: {
+    helloTimeoutMs?: number;
+    version?: string;
+    production?: boolean;
+    origins?: string[];
+    /** Shared with the rooms (see log-budget.ts); one is made if not given. */
+    budget?: LogBudget;
+    now?: () => number;
+  } = {},
 ): WebSocketServer {
-  const now = () => Date.now();
+  const now = opts.now ?? (() => Date.now());
+  const budget = opts.budget ?? createLogBudget(log, LIMITS.logBurst, LIMITS.logPerSec, now);
   const production = opts.production ?? process.env.NODE_ENV === 'production';
   const connectsByIp = new Map<string, ReturnType<typeof bucket>>();
   const bytesByIp = new Map<string, ReturnType<typeof bucket>>();
@@ -185,8 +200,10 @@ export function attachWebSocket(
       done(true);
     },
   });
-  /** sessionToken (server-issued) → player id, so a reconnect within the grace period gets its slot back. */
-  const sessions = new Map<string, string>();
+  /** sessionToken (server-issued) → player id and when it was last used. A reconnect within the grace
+   * period gets its slot back; and a token is kept as long as a ban by it can last, so a kicked tab
+   * returning with it later is still recognised (and still kicked). */
+  const sessions = new Map<string, { id: string; at: number }>();
   const createsByIp = new Map<string, number[]>();
   const failedJoinsByIp = new Map<string, number[]>();
   let failedJoins: number[] = [];
@@ -198,11 +215,8 @@ export function attachWebSocket(
   const lastMessageAt = new WeakMap<WebSocket, number>();
 
   // Server-wide budget for log lines clients can trigger; what does not fit is counted and summarised.
-  const logBudget = bucket(LIMITS.logBurst, LIMITS.logPerSec, now);
-  let logsDropped = 0;
   function logLimited(write: () => void) {
-    if (logBudget.take()) write();
-    else logsDropped++;
+    budget.line(write);
   }
 
   // Heartbeat: browsers answer pings on their own. A socket that stops answering is gone even if TCP
@@ -357,7 +371,9 @@ export function attachWebSocket(
         else rooms.leave(clientId);
       }
       if (badMessages > 1) logLimited(() => clog.warn({ count: badMessages }, 'bozuk mesajlar (toplam)'));
-      clog.info({ code }, 'ws kapandı');
+      const session = token ? sessions.get(token) : undefined;
+      if (session) session.at = now(); // the ban clock for this tab runs from its last connection
+      logLimited(() => clog.info({ code }, 'ws kapandı'));
     });
     onError = (err) => logLimited(() => clog.warn({ err }, 'ws hatası'));
     socket.on('message', (data: RawData, isBinary) => {
@@ -422,7 +438,7 @@ export function attachWebSocket(
         const known = msg.sessionToken !== undefined && sessions.has(msg.sessionToken);
         token = known ? msg.sessionToken! : randomBytes(24).toString('base64url');
         // Same browser tab back within the grace period: continue as the same player.
-        const previous = known ? sessions.get(token) : undefined;
+        const previous = known ? sessions.get(token)?.id : undefined;
         if (previous && rooms.isMember(previous)) {
           // The same tab is back. If its old socket still looks connected (a laptop that slept, a
           // network switch: TCP has not noticed yet), the token proves who it is: take the slot over
@@ -434,15 +450,15 @@ export function attachWebSocket(
             clientId = previous;
             owners.set(clientId, socket);
             clog = log.child({ clientId });
-            clog.info(old ? 'oyuncu yeni bağlantıyla devraldı' : 'oyuncu yeniden bağlandı');
+            logLimited(() => clog.info(old ? 'oyuncu yeni bağlantıyla devraldı' : 'oyuncu yeniden bağlandı'));
             if (old && old !== socket) {
               old.close(CLOSE_TAKEN_OVER, 'taken over');
               setTimeout(() => old.terminate(), 1000).unref();
             }
           }
         }
-        sessions.set(token, clientId);
-        clog.info('oyuncu bağlandı');
+        boundedSet(sessions, token, { id: clientId, at: now() }, LIMITS.maxSessions);
+        logLimited(() => clog.info('oyuncu bağlandı'));
         send({
           t: 'welcome',
           protocolVersion: PROTOCOL_VERSION,
@@ -555,15 +571,13 @@ export function attachWebSocket(
   // records expire; dropped log lines are summarised.
   const prune = setInterval(() => {
     const connected = new Set(owners.keys());
-    for (const [tk, id] of sessions) if (!rooms.isMember(id) && !connected.has(id)) sessions.delete(tk);
     const t = now();
+    for (const [tk, { id, at }] of sessions)
+      if (!rooms.isMember(id) && !connected.has(id) && t - at > BAN_MS) sessions.delete(tk);
     for (const [ip, ts] of createsByIp) if (ts.every((x) => t - x > 60_000)) createsByIp.delete(ip);
     for (const [ip, ts] of failedJoinsByIp) if (ts.every((x) => t - x > 60_000)) failedJoinsByIp.delete(ip);
-    if (logsDropped > 0) {
-      log.warn({ dropped: logsDropped }, 'log bütçesi aşıldı, satırlar atlandı');
-      logsDropped = 0;
-    }
-  }, 60_000);
+    budget.flush();
+  }, LIMITS.sweepMs);
   prune.unref();
   wss.on('close', () => {
     clearInterval(prune);

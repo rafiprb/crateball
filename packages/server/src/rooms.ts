@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import type { Logger } from 'pino';
+import type { LogBudget } from './log-budget';
 import {
   CODE_ALPHABET,
   encode,
@@ -264,6 +265,8 @@ export function createRooms(
     /** Secret randomness for loot (32 bits per call). Default: crypto, never derivable from anything
      * clients see. */
     secret?: () => number;
+    /** Shared budget for log lines clients cause (default: unlimited). */
+    budget?: LogBudget;
   } = {},
 ): Rooms {
   const seed = opts.seed ?? (() => Date.now() >>> 0);
@@ -271,6 +274,8 @@ export function createRooms(
   const random = opts.random ?? (() => randomInt(0, 0x100000000) / 0x100000000);
   const secret = opts.secret ?? (() => randomInt(0, 0x100000000));
   const now = opts.now ?? Date.now;
+  /** Lifecycle lines (rooms, joins, matches) are caused by clients: they go through the shared budget. */
+  const lim = (write: () => void) => (opts.budget ? opts.budget.line(write) : write());
   const rooms = new Map<string, Room>();
   const byClient = new Map<string, Room>();
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -406,7 +411,7 @@ export function createRooms(
     const g = room.game;
     if (g.phase === 'over' && g.phaseT >= MATCH.overPause) {
       room.state = 'lobby';
-      log.info({ room: room.code, score: g.score }, 'maç bitti, lobiye dönüldü');
+      lim(() => log.info({ room: room.code, score: g.score }, 'maç bitti, lobiye dönüldü'));
       announce(room);
       return;
     }
@@ -491,7 +496,7 @@ export function createRooms(
       const ttl = r.started ? EMPTY_ROOM_TTL_MS : EMPTY_UNUSED_ROOM_TTL_MS;
       if (r.emptySince !== null && t - r.emptySince > ttl) {
         rooms.delete(r.code);
-        log.info({ room: r.code }, 'boş oda kapandı');
+        lim(() => log.info({ room: r.code }, 'boş oda kapandı'));
       }
     }
     if (rooms.size === 0) stop();
@@ -568,7 +573,7 @@ export function createRooms(
     room.emptySince = null;
     byClient.set(id, room);
     rebalance(room);
-    log.info({ room: room.code, id, name, team: spectator ? 'spec' : team }, 'oyuncu odaya girdi');
+    lim(() => log.info({ room: room.code, id, name, team: spectator ? 'spec' : team }, 'oyuncu odaya girdi'));
     announce(room);
     for (const line of room.chat) send(encode(line));
   };
@@ -623,7 +628,7 @@ export function createRooms(
       if (afterDisconnect) room.emptySince = now();
       else {
         rooms.delete(room.code);
-        log.info({ room: room.code }, 'boş oda kapandı');
+        lim(() => log.info({ room: room.code }, 'boş oda kapandı'));
       }
       return;
     }
@@ -647,7 +652,7 @@ export function createRooms(
     resetTimeline(m, true);
     // A reloaded page lost everyone's relayed keys too.
     for (const o of room.members.values()) o.relayDirty = true;
-    log.info({ room: room.code, id }, 'oyuncu geri döndü');
+    lim(() => log.info({ room: room.code, id }, 'oyuncu geri döndü'));
     announce(room);
     // A reloaded page lost its chat log; a client that kept it skips lines it already has (by number).
     for (const line of room.chat) send(encode(line));
@@ -675,7 +680,7 @@ export function createRooms(
       if (p) p.input = 0;
       if (m.awayTimer) clearTimeout(m.awayTimer);
       m.awayTimer = setTimeout(() => leave(id, true), RECONNECT_GRACE_MS);
-      log.info({ room: room.code, id }, 'oyuncu koptu, yeri tutuluyor');
+      lim(() => log.info({ room: room.code, id }, 'oyuncu koptu, yeri tutuluyor'));
     },
     reattach,
     isMember: (id) => byClient.has(id),
@@ -709,7 +714,7 @@ export function createRooms(
         started: false,
       };
       rooms.set(code, room);
-      log.info({ room: code, isPublic }, 'oda kuruldu');
+      lim(() => log.info({ room: code, isPublic }, 'oda kuruldu'));
       ensureTimer();
       enter(room, id, name, send, key);
       return room;
@@ -814,7 +819,7 @@ export function createRooms(
         while (room.banned.size > MAX_BANS) room.banned.delete(room.banned.keys().next().value as string);
       }
       target?.send(encode({ t: 'error', code: 'kicked', message: 'The host removed you from this room' }));
-      log.info({ room: room.code, id }, 'oyuncu atıldı');
+      lim(() => log.info({ room: room.code, id }, 'oyuncu atıldı'));
       leave(id);
       return null;
     },
@@ -844,11 +849,12 @@ export function createRooms(
         m.queue = [];
         m.last = 0;
         m.gap = 0;
+        m.applied = 0; // the first snapshot reports held keys: none yet in the new match
         resetTimeline(m);
       }
       // Settings per match start: `pnpm crate-stats` counts which crate mixes people actually pick.
       const humans = room.game.players.filter((p) => !p.bot).length;
-      log.info({ room: room.code, humans, settings: room.game.settings }, 'maç başladı');
+      lim(() => log.info({ room: room.code, humans, settings: room.game.settings }, 'maç başladı'));
       announce(room);
       broadcastSnap(room);
       return null;
@@ -859,7 +865,7 @@ export function createRooms(
       if (room.host !== id) return 'not_host';
       if (room.state !== 'playing') return null;
       room.state = 'lobby';
-      log.info({ room: room.code, score: room.game.score }, 'host maçı durdurdu');
+      lim(() => log.info({ room: room.code, score: room.game.score }, 'host maçı durdurdu'));
       announce(room);
       return null;
     },
