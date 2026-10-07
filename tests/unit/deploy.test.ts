@@ -22,7 +22,10 @@ describe('yayın: yüklenen arşiv yalnızca derleme bağlamı', () => {
   it('compose, Caddyfile ve Dockerfile sabit /etc/crateball dosyalarından gelir', () => {
     expect(code).toContain('CONF=/etc/crateball');
     expect(code).toContain('docker compose -f $CONF/compose.yml');
-    expect(code).toMatch(/cp "\$CONF\/Dockerfile"/);
+    // Passed straight to docker build, never copied into the uploaded tree (a symlink there would
+    // redirect the copy onto a host file): see deploy-script.test.ts for real malicious archives.
+    expect(code).toContain('docker build -q -f "$CONF/Dockerfile"');
+    expect(code).not.toMatch(/\bcp\b/);
     // Nothing from the extracted upload is used as compose input.
     expect(code).not.toMatch(/\$SRC[^ ]*\/deploy\//);
     expect(code).not.toMatch(/compose build/);

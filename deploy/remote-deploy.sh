@@ -26,13 +26,26 @@ exec 9>/var/lock/crateball-deploy.lock
 flock -n 9 || { echo "another deploy is running" >&2; exit 3; }
 
 mkdir -p "$(dirname "$SRC")" "$STATE"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP" "$SRC.new"' EXIT
+cat > "$TMP/release.tar"
+# Only plain files and directories, at relative paths inside the tree. A symlink, hard link or device
+# (or an absolute or ../ path) in an upload could point a root-run step at a host file: refuse the release.
+reject() { echo "release rejected: $1" >&2; exit 7; }
+tar -tvf "$TMP/release.tar" > "$TMP/listing" || reject "not a tar archive"
+awk '{ t = substr($1, 1, 1); if (t != "-" && t != "d") bad = 1 } END { exit bad }' "$TMP/listing" ||
+  reject "links or special files"
+tar -tf "$TMP/release.tar" > "$TMP/names"
+grep -Eq '^/|(^|/)\.\.(/|$)' "$TMP/names" && reject "absolute or .. paths"
 rm -rf "$SRC.new" && mkdir -p "$SRC.new"
-tar -x -C "$SRC.new" --no-same-owner --no-same-permissions
-# The fixed Dockerfile, not the uploaded one; the upload is the context only.
-cp "$CONF/Dockerfile" "$SRC.new/.crateball.Dockerfile"
+tar -x -C "$SRC.new" --no-same-owner --no-same-permissions -f "$TMP/release.tar"
+# Belt and braces: whatever tar did, nothing but files and directories may be in the tree.
+[ -z "$(find "$SRC.new" ! -type f ! -type d | head -n 1)" ] || reject "links or special files after extraction"
 
 # Build first, while the old version keeps serving: the risky window (check → restart) is then seconds.
-docker build -q -f "$SRC.new/.crateball.Dockerfile" --build-arg "APP_VERSION=$VERSION" -t crateball:next "$SRC.new"
+# The fixed, root-owned Dockerfile is passed as is (never copied into the uploaded tree); the upload is
+# only the build context.
+docker build -q -f "$CONF/Dockerfile" --build-arg "APP_VERSION=$VERSION" -t crateball:next "$SRC.new"
 rm -rf "$SRC.new"
 
 if [ "$FORCE" != "force" ]; then
