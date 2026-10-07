@@ -26,6 +26,16 @@ Measure before deciding anything about capacity (no scaling work without numbers
 - Rough estimate to check: about 100 concurrent players / 15-25 full rooms on one Node process, with
   bandwidth (full JSON snapshots at 60 Hz) as the first limit.
 
+## Launch readiness
+
+- **Caps from the load test.** The server caps (100 rooms, 600 people, 1000 sockets) protect the server;
+  set them just under the measured capacity, and make them configurable by env so they can be raised
+  on launch day without a code change.
+- **"Servers are full" screen.** A refused join should say so and suggest trying again, not fail silently.
+- **Grafana alerts** (Alerting, contact point chosen by the owner: Telegram, Discord/Slack or e-mail):
+  players above 80% of the cap, server not answering for 2 min, slowest tick above 10 ms, disk or
+  memory nearly full. Shipped as an importable file like the dashboard.
+
 ## Capacity (only if the load test says so)
 
 1. **Delta + binary snapshots.** Diff computed once per room against the previous tick, with a full
