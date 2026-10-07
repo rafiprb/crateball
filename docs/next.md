@@ -92,7 +92,13 @@ decide the MVP.
   Maybe shorten to 3 s.
 - **Beach arena** (prototype at scratchpad `beach.html`): umbrellas outside the pitch, a water zone
   (slower, floatier, rings around swimmers), rubber ducks that quack and shed feathers when hit. Ducks
-  would be sim entities (deterministic, in snapshots).
+  would be sim entities (deterministic, in snapshots). Owner's notes on the prototype:
+  - Make the water zone bigger (the side bays reach further into the pitch), still symmetric, with the
+    goal mouths and the kickoff circle kept dry.
+  - Ducks bumping into each other make no sound and no feathers; only the ball or a player hitting a
+    duck quacks.
+  - Cost estimate from the prototype: about +3.5 KB gzipped, 4 ducks add about 380 B per snapshot
+    (about 13% of today's snapshot).
 - **Arena goal effects and balls** (prototype `arenas.html`): per-arena goal effects and sounds first;
   arena balls cosmetic only, with a "standard ball" option, tried in real matches before deciding
   (volcano ball is the least readable). Could later be cosmetics/DLC.
