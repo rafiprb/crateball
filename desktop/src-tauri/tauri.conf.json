@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Crateball",
+  "mainBinaryName": "Crateball",
+  "version": "0.2.0",
+  "identifier": "com.rafibuilds.crateball",
+  "build": {
+    "frontendDist": "../web"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "category": "SportsGame",
+    "publisher": "RafiBuilds",
+    "copyright": "RafiBuilds",
+    "shortDescription": "3v3 arcade football with crates",
+    "icon": [
+      "../icons/icon-32.png",
+      "../icons/icon-128.png",
+      "../icons/icon-512.png",
+      "../icons/Crateball.icns",
+      "../icons/Crateball.ico"
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}

@@ -12,7 +12,7 @@
 		{
 			"FileMapping"
 			{
-				"LocalPath" "Crateball-win32-x64/*"
+				"LocalPath" "windows/*"
 				"DepotPath" "."
 				"recursive" "1"
 			}
@@ -21,7 +21,7 @@
 		{
 			"FileMapping"
 			{
-				"LocalPath" "Crateball-darwin-universal/*"
+				"LocalPath" "macos/*"
 				"DepotPath" "."
 				"recursive" "1"
 			}

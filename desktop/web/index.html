@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crateball</title>
+    <!-- The window opens here (bundled with the app): same splash as the website, so the hand-over to
+         the game looks like one screen. Without a connection it says so and keeps retrying. -->
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        background: #0d1330;
+        color: #fff4e0;
+        font:
+          600 16px/1.5 system-ui,
+          sans-serif;
+        text-align: center;
+        user-select: none;
+      }
+      svg {
+        width: 112px;
+        height: 112px;
+        animation: bob 1.1s ease-in-out infinite alternate;
+      }
+      .dots {
+        display: flex;
+        gap: 8px;
+      }
+      .dots i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #ff9a3d;
+        animation: dot 0.9s ease-in-out infinite;
+      }
+      .dots i:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .dots i:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      #offline {
+        display: none;
+      }
+      body.offline #offline {
+        display: block;
+      }
+      body.offline .dots {
+        display: none;
+      }
+      p {
+        margin: 0 0 18px;
+        opacity: 0.8;
+      }
+      button {
+        font:
+          700 16px system-ui,
+          sans-serif;
+        padding: 8px 22px;
+        border: 0;
+        border-radius: 12px;
+        background: #ffb760;
+        color: #3a1a06;
+        cursor: pointer;
+      }
+      @keyframes bob {
+        to {
+          transform: translateY(-6px);
+        }
+      }
+      @keyframes dot {
+        0%,
+        100% {
+          opacity: 0.25;
+          transform: scale(0.8);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="9" y="17" width="30" height="30" rx="3" fill="#C88A4A" stroke="#7A4E22" stroke-width="3" />
+      <path d="M9 17 39 47M39 17 9 47" stroke="#7A4E22" stroke-width="3" />
+      <circle cx="43" cy="38" r="13" fill="#FFFFFF" stroke="#1B2133" stroke-width="3" />
+      <path d="M43 31.5l5.5 4-2 6.5h-7l-2-6.5z" fill="#1B2133" />
+      <path
+        d="M43 25v6.5M48.5 35.5l6-1.5M46.5 42l3.5 5.5M39.5 42 36 47.5M37.5 35.5l-6-1.5"
+        stroke="#1B2133"
+        stroke-width="2"
+      />
+    </svg>
+    <div class="dots"><i></i><i></i><i></i></div>
+    <main id="offline">
+      <p>
+        Can't reach the game server. Crateball needs an internet connection.<br />Trying again every few
+        seconds.
+      </p>
+      <button id="retry" type="button">Try again</button>
+    </main>
+    <script>
+      const target = window.__CRATEBALL_URL__ || 'https://playcrateball.com/';
+      let timer = 0;
+      let busy = false;
+      // Any answer from the server (even an opaque one) means it is reachable: go to the game.
+      const check = async () => {
+        if (busy) return;
+        busy = true;
+        clearTimeout(timer);
+        const abort = new AbortController();
+        const giveUp = setTimeout(() => abort.abort(), 8000);
+        try {
+          await fetch(target, { mode: 'no-cors', cache: 'no-store', signal: abort.signal });
+          location.replace(target);
+        } catch {
+          document.body.classList.add('offline');
+          timer = setTimeout(check, 5000);
+        } finally {
+          clearTimeout(giveUp);
+          busy = false;
+        }
+      };
+      document.getElementById('retry').addEventListener('click', check);
+      check();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,95 @@
+# Desktop (Steam) builds: Tauri needs Rust, and its build cache is several GB, so it is only ever built
+# here, never on a laptop. Produces Crateball-windows (Crateball.exe) and Crateball-macos (universal
+# Crateball.app, zipped so the executable bit survives) as artifacts; desktop/steam/upload.sh downloads
+# them and uploads to Steam. Each build is smoke tested: it must open the window and load the game.
+name: Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['desktop/**', '.github/workflows/desktop.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - run: npm ci
+      - run: npm run tauri -- build --target universal-apple-darwin --bundles app
+      - name: Smoke test (opens the window, loads the game, quits)
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/Crateball.app
+          lipo -info "$APP/Contents/MacOS/Crateball"
+          OUT="$RUNNER_TEMP/smoke.txt"
+          CRATEBALL_SMOKE="$OUT" "$APP/Contents/MacOS/Crateball" &
+          PID=$!
+          for _ in $(seq 60); do [ -s "$OUT" ] && break; sleep 1; done
+          kill "$PID" 2>/dev/null || true
+          cat "$OUT"
+          grep -q 'SMOKE loaded https://playcrateball.com/' "$OUT"
+      - name: Zip
+        run: |
+          cd src-tauri/target/universal-apple-darwin/release/bundle/macos
+          ditto -c -k --keepParent Crateball.app "$GITHUB_WORKSPACE/Crateball-macos.zip"
+          du -sh Crateball.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Crateball-macos
+          path: Crateball-macos.zip
+          retention-days: 30
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - run: npm ci
+      - run: npm run tauri -- build --no-bundle
+      - name: Smoke test (opens the window, loads the game, quits)
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/Crateball.exe"
+          $out = "$env:RUNNER_TEMP/smoke.txt"
+          $env:CRATEBALL_SMOKE = $out
+          $p = Start-Process -FilePath $exe -PassThru
+          for ($i = 0; $i -lt 60 -and -not (Test-Path $out); $i++) { Start-Sleep 1 }
+          if (-not $p.HasExited) { Stop-Process $p -Force }
+          Get-Content $out
+          if (-not (Select-String -Path $out -Pattern 'SMOKE loaded https://playcrateball.com/' -Quiet)) { exit 1 }
+          "{0:N1} MB" -f ((Get-Item $exe).Length / 1MB)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Crateball-windows
+          path: desktop/src-tauri/target/release/Crateball.exe
+          retention-days: 30

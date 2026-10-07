@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "game",
+  "description": "The game page may only toggle fullscreen (F11 / Alt+Enter).",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://playcrateball.com/*", "http://localhost:*/*"]
+  },
+  "permissions": ["core:window:allow-set-fullscreen", "core:window:allow-is-fullscreen"]
+}

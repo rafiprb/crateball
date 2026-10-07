@@ -1,17 +1,12 @@
 {
   "name": "crateball-desktop",
   "private": true,
-  "version": "0.1.0",
-  "description": "Crateball desktop build (Steam): a window onto playcrateball.com",
-  "main": "main.mjs",
+  "version": "0.2.0",
+  "description": "Crateball desktop build (Steam): a Tauri window onto playcrateball.com. Built in GitHub Actions only.",
   "scripts": {
-    "start": "electron .",
-    "build:win": "electron-packager . Crateball --platform=win32 --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --ignore=^/icons --app-copyright=RafiBuilds --app-version=$npm_package_version --icon=icons/Crateball.ico --win32metadata.CompanyName=RafiBuilds --win32metadata.ProductName=Crateball --win32metadata.FileDescription=Crateball --win32metadata.InternalName=Crateball --win32metadata.OriginalFilename=Crateball.exe",
-    "build:mac": "electron-packager . Crateball --platform=darwin --arch=universal --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --ignore=^/icons --app-copyright=RafiBuilds --app-version=$npm_package_version --icon=icons/Crateball.icns --app-bundle-id=com.rafibuilds.crateball --app-category-type=public.app-category.sports-games",
-    "build:linux": "electron-packager . Crateball --platform=linux --arch=x64 --out=out --overwrite --prune --ignore=^/out --ignore=^/steam --ignore=^/icons --app-copyright=RafiBuilds --app-version=$npm_package_version"
+    "tauri": "tauri"
   },
   "devDependencies": {
-    "@electron/packager": "20.3.0",
-    "electron": "44.5.1"
+    "@tauri-apps/cli": "2.12.1"
   }
 }
