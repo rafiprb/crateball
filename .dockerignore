@@ -10,3 +10,12 @@ playwright-report
 .git
 .claude
 .superpowers
+# Operational secrets and keys never go into a build context (only the *.example files are wanted).
+.env*
+.deploy.env
+.grafana.env
+*.pem
+*.key
+id_*
+*.p12
+!**/*.example

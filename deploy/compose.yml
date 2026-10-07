@@ -1,11 +1,10 @@
-# Production on the VPS: the game behind Caddy (automatic HTTPS). Deployed by scripts/deploy.sh.
+# Production on the server: the game behind Caddy (automatic HTTPS). This file lives root-owned in
+# /etc/crateball/compose.yml on the server (scripts/install-deploy.sh puts it there); releases only build
+# the image crateball:latest (deploy/remote-deploy.sh), they cannot change this file.
+# Limits are sized for the global caps (100 rooms, 600 players) with plenty of headroom.
 name: crateball
 services:
   game:
-    build:
-      context: ..
-      args:
-        APP_VERSION: ${APP_VERSION:-unknown}
     image: crateball:latest
     restart: unless-stopped
     environment:
@@ -13,6 +12,12 @@ services:
       PORT: '8080'
       APP_VERSION: ${APP_VERSION:-unknown}
     expose: ['8080']
+    read_only: true
+    tmpfs: ['/tmp:size=16m']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 2g
+    pids_limit: 256
     # Logs go to the server's journal so they survive redeploys (journald caps the total size).
     # Read them with: journalctl -o cat CONTAINER_TAG=crateball-game
     logging:
@@ -26,6 +31,14 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    read_only: true
+    tmpfs: ['/tmp:size=16m']
+    # Binding 80/443 inside the container needs this one; everything else is dropped.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 512m
+    pids_limit: 256
     logging:
       driver: json-file
       options: { max-size: 10m, max-file: '3' }

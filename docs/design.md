@@ -171,6 +171,12 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   kullanılmıyor (Türkiye'den Amsterdam'a dolaşıyordu).
 - Durum tamamen bellekte (veritabanı yok); yayın açık odaları siler. Deploy maç bitene kadar, lobide
   insan varken de en fazla 10 dk bekler.
+- Yayın güvenliği: deploy anahtarı yalnızca `crateball-deploy` çalıştırabilir ve yüklenen arşiv yalnızca
+  oyun imajının derleme bağlamıdır. Compose, Caddyfile, Dockerfile ve betiğin kendisi sunucuda root'a ait
+  sabit dosyalardır (`/etc/crateball`, `/usr/local/bin/crateball-deploy`); onları yalnızca
+  `scripts/install-deploy.sh` (sahibin SSH anahtarıyla) değiştirir. Çalınan bir deploy anahtarı en fazla
+  aynı kısıtlı konteynere (salt okunur, yetkisiz, bellek/pid sınırlı) başka bir oyun derlemesi koyabilir.
+  Sağlıksız yayın `crateball:previous` imajına döner.
 - Telemetri: istemci 2 sn'lik özet + R ile işaretli rapor; sunucu oda başına girdisiz tick ve tick süresi.
 
 ## Fikir havuzu
