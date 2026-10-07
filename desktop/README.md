@@ -19,7 +19,9 @@ needs rebuilding when the wrapper changes.
 
 Steam launch options: `Crateball.exe` (Windows), `Crateball.app` (macOS).
 F11 or Alt+Enter toggles fullscreen, F5 reloads. `CRATEBALL_URL` points the app at another server
-(e.g. a dev server; the game page there gets no fullscreen permission: only playcrateball.com does);
+(the game page there gets no fullscreen permission: only playcrateball.com does). Release builds only
+reach https://playcrateball.com (the bundled start page's CSP); a local dev server
+(`CRATEBALL_URL=http://localhost:5173`) needs a dev build (`npm run tauri dev`, which uses `devCsp`);
 `CRATEBALL_SMOKE=<file>` writes what loaded into the file and quits.
 
 Security: only http/https links leave the window (opened in the browser); the window itself only

@@ -89,6 +89,10 @@ describe('yayın: yüklenen arşiv yalnızca derleme bağlamı', () => {
       app: { security: { csp: unknown } };
     };
     expect(conf.app.security.csp).not.toBeNull();
+    // Release builds reach only the game; a dev build (tauri dev, devCsp) may point at a local server.
+    const sec = conf.app.security as { csp: Record<string, string>; devCsp?: Record<string, string> };
+    expect(sec.csp['connect-src']).not.toMatch(/http:\/\/(localhost|127\.0\.0\.1):/); // (ipc.localhost is Tauri's IPC)
+    expect(sec.devCsp?.['connect-src']).toContain('http://localhost:*');
     expect(read('desktop/src-tauri/capabilities/game.json')).not.toContain('localhost');
   });
 });
