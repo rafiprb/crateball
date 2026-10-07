@@ -127,14 +127,25 @@ export const SEGMENTS: Segment[] = [];
 const add = (s: Segment) => SEGMENTS.push(s);
 
 // ── Title card ──────────────────────────────────────────────────────────────────────────────────
+// The lock-up sits on the optical centre (the mark is taller than the name), and the hit throws a
+// little confetti so the card moves while it holds (Steam autoplays muted: the first second must move).
+const titleBits: Bit[] = [];
+let titlePopped = false;
 add({
   t0: bar(SECTION.title),
   t1: bar(SECTION.title + 1),
-  over(o, lt, t) {
+  over(o, lt, t, dt) {
     backdrop(o, t);
-    lockup(o, CX, OUT_H / 2 + 20, {
+    const hit = 0.05;
+    if (lt >= hit && !titlePopped) {
+      titlePopped = true;
+      burst(titleBits, CX, OUT_H / 2 + 130, 90, 1300, [RED, BLUE, GOLD, CREAM]);
+    }
+    if (lt < hit) titlePopped = false;
+    drawBits(o, titleBits, dt);
+    lockup(o, CX, OUT_H / 2 + 80, {
       markScale: 0.8 + 0.2 * easeOut(lt / 0.35),
-      titleT: lt - 0.05,
+      titleT: lt - hit,
       tagT: lt - BEAT,
     });
   },
@@ -340,12 +351,12 @@ add({
     const rattle = lt > land && lt < open ? Math.sin(lt * 70) * 6 * ((lt - land) / (open - land)) : 0;
     if (lt >= open && !popped) {
       popped = true;
-      burst(bits, CX, OUT_H / 2 - 170, 160, 1500, [RED, BLUE, GOLD, CREAM, ORANGE]);
+      burst(bits, CX, OUT_H / 2 - 210, 160, 1500, [RED, BLUE, GOLD, CREAM, ORANGE]);
     }
     if (lt < open) popped = false;
     o.save();
     o.translate(rattle, 0);
-    lockup(o, CX, OUT_H / 2 - 20, {
+    lockup(o, CX, OUT_H / 2 - 60, {
       crateY: -(1 - fall) * 900 - bounce,
       ballK: lt >= open ? (lt - open) / 0.5 : 0,
       open: lt >= open ? easeOut((lt - open) / 0.25) : 0,
@@ -359,24 +370,24 @@ add({
       const k = easeOut(ctaT / 0.3);
       o.save();
       o.globalAlpha = k;
-      o.translate(CX, OUT_H / 2 + 240 + (1 - k) * 30);
-      o.font = "800 48px 'Baloo 2', sans-serif";
+      o.translate(CX, OUT_H / 2 + 215 + (1 - k) * 30);
+      o.font = "800 58px 'Baloo 2', sans-serif";
       o.textAlign = 'center';
       o.textBaseline = 'middle';
       const cta = 'WISHLIST ON STEAM';
-      const w = o.measureText(cta).width + 96;
+      const w = o.measureText(cta).width + 120;
       o.fillStyle = GOLD;
       o.beginPath();
-      o.roundRect(-w / 2, -42, w, 84, 42);
+      o.roundRect(-w / 2, -50, w, 100, 50);
       o.fill();
       o.lineWidth = 5;
       o.strokeStyle = INK;
       o.stroke();
       o.fillStyle = INK;
-      o.fillText(cta, 0, 3);
-      o.font = '700 38px Nunito, sans-serif';
+      o.fillText(cta, 0, 4);
+      o.font = '700 46px Nunito, sans-serif';
       o.fillStyle = CREAM;
-      o.fillText('playcrateball.com', 0, 88);
+      o.fillText('playcrateball.com', 0, 104);
       o.restore();
       o.save();
       o.globalAlpha = 0.8 * k;
