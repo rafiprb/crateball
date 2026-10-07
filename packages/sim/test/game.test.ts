@@ -732,12 +732,12 @@ describe('bazuka', () => {
     expect(g2.bullets[0]!.target).toBeUndefined();
   });
 
-  it('kutuların üçte ikiye yakını iyi (64/36), toplam 100; bazuka silahtan nadir', () => {
+  it('kutuların üçte ikiye yakını iyi (62/38), toplam 100; bazuka silahtan nadir', () => {
     const weight = (k: string) => CRATES.loot.find(([kind]) => kind === k)![1];
     const bad = ['mine', 'ice', 'dizzy'];
     const sum = (ks: string[]) => ks.reduce((s, k) => s + weight(k), 0);
     const all = CRATES.loot.map(([k]) => k);
-    expect(sum(bad)).toBe(36);
+    expect(sum(bad)).toBe(38);
     expect(sum(all)).toBe(100);
     expect(weight('bazooka')).toBeLessThan(weight('gun'));
   });

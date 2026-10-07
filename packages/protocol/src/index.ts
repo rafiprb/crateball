@@ -212,14 +212,14 @@ export function decodeSettings(v: unknown): Settings | null {
  * from the sim). */
 export const DEFAULT_WEIGHTS: Readonly<Settings['weights']> = {
   gun: 13,
-  mine: 13,
-  ice: 13,
+  mine: 14,
+  ice: 14,
   dizzy: 10,
   boost: 10,
   shield: 8,
   power: 12,
   teleport: 12,
-  bazooka: 9,
+  bazooka: 7,
 };
 
 function decodeWeights(v: Record<string, unknown>): Settings['weights'] | null {

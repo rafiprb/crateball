@@ -58,18 +58,18 @@ export const CRATES = {
   firstAfter: sec(4),
   minGap: sec(5),
   maxGap: sec(9),
-  /** Weighted loot table (out of 100): about two crates in three help (64 good, 36 bad: mine, ice,
+  /** Weighted loot table (out of 100): about two crates in three help (62 good, 38 bad: mine, ice,
    * dizzy), so opening one is worth it but still a gamble. */
   loot: [
-    ['mine', 13],
-    ['ice', 13],
+    ['mine', 14],
+    ['ice', 14],
     ['dizzy', 10],
     ['gun', 13],
     ['boost', 10],
     ['shield', 8],
     ['power', 12],
     ['teleport', 12],
-    ['bazooka', 9],
+    ['bazooka', 7],
   ] as ReadonlyArray<readonly [ItemKind, number]>,
 };
 
