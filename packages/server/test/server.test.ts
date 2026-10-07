@@ -1182,10 +1182,18 @@ describe('gizli ganimet (sunucu)', () => {
 });
 
 describe('oda sınırları (#4, #7)', () => {
-  const settings: Settings = { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false };
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: false,
+  };
   const make = async (now?: () => number) => {
     const mod = await import('../src/rooms');
-    const rooms = mod.createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }), { now });
+    const rooms = mod.createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }), {
+      now,
+    });
     return { ...mod, rooms };
   };
 

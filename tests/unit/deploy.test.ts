@@ -70,7 +70,8 @@ describe('yayın: yüklenen arşiv yalnızca derleme bağlamı', () => {
       const y = read(`.github/workflows/${wf}.yml`);
       for (const m of y.matchAll(/uses: (\S+)/g)) expect(m[1], wf).toMatch(/@[0-9a-f]{40}$/);
     }
-    for (const m of read('Dockerfile').matchAll(/^FROM (\S+)/gm)) expect(m[1]).toMatch(/@sha256:[0-9a-f]{64}/);
+    for (const m of read('Dockerfile').matchAll(/^FROM (\S+)/gm))
+      expect(m[1]).toMatch(/@sha256:[0-9a-f]{64}/);
     for (const m of read('deploy/compose.yml').matchAll(/image: (\S+)/g))
       if (!m[1]!.startsWith('crateball:')) expect(m[1]).toMatch(/@sha256:[0-9a-f]{64}/);
   });
@@ -79,7 +80,9 @@ describe('yayın: yüklenen arşiv yalnızca derleme bağlamı', () => {
     const rs = read('desktop/src-tauri/src/main.rs');
     expect(rs).toMatch(/matches!\(url\.scheme\(\), "http" \| "https"\)/);
     expect(rs).not.toMatch(/"about" \| "data" \| "blob"/);
-    const conf = JSON.parse(read('desktop/src-tauri/tauri.conf.json')) as { app: { security: { csp: unknown } } };
+    const conf = JSON.parse(read('desktop/src-tauri/tauri.conf.json')) as {
+      app: { security: { csp: unknown } };
+    };
     expect(conf.app.security.csp).not.toBeNull();
     expect(read('desktop/src-tauri/capabilities/game.json')).not.toContain('localhost');
   });

@@ -103,7 +103,11 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 export const PROD_ORIGINS = ['https://playcrateball.com', 'https://www.playcrateball.com'];
 const DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-export function originAllowed(origin: string | undefined, production: boolean, extra: string[] = []): boolean {
+export function originAllowed(
+  origin: string | undefined,
+  production: boolean,
+  extra: string[] = [],
+): boolean {
   if (!origin) return true;
   if (extra.includes(origin)) return true;
   return production ? PROD_ORIGINS.includes(origin) : DEV_ORIGIN.test(origin);
@@ -281,7 +285,9 @@ export function attachWebSocket(
       if (socket.readyState !== socket.OPEN) return;
       // A client that stops reading must not make the server buffer snapshots forever.
       if (socket.bufferedAmount > LIMITS.hardBufferBytes) {
-        logLimited(() => clog.warn({ buffered: socket.bufferedAmount }, 'istemci yetişemiyor, bağlantı kesildi'));
+        logLimited(() =>
+          clog.warn({ buffered: socket.bufferedAmount }, 'istemci yetişemiyor, bağlantı kesildi'),
+        );
         socket.terminate();
         return;
       }
@@ -293,7 +299,8 @@ export function attachWebSocket(
     };
     const rejectBad = (why: string) => {
       // One line for the first, then one per 100: a malformed flood cannot flood the log.
-      if (badMessages++ % 100 === 0) logLimited(() => clog.warn({ why, count: badMessages }, 'bozuk mesaj atıldı'));
+      if (badMessages++ % 100 === 0)
+        logLimited(() => clog.warn({ why, count: badMessages }, 'bozuk mesaj atıldı'));
       send({ t: 'error', code: 'bad_message', message: 'Could not read message' });
     };
     const mayCreate = () => {
@@ -352,7 +359,11 @@ export function attachWebSocket(
       tokens = Math.min(LIMITS.msgBurst, tokens + ((t - refilledAt) / 1000) * LIMITS.msgPerSec);
       refilledAt = t;
       if (rateLimited) return; // closing: whatever was still in flight is ignored (and not logged again)
-      const buf = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
+      const buf = Buffer.isBuffer(data)
+        ? data
+        : Array.isArray(data)
+          ? Buffer.concat(data)
+          : Buffer.from(data);
       let ipBytes = bytesByIp.get(ip);
       if (!ipBytes) {
         ipBytes = bucket(LIMITS.ipBytesBurst, LIMITS.ipBytesPerSec, now);
@@ -386,7 +397,9 @@ export function attachWebSocket(
       }
       if (msg.t === 'hello') {
         if (msg.protocolVersion !== PROTOCOL_VERSION) {
-          logLimited(() => clog.warn({ theirs: msg.protocolVersion, ours: PROTOCOL_VERSION }, 'sürüm uyuşmazlığı'));
+          logLimited(() =>
+            clog.warn({ theirs: msg.protocolVersion, ours: PROTOCOL_VERSION }, 'sürüm uyuşmazlığı'),
+          );
           send({ t: 'error', code: 'version_mismatch', message: 'The game was updated — reload the page' });
           socket.close(CLOSE_VERSION_MISMATCH, 'version mismatch');
           return;
@@ -519,7 +532,10 @@ export function attachWebSocket(
           if (!rooms.isMember(clientId) || t - lastReportAt < LIMITS.reportGapMs) break;
           lastReportAt = t;
           logLimited(() =>
-            clog.warn({ ...rooms.whereIs(clientId), note: msg.note, recent: msg.recent }, 'oyuncu raporu (R)'),
+            clog.warn(
+              { ...rooms.whereIs(clientId), note: msg.note, recent: msg.recent },
+              'oyuncu raporu (R)',
+            ),
           );
           break;
       }

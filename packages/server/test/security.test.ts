@@ -63,10 +63,18 @@ function client(url: string, headers: Record<string, string> = {}, origin?: stri
     }
   };
   const hello = (sessionToken?: string) =>
-    socket.send(encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION, ...(sessionToken ? { sessionToken } : {}) }));
+    socket.send(
+      encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION, ...(sessionToken ? { sessionToken } : {}) }),
+    );
   return { socket, opened, closed, until, hello, inbox };
 }
-const settings: Settings = { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: true };
+const settings: Settings = {
+  minutes: 3,
+  scoreLimit: 5,
+  crates: 'off',
+  weights: defaultWeights(),
+  bots: true,
+};
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe('WebSocket denetim çerçeveleri (#3)', () => {
