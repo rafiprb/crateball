@@ -1,4 +1,5 @@
 import { mkdtempSync } from 'node:fs';
+import { connect as tcp } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
@@ -108,6 +109,69 @@ describe('WebSocket denetim çerçeveleri (#3)', () => {
     await c.until('welcome');
     c.socket.send('{"t":"ping",', { fin: false }); // never finished; the ws client answers pings itself
     expect(await c.closed).toBe(4012);
+  });
+});
+
+/** A raw TCP client: does the WebSocket upgrade by hand, then sends whatever bytes it likes. */
+async function rawUpgrade(port: number): Promise<{ status: number; send(b: Buffer): void; end(): void }> {
+  const s = tcp(port, '127.0.0.1');
+  await new Promise<void>((ok) => s.once('connect', () => ok()));
+  s.write(
+    'GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n',
+  );
+  const head = await new Promise<string>((ok) => s.once('data', (d: Buffer) => ok(d.toString())));
+  s.on('error', () => {});
+  return {
+    status: Number(/^HTTP\/1\.1 (\d+)/.exec(head)?.[1]),
+    send: (b) => s.write(b),
+    end: () => s.destroy(),
+  };
+}
+
+describe('reddedilen bağlantı süreci çökertemez (#2)', () => {
+  it('sınırı aşan bağlantıya geçersiz çerçeve: süreç ayakta, diğer oyuncu bağlı kalır', async () => {
+    LIMITS.connectionsPerIp = 2;
+    const crashes: unknown[] = [];
+    const onCrash = (e: unknown) => crashes.push(e);
+    process.on('uncaughtException', onCrash);
+    try {
+      const { url } = await boot();
+      const port = Number(new URL(url).port);
+      const a = client(url);
+      const b = client(url);
+      await Promise.all([a.opened, b.opened]);
+      const extra = await rawUpgrade(port);
+      // A masked frame with reserved opcode 3: invalid for any WebSocket that reads it.
+      extra.send(Buffer.from([0x83, 0x80, 1, 2, 3, 4]));
+      await sleep(200);
+      extra.end();
+      expect(crashes).toEqual([]);
+      expect(extra.status).toBe(429);
+      a.hello();
+      expect((await a.until('welcome')).t).toBe('welcome');
+    } finally {
+      process.off('uncaughtException', onCrash);
+    }
+  });
+
+  it('kabul edilmiş bağlantıda geçersiz çerçeve de yalnızca o bağlantıyı kapatır', async () => {
+    const crashes: unknown[] = [];
+    const onCrash = (e: unknown) => crashes.push(e);
+    process.on('uncaughtException', onCrash);
+    try {
+      const { url } = await boot();
+      const raw = await rawUpgrade(Number(new URL(url).port));
+      expect(raw.status).toBe(101);
+      raw.send(Buffer.from([0x83, 0x80, 1, 2, 3, 4]));
+      await sleep(200);
+      raw.end();
+      expect(crashes).toEqual([]);
+      const c = client(url);
+      await c.opened;
+    } finally {
+      process.off('uncaughtException', onCrash);
+    }
   });
 });
 

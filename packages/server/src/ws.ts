@@ -170,6 +170,12 @@ export function attachWebSocket(
         return done(false, 403);
       }
       if (wss.clients.size >= LIMITS.maxSockets) return done(false, 503);
+      // Refused here, before any WebSocket exists: a socket refused after the upgrade would still parse
+      // frames while closing (and an invalid one with no error listener would crash the process).
+      if ((connectionsByIp.get(ip) ?? 0) >= LIMITS.connectionsPerIp) {
+        logLimited(() => log.warn({ ip }, 'bir adresten çok fazla bağlantı'));
+        return done(false, 429);
+      }
       let b = connectsByIp.get(ip);
       if (!b) {
         b = bucket(LIMITS.connectsPerIpBurst, LIMITS.connectsPerIpPerSec, now);
@@ -237,11 +243,14 @@ export function attachWebSocket(
   };
 
   wss.on('connection', (socket, req) => {
+    // First, before anything can return early: an invalid frame on a socket without an error listener
+    // is an uncaught exception that takes every room down with the process.
+    let onError = (err: Error) => logLimited(() => log.warn({ err }, 'ws hatası'));
+    socket.on('error', (err) => onError(err));
     const ip = clientIp(req);
     const open = (connectionsByIp.get(ip) ?? 0) + 1;
     if (open > LIMITS.connectionsPerIp) {
-      // Refused outright: no handlers, nothing it sends is read.
-      logLimited(() => log.warn({ ip }, 'bir adresten çok fazla bağlantı'));
+      // Two upgrades raced past the check above: close this one (its error listener is in place).
       socket.close(CLOSE_TOO_MANY, 'too many connections');
       setTimeout(() => socket.terminate(), 1000).unref();
       return;
@@ -350,7 +359,7 @@ export function attachWebSocket(
       if (badMessages > 1) logLimited(() => clog.warn({ count: badMessages }, 'bozuk mesajlar (toplam)'));
       clog.info({ code }, 'ws kapandı');
     });
-    socket.on('error', (err) => logLimited(() => clog.warn({ err }, 'ws hatası')));
+    onError = (err) => logLimited(() => clog.warn({ err }, 'ws hatası'));
     socket.on('message', (data: RawData, isBinary) => {
       // Superseded by a newer socket of the same tab, or on its way out: nothing it sends counts.
       if (owners.get(clientId) !== socket || socket.readyState !== socket.OPEN) return;

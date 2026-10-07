@@ -1099,15 +1099,13 @@ describe('WebSocket sınırları', () => {
     b.socket.close();
   });
 
-  it('adres başına bağlantı sınırını aşan bağlantı hiç dinlenmez', async () => {
+  it('adres başına bağlantı sınırını aşan bağlantı WebSocket bile olmadan (429) reddedilir', async () => {
     const { wsUrl } = await boot();
     const { LIMITS } = await import('../src/ws');
     const ok = Array.from({ length: LIMITS.connectionsPerIp }, () => client(wsUrl));
     await Promise.all(ok.map((c) => c.opened));
     const extra = client(wsUrl);
-    await extra.opened.catch(() => {});
-    hello(extra, 'fazla');
-    expect(await extra.closed).toBe(4010);
+    await expect(extra.opened).rejects.toThrow('429');
     expect(extra.socket.readyState).toBe(WebSocket.CLOSED);
     for (const c of ok) c.socket.close();
   });
