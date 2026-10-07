@@ -1,6 +1,8 @@
 import type { RoomInfo, RoomListing, RoomPlayer, Seat } from '@crateball/protocol';
 import {
   ARENAS,
+  ITEM_BAD,
+  ITEM_GOOD,
   ITEM_KINDS,
   SETTING_CHOICES,
   defaultWeights,
@@ -11,8 +13,8 @@ import {
 } from '@crateball/sim';
 
 /** Tiny DOM helper: text always goes through textContent (player names are untrusted). */
-type Child = Node | string | null | false | undefined;
-function h<K extends keyof HTMLElementTagNameMap>(
+export type Child = Node | string | null | false | undefined;
+export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props: Partial<HTMLElementTagNameMap[K]> & { class?: string; data?: Record<string, string> } = {},
   ...children: Child[]
@@ -55,9 +57,7 @@ const ROLE_NAME: Record<Role, string> = {
   fwd: 'Forward',
   none: 'No role',
 };
-/** Crate items in the lobby: the helpful ones first, with their in-game colours. */
-const ITEM_GOOD: readonly ItemKind[] = ['gun', 'boost', 'shield', 'power', 'teleport', 'bazooka'];
-const ITEM_BAD: readonly ItemKind[] = ['mine', 'ice', 'dizzy'];
+/** Crate items in the lobby (ITEM_GOOD, then ITEM_BAD) with their in-game colours. */
 const ITEM_COLOR: Record<ItemKind, string> = {
   gun: '#FFE066',
   mine: '#FF6A3D',

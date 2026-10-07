@@ -97,7 +97,34 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
 - Maçta yazılan mesaj ayrıca ~4,5 sn yazanın üstünde konuşma balonunda görünür (en fazla üç satır).
 - Sohbet: lobide sol altta kayıt + yazı alanı; maçta Enter ile yazılır, yeni mesajlar birkaç saniye
   üst üste görünüp kaybolur. Odaya yeni gelen son 30 mesajı görür; kişi başı flood sınırı var.
-- Maç bitince 6 sn sonra oda lobiye döner. Host çıkarsa host'luk sıradakine geçer; boş oda 2 dk yaşar.
+- Maç bitince 2 sn sonra oda lobiye döner (sonuç ekranı lobinin üstünde kalır, aşağıda). Host çıkarsa
+  host'luk sıradakine geçer; boş oda 2 dk yaşar.
+
+## Maç sonu ekranı
+
+- Son düdükte herkesin önüne sonuç ekranı gelir: arka plan kazananın renginde, başlıkta "RED WINS!" ve
+  skor, altında önce Red sonra Blue kartı, her kartta o takımın oyuncuları. Kendi satırın sarımsı, MVP'nin
+  adının yanında "MVP" rozeti.
+- Ekran 30 sn açık kalır (`MATCH.resultsShow`), "Back to lobby" ya da Esc ile kapanır. Oda arkada 2 sn
+  sonra lobiye dönmüş olur: isteyen hemen lobiye geçer, isteyen okumaya devam eder. Host bu arada yeni
+  maçı başlatırsa ekran herkeste kapanır.
+- Sütunlar (oyuncu başına, yalnızca bu maç; `Player.stats`, sayan yer `game.ts`):
+  - Goals: atılan gol (kendi kalesine atılan sayılmaz).
+  - Touches: senin dokunuşun / maçtaki toplam dokunuş. Vuruş her zaman bir dokunuş; temas ise top son
+    başkasındaysa ya da 0,5 sn'dir topa değmiyorsan yeni dokunuş (top sürmek tek dokunuş).
+  - Shots: şut / isabetli şut. Pas yardımıyla takım arkadaşına bükülmeyen ve topu kendi hâlinde rakip kale
+    çizgisine ortadan 140 px içinde ulaştıracak vuruş şuttur (topun gidebileceği yol: hız / (1 − sönüm));
+    direklerin arasına gidiyorsa isabetli. Her gol isabetli şut sayılır (sürerek ya da direkten giren de).
+  - Saves: yalnızca kaleci (mevkiler açıkken); kendi kalesine giden topa yeni dokunuş. Diğer herkes 0.
+  - Crates: açılan iyi / kötü kutu (kötü: mine, ice, dizzy).
+  - Damage: rakibe verilen hasar (mermi, roket; canı kadar, fazlası sayılmaz) / kalkanın yuttuğu hasar.
+  - Deaths: ölüm.
+  - Top istatistikleri (dokunuş, şut, kurtarış) yalnızca top oyundayken sayılır, gol sonrası duraklamada değil.
+- MVP = gol + verilen hasar + kurtarış − ölüm (botlar dahil). Eşitlikte kazanan takımdan olan, sonra çok
+  dokunan, sonra listede önce gelen.
+- Ağ: istatistikler oyun durumunun parçası; delta snapshot'larda yalnızca değişen sayılar gider. Ekran, son
+  düdükten sonraki ilk snapshot'taki sunucu sayılarını gösterir. Tasarım denemesi için dev'de
+  `window.__game.cmd('results')` (ya da `'blue'`) uydurma bir maç sonu açar.
 
 ## Ses ve efektler
 

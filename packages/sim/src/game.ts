@@ -7,12 +7,14 @@ import {
   DEFAULT_SETTINGS,
   FIELD,
   ITEMS,
+  ITEM_BAD,
   ITEM_KINDS,
   MATCH,
   PASS,
   PLAYER,
   REST_SPEED,
   ROLES,
+  STATS,
   TICK_HZ,
   type ItemKind,
   type Role,
@@ -36,6 +38,7 @@ import {
 } from './types';
 import { botInput } from './bot';
 import { gunTarget } from './aim';
+import { newStats } from './stats';
 import {
   arenaAccel,
   ballDamping,
@@ -80,7 +83,7 @@ export function cloneGame(g: Game): Game {
   return {
     ...g,
     score: [g.score[0], g.score[1]],
-    players: g.players.map((p) => ({ ...p })),
+    players: g.players.map((p) => ({ ...p, stats: { ...p.stats } })),
     ball: { ...g.ball },
     crates: g.crates.map((c) => ({ ...c })),
     bullets: g.bullets.map((b) => ({ ...b })),
@@ -164,6 +167,7 @@ export function addPlayer(g: Game, id: string, name: string, team: Team, bot = f
     cooldown: 0,
     goals: 0,
     kickTick: -1,
+    stats: newStats(),
   };
   g.players.push(p);
   placeAtSpawn(g, p, teamCount(g, team) - 1);
@@ -227,7 +231,10 @@ export function restartMatch(g: Game): void {
   g.score = [0, 0];
   g.kickoffs = 0;
   g.clock = g.settings.minutes * 60 * TICK_HZ;
-  for (const p of g.players) p.goals = 0;
+  for (const p of g.players) {
+    p.goals = 0;
+    p.stats = newStats();
+  }
   resetKickoff(g, 'red');
   g.matches++;
   canonicalise(g);
@@ -492,6 +499,48 @@ export function kickDirection(g: Game, p: Player): { x: number; y: number; to: s
   return best;
 }
 
+/** The ball is in play (not sitting in the net after a goal): only then do touches, shots and saves count. */
+const live = (g: Game) => g.phase === 'play' || g.phase === 'kickoff';
+
+/**
+ * Where the ball, rolling on untouched, crosses the goal line at x = `gx`: its y there, or null when it
+ * is moving away or would stop first (it rolls at most speed / (1 − damping)). Walls are ignored.
+ */
+function crossingY(g: Game, gx: number): number | null {
+  const b = g.ball;
+  if (b.vx === 0) return null;
+  const t = (gx - b.x) / b.vx;
+  if (t <= 0 || t * (1 - ballDamping(g, BALL.damping)) > 1) return null;
+  return b.y + b.vy * t;
+}
+
+/**
+ * `p` is on the ball this tick (a kick or a contact). Returns whether that is a new touch: a kick always
+ * is; a contact is when someone else had the ball last or `p` has been off it for STATS.touchGap.
+ */
+function touchBall(g: Game, p: Player, kick: boolean): boolean {
+  const s = p.stats;
+  const fresh = kick || g.lastTouch !== p.id || g.tick - s.ballAt > STATS.touchGap;
+  s.ballAt = g.tick;
+  if (!fresh) return false;
+  s.touches++;
+  s.shot = 0;
+  return true;
+}
+
+/** A kick that sends the ball at the opponents' goal is a shot; heading inside the posts, on target. */
+function countShot(g: Game, p: Player): void {
+  const y = crossingY(g, -side(p.team) * FIELD.halfW);
+  if (y === null || Math.abs(y) >= STATS.shotBand) return;
+  const s = p.stats;
+  s.shots++;
+  s.shot = 1;
+  if (Math.abs(y) < FIELD.goalHalf) {
+    s.onTarget++;
+    s.shot = 2;
+  }
+}
+
 /** Kicks the ball if it is in reach (false if not). `power`: the power kick item, spent on it. */
 function tryKick(g: Game, p: Player, power = false): boolean {
   const dir = kickDirection(g, p);
@@ -500,6 +549,11 @@ function tryKick(g: Game, p: Player, power = false): boolean {
   const k = PLAYER.kickStrength * (power ? PLAYER.powerKickMul : 1) * kickMul(p) * BALL.invMass;
   b.vx += dir.x * k;
   b.vy += dir.y * k;
+  if (live(g)) {
+    touchBall(g, p, true);
+    // A pass bent toward a teammate is not a shot.
+    if (!dir.to) countShot(g, p);
+  }
   p.kickArmed = false;
   p.kickTick = g.tick;
   if (power) p.power = false;
@@ -704,7 +758,12 @@ function collide(g: Game): void {
     const b = g.ball;
     const flying = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
     const hitSpeed = Math.sqrt((b.vx - a.vx) ** 2 + (b.vy - a.vy) ** 2);
+    // A keeper's save: the ball was rolling into the own goal until this touch.
+    const ownGoalY =
+      a.role === 'gk' && rolesOn(g) && live(g) ? crossingY(g, side(a.team) * FIELD.halfW) : null;
+    const saving = ownGoalY !== null && Math.abs(ownGoalY) < FIELD.goalHalf;
     if (contact(a, a.r, invMass(a), touch, b, BALL.radius, BALL.invMass, BALL.bounce)) {
+      if (live(g) && touchBall(g, a, false) && saving) a.stats.saves++;
       g.lastTouch = a.id;
       // Keeper's safe hands / midfielder's soft first touch: a ball that arrives hard keeps only part
       // of its own speed, so it drops at their feet instead of bouncing away. Slow touches (running
@@ -863,12 +922,18 @@ function shieldBlocks(g: Game, p: Player): boolean {
   return true;
 }
 
-function damage(g: Game, p: Player, amount: number, kx: number, ky: number): void {
+/** `by`: the opponent whose bullet or rocket it was (credited in their stats); none for the arena. */
+function damage(g: Game, p: Player, amount: number, kx: number, ky: number, by?: Player): void {
   p.vx += kx;
   p.vy += ky;
-  if (shieldBlocks(g, p)) return;
+  if (shieldBlocks(g, p)) {
+    p.stats.absorbed += amount;
+    return;
+  }
+  if (by && by.team !== p.team) by.stats.damage += Math.min(amount, p.hp);
   p.hp -= amount;
   if (p.hp <= 0) {
+    p.stats.deaths++;
     p.hp = 0;
     p.dead = PLAYER.respawn;
     p.gun = 0;
@@ -902,7 +967,8 @@ function updateBullets(g: Game): void {
       if (dist2(p, b) < (p.r + radius) ** 2) {
         const s = (b.rocket ? ITEMS.rocketKnock : ITEMS.bulletKnock) / speed;
         if (b.rocket) g.blasts.push({ x: b.x, y: b.y, kind: 'rocket', t: ITEMS.blastShow });
-        damage(g, p, b.rocket ? ITEMS.rocketDamage : 1, b.vx * s, b.vy * s);
+        const owner = g.players.find((o) => o.id === b.owner);
+        damage(g, p, b.rocket ? ITEMS.rocketDamage : 1, b.vx * s, b.vy * s, owner);
         return false;
       }
     }
@@ -983,6 +1049,8 @@ export function rollLoot(g: Game): ItemKind {
 
 export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKind): void {
   g.blasts.push({ x, y, kind, t: ITEMS.blastShow });
+  if (ITEM_BAD.includes(kind)) p.stats.badCrates++;
+  else p.stats.goodCrates++;
   switch (kind) {
     // One item on E/Shift at a time: a new one replaces the old.
     case 'gun':
@@ -1037,7 +1105,10 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
         body.vx += dx * f;
         body.vy += dy * f;
       }
-      if (spared) break;
+      if (spared) {
+        p.stats.absorbed += ITEMS.mineDamage;
+        break;
+      }
       if (p.dead === 0) p.slow = ITEMS.mineSlow;
       damage(g, p, ITEMS.mineDamage, 0, 0);
       break;
@@ -1052,7 +1123,13 @@ function rules(g: Game): void {
     const scorer: Team = b.x > 0 ? 'red' : 'blue';
     g.score[scorer === 'red' ? 0 : 1]++;
     const toucher = g.players.find((p) => p.id === g.lastTouch);
-    if (toucher && toucher.team === scorer) toucher.goals++;
+    if (toucher && toucher.team === scorer) {
+      toucher.goals++;
+      // Every goal is a shot on target, also one dribbled in or one that went in off the post.
+      const s = toucher.stats;
+      if (s.shot === 0) s.shots++;
+      if (s.shot !== 2) s.onTarget++;
+    }
     g.phase = 'goal';
     g.phaseT = 0;
     return;
