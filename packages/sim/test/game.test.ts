@@ -484,6 +484,26 @@ describe('mevkiler', () => {
     expect(Math.abs(shot(260))).toBeLessThan(FIELD.goalHalf);
     expect(Math.abs(shot(20))).toBeGreaterThan(FIELD.goalHalf);
   });
+
+  it('forvetin kıvırdığı şut direğe çarpmaz, gole gider', () => {
+    // A shot at the post itself (y = goalHalf) from the forward zone: bent so the ball clears the post.
+    const g = createGame(1);
+    g.phase = 'play';
+    const f = addPlayer(g, 'f', 'F', 'red');
+    const px = 300;
+    const tx = FIELD.halfW - px;
+    const ty = FIELD.goalHalf - -40;
+    const n = Math.hypot(tx, ty);
+    Object.assign(f, { x: px, y: -40 });
+    Object.assign(g.ball, { x: px + (tx / n) * 26, y: -40 + (ty / n) * 26 });
+    step(g);
+    const d = kickDirection(g, f)!;
+    const y = g.ball.y + (d.y / d.x) * (FIELD.halfW - g.ball.x);
+    expect(Math.abs(y)).toBeLessThan(FIELD.goalHalf - FIELD.postRadius - BALL.radius);
+    step(g, new Map([['f', KICK]]));
+    run(g, 120);
+    expect(g.score).toEqual([1, 0]);
+  });
 });
 
 describe('pas', () => {

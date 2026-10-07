@@ -382,15 +382,17 @@ export function kickDirection(g: Game, p: Player): { x: number; y: number; to: s
   const goalX = -side(p.team) * FIELD.halfW;
   if (nx * (goalX - b.x) > 0) {
     const yAtGoal = b.y + (ny / nx) * (goalX - b.x);
-    if (Math.abs(yAtGoal) < FIELD.goalHalf) return { x: nx, y: ny, to: null };
-    // Forward in their zone: a near miss is bent inside the nearer post.
+    // Forward in their zone: a near miss, or a shot that would clip a post, is bent inside the nearer
+    // post (the ball's centre has to pass a post radius plus a ball radius inside it).
     if (p.role === 'fwd' && p.buff) {
-      const inside = FIELD.goalHalf - ROLES.fwd.aimInside;
+      const inside = FIELD.goalHalf - FIELD.postRadius - BALL.radius - ROLES.fwd.aimInside;
+      if (Math.abs(yAtGoal) <= inside) return { x: nx, y: ny, to: null };
       const ty = Math.max(-inside, Math.min(inside, yAtGoal)) - b.y;
       const tx = goalX - b.x;
       const tl = Math.sqrt(tx * tx + ty * ty) || 1;
       if ((tx * nx + ty * ny) / tl > ROLES.fwd.aimCos) return { x: tx / tl, y: ty / tl, to: null };
     }
+    if (Math.abs(yAtGoal) < FIELD.goalHalf) return { x: nx, y: ny, to: null };
   }
   const minCos = p.role === 'mid' && p.buff ? PASS.cosMid : PASS.cos;
   let best: { x: number; y: number; to: string | null } = { x: nx, y: ny, to: null };
