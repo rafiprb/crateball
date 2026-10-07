@@ -187,13 +187,10 @@ export function createSound(target?: SoundTarget): Sound {
           noise(0.25, 0.5, 'highpass', 1500);
           break;
         case 'ice':
-          // Freezing over: a sharp crack and a low thud, ice crackling as it spreads, then a frosty hiss.
-          // All noise, no pitched tones (pitched ones read as bells).
-          noise(0.05, 0.8, 'highpass', 2500);
-          tone('triangle', 180, 70, 0.12, 0.4);
-          for (let i = 0; i < 6; i++)
-            noise(0.025, 0.35 - i * 0.04, 'bandpass', 3000 + i * 700, 0.04 + i * 0.035);
-          noise(0.45, 0.16, 'highpass', 6500, 0.05);
+          // An ice cube cracking, then a soft poof of snow. All noise: pitched tones read as bells.
+          noise(0.025, 0.7, 'highpass', 3500);
+          noise(0.04, 0.4, 'bandpass', 1800, 0.005, 2);
+          sweep(0.3, 0.25, 2600, 600, 0.04, 1);
           break;
         case 'gun':
           noise(0.05, 0.6, 'bandpass', 3000);
