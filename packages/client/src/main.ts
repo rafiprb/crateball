@@ -1,6 +1,6 @@
 import './style.css';
 import { CODE_RE, PROTOCOL_VERSION, type RoomInfo } from '@crateball/protocol';
-import { DEFAULT_SETTINGS, TICK_HZ, type BlastKind, type Role } from '@crateball/sim';
+import { DEFAULT_SETTINGS, TICK_HZ, type BlastKind } from '@crateball/sim';
 import { createChat } from './chat';
 import { createEventTracker } from './events';
 import { createKeyboard } from './input';
@@ -358,20 +358,10 @@ stopBtn.addEventListener('click', () => {
 matchBar.append(leaveBtn, stopBtn);
 document.body.append(matchBar);
 
-const ROLE_KEYS: Record<string, Role> = {
-  Digit1: 'gk',
-  Digit2: 'def',
-  Digit3: 'mid',
-  Digit4: 'fwd',
-  Digit5: 'none',
-};
 const keyboard = createKeyboard(window, (code) => {
   if (code === 'KeyM') setMuted(!sound.muted);
   if (code === 'KeyR' || code === 'F9') sendReport();
   if (code === 'Enter' && room) chat.open();
-  if (room?.state !== 'playing') return;
-  const role = ROLE_KEYS[code];
-  if (role) conn.send({ t: 'role', role });
 });
 document.addEventListener('visibilitychange', () => keyboard.release());
 

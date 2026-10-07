@@ -447,6 +447,18 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     rooms.stop();
   });
 
+  it('maç başlayınca mevkiler kilitlenir', async () => {
+    const rooms = await make();
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    const me = () => room.game.players.find((p) => p.id === 'a')!;
+    rooms.setRole('a', 'fwd');
+    expect(me().role).toBe('fwd');
+    rooms.start('a');
+    rooms.setRole('a', 'gk');
+    expect(me().role).toBe('fwd');
+    rooms.stop();
+  });
+
   it('maç sırasında gelen izleyici olur; lobide takıma geçer, izleyiciye döner', async () => {
     const { info } = await import('../src/rooms');
     const rooms = await make();

@@ -546,7 +546,7 @@ export function createRooms(
     },
     setRole(id, role) {
       const room = byClient.get(id);
-      if (!room) return;
+      if (!room || room.state !== 'lobby') return; // positions are locked once the match starts
       const p = room.game.players.find((o) => o.id === id);
       if (!p || p.role === role) return; // spectators and no-op changes: nothing to tell anyone
       if (!setRole(room.game, id, role)) return; // a human teammate already plays it
