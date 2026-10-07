@@ -113,7 +113,7 @@ decide the MVP.
   this. Draw a shrinking ring around the centre circle with "BLUE KICKS OFF", then "BALL IS LIVE".
   Maybe shorten to 3 s.
 - **Beach arena** (prototype at scratchpad `beach.html`): umbrellas outside the pitch, a water zone
-  (slower, floatier, rings around swimmers), rubber ducks that quack and shed feathers when hit. Ducks
+  (slower, floatier, rings around swimmers), rubber ducks that quack and shed feathers when hit (on-screen text "quack", a hard hit "QUACK!"). Ducks
   would be sim entities (deterministic, in snapshots). Owner's notes on the prototype:
   - Make the water zone bigger (the side bays reach further into the pitch), still symmetric, with the
     goal mouths and the kickoff circle kept dry.
