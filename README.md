@@ -22,9 +22,8 @@ drop at random spots: a **gun** (3 hits and you're out), a **mine** (lose a hear
 | --- | --- |
 | WASD / arrows | Move |
 | Space / X | Kick |
-| E / Shift | Shoot (with a gun) |
-| T | Switch team |
-| 1–4 | Position: GK, DF, MF, FW |
+| E / Shift | Use the item in hand: shoot, fire the bazooka, teleport, power kick |
+| Enter | Chat |
 | M | Mute |
 | R | Report a glitch (logs the last ~10 s of netcode stats) |
 

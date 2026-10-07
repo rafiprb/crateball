@@ -10,6 +10,7 @@ import {
   hasWeapon,
   kickDirection,
   type Game,
+  type Player,
   ARENAS,
   type ArenaKind,
   lavaHeat,
@@ -24,6 +25,8 @@ import type { Predictor } from './predict';
 export const COLORS = {
   red: '#E8574A',
   blue: '#4A7DE8',
+  redLight: '#FFB0A8',
+  blueLight: '#A8C4FF',
   grassA: '#5E9A48',
   grassB: '#588F43',
   outside: '#4A7A3A',
@@ -108,9 +111,30 @@ const ROLE_STYLE: Record<Role, [string, string]> = {
   none: ['', 'No role'],
 };
 
+const CORNERS = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+] as const;
+
 const HUD_H = 56;
+
+/** What E/Shift does right now, for the hint under the scoreboard ('' = nothing in hand). */
+function useHint(p: Player): string {
+  if (p.gun > 0) return `Press E or Shift to shoot (${p.gun} left)`;
+  if (p.bazooka) return 'Press E or Shift to fire the bazooka';
+  if (p.teleport) return 'Press E or Shift to teleport';
+  if (p.power) return 'Press E or Shift at the ball for a power kick';
+  return '';
+}
 const MAX_DPR = 2;
 const MAX_PIXELS = 3840 * 2160;
+/** A rocket hits one player (no splash), so its blast keeps a fixed size; a mine's ends at its reach. */
+const ROCKET_BLAST = 40;
+/** Gun recoil and muzzle flash after a shot, in ticks. */
+const RECOIL_TICKS = 0.12 * TICK_HZ;
+const FLASH_TICKS = 0.07 * TICK_HZ;
 const W = FIELD.halfW + FIELD.marginX + 10;
 const H = FIELD.halfH + FIELD.margin + 10;
 
@@ -323,25 +347,35 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const drawWorld = (g: Game, pr: Predictor, alpha: number, now: number, fx: Particles) => {
     drawArena(g, now);
     for (const c of g.crates) {
+      // The logo's rounded box with a lighter lid plank; the shadow stays on the ground as it bobs.
       const r = CRATES.radius;
       const bob = Math.sin(now / 300 + c.id) * 1.5;
-      ctx.save();
-      ctx.translate(c.x, c.y + bob);
       ctx.fillStyle = 'rgba(0,0,0,.25)';
-      ctx.fillRect(-r + 2, -r + 4 - bob, r * 2, r * 2);
+      ctx.beginPath();
+      ctx.roundRect(c.x - r + 2, c.y - r + 4, r * 2, r * 2, 4);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(c.x, c.y + bob - 1);
       ctx.fillStyle = COLORS.crate;
       ctx.strokeStyle = COLORS.crateEdge;
       ctx.lineWidth = 2.5;
-      ctx.fillRect(-r, -r, r * 2, r * 2);
-      ctx.strokeRect(-r, -r, r * 2, r * 2);
       ctx.beginPath();
-      ctx.moveTo(-r, -r);
-      ctx.lineTo(r, r);
-      ctx.moveTo(r, -r);
-      ctx.lineTo(-r, r);
+      ctx.roundRect(-r, -r, r * 2, r * 2, 4);
+      ctx.fill();
+      ctx.fillStyle = '#E0B080';
+      ctx.fillRect(-r + 2, -r + 2, r * 2 - 4, 3);
+      // The X brace stops short of the middle, so the "?" sits on clean wood.
+      ctx.beginPath();
+      for (const [sx, sy] of CORNERS) {
+        ctx.moveTo(sx * (r - 2), sy * (r - 2));
+        ctx.lineTo(sx * 6.5, sy * 6.5);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.roundRect(-r, -r, r * 2, r * 2, 4);
       ctx.stroke();
       ctx.restore();
-      text('?', c.x, c.y + bob, 18, '#FFF4E0', 800);
+      text('?', c.x, c.y + bob - 1, 18, '#FFF4E0', 800);
     }
     for (const b of g.bullets) {
       if (b.rocket) {
@@ -397,12 +431,51 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const kicking = (p.input & KICK) !== 0 && p.frozen === 0;
       circle(pos.x, pos.y, r, COLORS[p.team], kicking ? '#FFFFFF' : COLORS.ink, kicking ? 3 : 2);
       if (p.gun > 0) {
+        // A chunky pistol: barrel with a yellow muzzle, slide with the rounds left as dots (everyone sees
+        // them), a hand in the team's light colour. It kicks back and flashes on each shot: the sim's
+        // cooldown restarts at every shot, and a gun with all its rounds has not fired yet.
         const aim = gunTarget(g, p);
+        const since =
+          p.cooldown > 0 && p.gun < ITEMS.gunAmmo ? ITEMS.gunCooldown - p.cooldown + alpha : Infinity;
+        const recoil = Math.max(0, 1 - since / RECOIL_TICKS);
+        const flash = Math.max(0, 1 - since / FLASH_TICKS);
         ctx.save();
         ctx.translate(pos.x, pos.y);
         ctx.rotate(aim ? Math.atan2(aim.y - p.y, aim.x - p.x) : Math.atan2(p.fy, p.fx));
+        ctx.translate(-3 * recoil * recoil, 0);
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLORS.ink;
+        if (flash > 0) {
+          // Behind the barrel, so the gun stays readable.
+          const fx = r + 19;
+          const s = 4 + 6 * flash;
+          ctx.fillStyle = COLORS.bullet;
+          ctx.beginPath();
+          for (let i = 0; i < 8; i++) {
+            const a = (i * Math.PI) / 4;
+            const d = i % 2 ? s * 0.45 : s;
+            ctx.lineTo(fx + Math.cos(a) * d * (i % 4 === 0 ? 1.4 : 1), Math.sin(a) * d);
+          }
+          ctx.closePath();
+          ctx.fill();
+          circle(fx, 0, s * 0.4, '#FFF4C0');
+        }
         ctx.fillStyle = '#2A2F3A';
-        ctx.fillRect(r - 4, -3, 14, 6);
+        ctx.beginPath();
+        ctx.roundRect(r + 7, -2.5, 11, 5, 1.5);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = COLORS.bullet;
+        ctx.fillRect(r + 15.5, -1.75, 1.75, 3.5);
+        ctx.fillStyle = '#3A4470';
+        ctx.beginPath();
+        ctx.roundRect(r - 5, -4.5, 14, 9, 2.5);
+        ctx.fill();
+        ctx.stroke();
+        for (let i = 0; i < ITEMS.gunAmmo; i++)
+          circle(r + 1 + i * 3.2, 0, 1.3, i < p.gun ? COLORS.bullet : 'rgba(0,0,0,.45)');
+        circle(r - 5, 0, 3.4, COLORS[`${p.team}Light`], COLORS.ink, 1.5);
         ctx.restore();
       }
       if (p.bazooka) {
@@ -424,22 +497,106 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         ctx.restore();
       }
       if (p.teleport) {
-        // A small orb on the side the blink will go (the direction you are pressing / last moved).
-        circle(pos.x + p.fx * (r + 7), pos.y + p.fy * (r + 7), 4, '#C77DFF', '#F2E0FF', 1.5);
+        // A pulsing orb on the side the blink will go (the direction you are pressing / last moved), a
+        // spark circling it and two chevrons marching that way.
+        const ox = pos.x + p.fx * (r + 8);
+        const oy = pos.y + p.fy * (r + 8);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#C77DFF';
+        for (let i = 0; i < 2; i++) {
+          const ph = (now / 500 + i * 0.5) % 1;
+          const d = r + 15 + ph * 9;
+          const vx = pos.x + p.fx * d;
+          const vy = pos.y + p.fy * d;
+          ctx.globalAlpha = Math.sin(ph * Math.PI);
+          ctx.beginPath();
+          ctx.moveTo(vx - p.fx * 3 - p.fy * 4, vy - p.fy * 3 + p.fx * 4);
+          ctx.lineTo(vx + p.fx * 2, vy + p.fy * 2);
+          ctx.lineTo(vx - p.fx * 3 + p.fy * 4, vy - p.fy * 3 - p.fx * 4);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.lineCap = 'butt';
+        circle(ox, oy, 5.5 * (1 + Math.sin(now / 110) * 0.15), '#C77DFF', COLORS.ink, 1.5);
+        circle(ox - 1.4, oy - 1.4, 1.8, '#F2E0FF');
+        circle(ox + Math.cos(now / 160) * 9, oy + Math.sin(now / 160) * 9, 1.6, '#F2E0FF');
       }
       if (p.shield) {
+        // A bubble: a tinted band round the body (the team colour stays clean), a rim and a highlight
+        // sliding round it.
+        const sr = r + 6;
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, r + 5, 0, Math.PI * 2);
-        ctx.strokeStyle = '#7AF0FF';
-        ctx.lineWidth = 2;
+        ctx.arc(pos.x, pos.y, (r + 1 + sr) / 2, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(122,240,255,.35)';
+        ctx.lineWidth = sr - r - 1;
         ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, sr, 0, Math.PI * 2);
+        ctx.strokeStyle = '#7AF0FF';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        const a = now / 420;
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, sr, a, a + 0.8);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, sr, a + Math.PI, a + Math.PI + 0.3);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
       }
       if (p.frozen > 0) {
+        // An ice cube with a bevel and glints. In the last 40% cracks appear one by one, and in the
+        // last 0.4 s it shivers: everyone can see the player is about to break free.
+        const left = p.frozen / ITEMS.iceFreeze;
+        const s = r + 4;
+        ctx.save();
+        ctx.translate(pos.x + (left < 0.16 ? Math.sin(now / 22) * 1.2 : 0), pos.y);
+        ctx.beginPath();
+        ctx.roundRect(-s, -s, s * 2, s * 2, 6);
         ctx.fillStyle = COLORS.ice;
+        ctx.fill();
         ctx.strokeStyle = '#E8F8FF';
-        ctx.lineWidth = 2;
-        ctx.fillRect(pos.x - r - 3, pos.y - r - 3, (r + 3) * 2, (r + 3) * 2);
-        ctx.strokeRect(pos.x - r - 3, pos.y - r - 3, (r + 3) * 2, (r + 3) * 2);
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.roundRect(-s + 3.5, -s + 3.5, s * 2 - 7, s * 2 - 7, 4);
+        ctx.strokeStyle = 'rgba(255,255,255,.35)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-s + 5, -s + 12);
+        ctx.lineTo(-s + 12, -s + 5);
+        ctx.moveTo(-s + 5, -s + 18);
+        ctx.lineTo(-s + 8, -s + 15);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        if (left < 0.4) {
+          ctx.strokeStyle = '#4C7AA8';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(s, -s + 6);
+          ctx.lineTo(s - 7, -2);
+          ctx.lineTo(s - 4, 5);
+          if (left < 0.27) {
+            ctx.moveTo(-s + 8, s);
+            ctx.lineTo(-3, s - 8);
+            ctx.lineTo(3, s - 6);
+          }
+          if (left < 0.16) {
+            ctx.moveTo(-s, 2);
+            ctx.lineTo(-s + 7, 0);
+            ctx.lineTo(-s + 10, 6);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
       }
       if (p.slow > 0) text('~', pos.x, pos.y - r - 12, 16, '#C59BFF', 800);
       for (let i = 0; i < PLAYER.maxHp; i++)
@@ -559,15 +716,37 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     for (const b of g.blasts) {
       const [color, label] = ITEM_STYLE[b.kind];
       const k = 1 - b.t / ITEMS.blastShow;
+      const reach = b.kind === 'mine' ? ITEMS.blastRadius : b.kind === 'rocket' ? ROCKET_BLAST : 0;
       ctx.globalAlpha = 1 - k;
-      if (b.kind === 'rocket') circle(b.x, b.y, 40 * (0.3 + k * 0.7), 'rgba(255,106,61,.35)');
-      if (b.kind === 'mine') circle(b.x, b.y, ITEMS.blastRadius * (0.3 + k * 0.7), 'rgba(255,106,61,.35)');
-      if (b.kind === 'warp') circle(b.x, b.y, PLAYER.radius + 6 * (1 - k), 'rgba(199,125,255,.4)');
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, 10 + k * 40, 0, Math.PI * 2);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.stroke();
+      if (reach) {
+        // An explosion: a faint disc and a shock ring that stop at its reach, a fireball burning down
+        // and a flash on the first few frames.
+        const out = 1 - (1 - k) ** 3;
+        circle(b.x, b.y, reach * out, 'rgba(255,106,61,.18)');
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 12 + (reach - 12) * out, 0, Math.PI * 2);
+        ctx.strokeStyle = '#FFB760';
+        ctx.lineWidth = 2 + 4 * (1 - k);
+        ctx.stroke();
+        const fire = 1 - k * 1.6;
+        if (fire > 0) {
+          ctx.globalAlpha = 1;
+          circle(b.x, b.y, 24 * fire + 4, '#FF6A3D', COLORS.ink, 2);
+          circle(b.x, b.y, 14 * fire + 2, '#FFE066');
+        }
+        if (k < 0.12) {
+          ctx.globalAlpha = 1 - k / 0.12;
+          circle(b.x, b.y, 34, '#FFF4E0');
+        }
+        ctx.globalAlpha = 1 - k;
+      } else {
+        if (b.kind === 'warp') circle(b.x, b.y, PLAYER.radius + 6 * (1 - k), 'rgba(199,125,255,.4)');
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 10 + k * 40, 0, Math.PI * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
       if (label) text(label, b.x, b.y - 24 - k * 24, 16, color, 800);
       ctx.globalAlpha = 1;
     }
@@ -668,10 +847,6 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const bits: string[] = [];
       if (g.settings.roles !== false) bits.push(`${ROLE_STYLE[me.role][1]}${me.buff ? ' ✓' : ''}`);
       if (me.dead > 0) bits.push(`Respawn in ${Math.ceil(me.dead / TICK_HZ)}…`);
-      if (me.gun > 0) bits.push(`Gun ×${me.gun} [E/Shift]`);
-      if (me.teleport) bits.push('Teleport: blink [E/Shift]');
-      if (me.bazooka) bits.push('Bazooka: homing rocket [E/Shift]');
-      if (me.power) bits.push('Power kick ready');
       if (me.shield) bits.push('Shield');
       if (me.boost > 0) bits.push('Speed');
       if (me.slow > 0) bits.push('Slowed');
@@ -685,7 +860,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.font = '600 12px Nunito, system-ui, sans-serif';
     ctx.fillStyle = '#FFF4E0';
     ctx.fillText(
-      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Chat: Enter · Role: 1 GK 2 DF 3 MF 4 FW 5 none · Report a glitch: R',
+      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Chat: Enter · Report a glitch: R',
       12,
       h - 14,
     );
@@ -704,10 +879,25 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const why = golden ? 'FULL TIME' : `FIRST TO ${g.settings.scoreLimit}`;
       text(`${why}  ·  ${g.score[0]} – ${g.score[1]}`, mid, h / 2 + 56, 26, '#FFF4E0', 800);
     }
-    if (banners && g.arena.kind === 'wind') {
-      // Wind indicator under the scoreboard.
-      const ax = mid;
-      const ay = HUD_H + 18;
+    // One row of pills between the scoreboard and the pitch: the item in hand and its key, and the wind
+    // on the wind arena. Both shown, they sit side by side, centred as a pair (stacked, the lower one
+    // would land on the pitch in a small window).
+    const use = me && me.dead === 0 ? useHint(me) : '';
+    const wind = banners && g.arena.kind === 'wind';
+    const ay = HUD_H + 18;
+    ctx.font = "800 16px 'Baloo 2', system-ui, sans-serif";
+    const uw = use ? ctx.measureText(use).width + 32 : 0;
+    const row = uw + (wind ? 104 : 0) + (use && wind ? 8 : 0);
+    if (use) {
+      const ux = mid - row / 2 + uw / 2;
+      ctx.fillStyle = 'rgba(20,24,40,.82)';
+      ctx.beginPath();
+      ctx.roundRect(ux - uw / 2, ay - 14, uw, 28, 10);
+      ctx.fill();
+      text(use, ux, ay + 1, 16, '#FFE066', 800);
+    }
+    if (wind) {
+      const ax = mid + row / 2 - 52;
       ctx.fillStyle = 'rgba(20,24,40,.82)';
       ctx.beginPath();
       ctx.roundRect(ax - 52, ay - 14, 104, 28, 10);

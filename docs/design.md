@@ -15,23 +15,25 @@ oyuncu kutuya değince açılır.
   boşa çıkan pay havuza düşer, diğeri oradan artar; boşta kalan maçta orantılı dağılır). Hazır ayarlar:
   Default / Friendly / Mean / Guns only. Maç başlarken ayarlar loglanır ('maç başladı'), hangi
   karışımların seçildiği oradan sayılır.
-- Varsayılan kutu ağırlıkları (100 üzerinden; kötüler = iyiler = 50): Mine 22, Ice 18, Dizzy 10 | Gun 18, Speed 7,
-  Shield 7, Power kick 6, Teleport 6, Bazooka 6.
+- Varsayılan kutu ağırlıkları (100 üzerinden; üç kutudan ikisi işe yarar: iyiler 62, kötüler 38): Mine 14, Ice 14,
+  Dizzy 10 | Gun 13, Speed 10, Shield 8, Power kick 12, Teleport 12, Bazooka 7.
 - **Dizzy** (kötü): 4 sn yön tuşları ters çalışır; kafadan kabarcıklar çıkar. Santrada ve ölünce geçer.
 - **Shield** süresiz: gol olana ya da ilk kötü şey gelene kadar kalır ve onu tek seferlik engeller (mermi,
-  roket, patlama, mayın, buz, sarhoş). Engellediğinde "BLOCKED!", kırılan cam efekti ve "ting" sesi.
+  roket, patlama, mayın, buz, sarhoş). Engellediğinde "BLOCKED!", kırılan cam efekti ve pat-çatır cam kırılma sesi.
 - Kutu içerikleri: **Gun** (3 mermi, yeni silah 3’e doldurur; otomatik nişan: en yakın, önü açık rakip; hedef alınana kırmızı uyarı; 3 isabet öldürür, topa da çarpar), **Mine** (patlar:
   açana 1 hasar + 4 sn yavaşlama, çevredekileri ve topu iter), **Ice** (2.5 sn donma), **Speed**,
-  **Shield** (bir hasarı emer), **Power kick** (sonraki vuruş 2.2×), **Teleport** (elde tutulur; E/F/Shift
+  **Shield** (bir hasarı emer), **Power kick** (elde tutulur; E/F/Shift basılıyken top menzile girince 2.2× vuruş,
+  o vuruşta harcanır; Space normal vuruş kalır ve gücü harcamaz), **Teleport** (elde tutulur; E/F/Shift
   ile o an basılan yön tuşlarının yönüne sabit 150 px sıçratır, tuşa basılmıyorsa son hareket yönüne;
   hız korunur, saha sınırında durur; donmuşken kullanılamaz, ölünce/santrada kaybolur), **Bazooka** (en nadir
   kutu; tek roket; tuşla yön verilmez, menzildeki en yakın rakibe kilitlenir (arada top ya da takım
   arkadaşı olsa da), hedefe kırmızı uyarı düşer; roket hedefi takip eder ama sınırlı döner, son anda yana
   kaçan kurtulabilir; isabet 3 can götürür yani öldürür, kalkan bir kez durdurur; toptan ve takım
   arkadaşlarından geçer).
-- Elde tek eşya: Gun, Teleport ve Bazooka aynı tuşu (E/F/Shift) kullanır, yeni gelen eskisinin yerini
-  alır. Silah tuş basılıyken ateşler; ışınlanma ve bazuka yeni bir basış ister. Bazukalı bot kilitlenince ateşler. Botlar gitmek istedikleri yere uzak kalınca
-  (200 px+) o yöne sıçrar.
+- Elde tek eşya: Gun, Teleport, Bazooka ve Power kick aynı tuşu (E/F/Shift) kullanır, yeni gelen eskisinin
+  yerini alır. Skorun altındaki sarı şerit eldeki eşyayı ve tuşu yazar. Silah tuş basılıyken ateşler; ışınlanma
+  ve bazuka yeni bir basış ister. Bazukalı bot kilitlenince ateşler, güçlü şutlu bot vuruşunu bu tuşla atar.
+  Botlar gitmek istedikleri yere uzak kalınca (200 px+) o yöne sıçrar.
 - Mevkiler (herkes topa koşmasın diye; bonus yalnızca kendi bölgesinde):
   - GK (kale çizgisinden 140 px): sert gelen topu tutar (top hızının %20'si kalır, ayağının dibine düşer), çevik
     (1,5× ivme ve fren). Ceza sahasında biraz büyük (r 19).
@@ -43,7 +45,7 @@ oyuncu kutuya değince açılır.
     sürme ve topun etrafında dönme normal kalır, yani kaleci tutup çevirip pas atabilir.
   - Gerçek mevkiler takımda tek kişilik: bir insan takım arkadaşının mevkisi alınamaz (lobide düğmesi
     kapalı), botunki alınır (bot boşta kalan bir mevkiye geçer). "No role" (pasifsiz) herkese açık.
-    1–5 tuşlarıyla maç içinde de değişir.
+    Mevki yalnızca lobide seçilir; maç başlayınca kilitlenir (sunucu lobi dışındaki değişikliği yok sayar).
   - Host lobide "Positions" kutusunu kapatırsa kimse pasif almaz (mevki etiketleri ve seçici gizlenir).
 - Pas: vuruş yönü bir takım arkadaşına ±6° (orta saha kendi bölgesinde ±15°) yakınsa top ona doğru
   bükülür ve koşusunun önüne atılır; kale ağzına giden şut bükülmez. Vuruş tuşu basılı değilken

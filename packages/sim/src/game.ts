@@ -314,10 +314,13 @@ function controlPlayer(g: Game, p: Player): void {
   }
   if (!kickHeld) p.kickArmed = true;
   else if (p.kickArmed) tryKick(g, p);
-  // The gun fires for as long as USE is held; a teleport or the bazooka takes a fresh press.
+  // The gun fires for as long as USE is held; a teleport or the bazooka takes a fresh press. The power
+  // kick goes off as soon as the ball is in reach while USE is held (Space stays a normal kick).
   if (!useHeld) p.useArmed = true;
   else {
-    if (p.teleport && p.useArmed) blink(g, p);
+    if (p.power) {
+      if (p.kickTick !== g.tick) tryKick(g, p, true); // not twice in one tick with Space
+    } else if (p.teleport && p.useArmed) blink(g, p);
     else if (p.bazooka && p.useArmed) fireRocket(g, p);
     else if (p.gun > 0 && p.cooldown === 0) fire(g, p);
     p.useArmed = false;
@@ -412,18 +415,20 @@ export function kickDirection(g: Game, p: Player): { x: number; y: number; to: s
   return best;
 }
 
-function tryKick(g: Game, p: Player): void {
+/** Kicks the ball if it is in reach (false if not). `power`: the power kick item, spent on it. */
+function tryKick(g: Game, p: Player, power = false): boolean {
   const dir = kickDirection(g, p);
-  if (!dir) return;
+  if (!dir) return false;
   const b = g.ball;
-  const k = PLAYER.kickStrength * (p.power ? PLAYER.powerKickMul : 1) * kickMul(p) * BALL.invMass;
+  const k = PLAYER.kickStrength * (power ? PLAYER.powerKickMul : 1) * kickMul(p) * BALL.invMass;
   b.vx += dir.x * k;
   b.vy += dir.y * k;
   p.kickArmed = false;
   p.kickTick = g.tick;
-  p.power = false;
+  if (power) p.power = false;
   g.lastTouch = p.id;
   if (g.phase === 'kickoff') g.phase = 'play';
+  return true;
 }
 
 function fire(g: Game, p: Player): void {
@@ -818,20 +823,24 @@ export function rollLoot(g: Game): ItemKind {
 export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKind): void {
   g.blasts.push({ x, y, kind, t: ITEMS.blastShow });
   switch (kind) {
+    // One item on E/Shift at a time: a new one replaces the old.
     case 'gun':
       p.gun = ITEMS.gunAmmo;
       p.teleport = false;
       p.bazooka = false;
+      p.power = false;
       break;
     case 'teleport':
       p.teleport = true;
       p.gun = 0;
       p.bazooka = false;
+      p.power = false;
       break;
     case 'bazooka':
       p.bazooka = true;
       p.gun = 0;
       p.teleport = false;
+      p.power = false;
       break;
     case 'dizzy':
       if (!shieldBlocks(g, p)) p.dizzy = ITEMS.dizzy;
@@ -850,6 +859,9 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
       break;
     case 'power':
       p.power = true;
+      p.gun = 0;
+      p.teleport = false;
+      p.bazooka = false;
       break;
     case 'mine': {
       // A shielded opener is spared the whole thing (damage, slow and the shove); the blast still

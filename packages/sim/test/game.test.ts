@@ -91,6 +91,32 @@ describe('sim', () => {
     expect(g.ball.vx).toBeLessThanOrEqual(v); // tuşu bırakmadan ikinci vuruş yok
   });
 
+  it('güçlü şut E/Shift ile atılır; Space normal vuruş kalır ve gücü harcamaz', () => {
+    const kickWith = (bits: number) => {
+      const g = createGame(1);
+      const p = addPlayer(g, 'a', 'A', 'red');
+      Object.assign(p, { x: -(PLAYER.radius + BALL.radius + 1), y: 0, power: true });
+      step(g, new Map([['a', bits]]));
+      return { v: g.ball.vx, power: p.power };
+    };
+    const normal = kickWith(KICK);
+    expect(normal.power).toBe(true);
+    const strong = kickWith(USE);
+    expect(strong.power).toBe(false);
+    expect(strong.v).toBeGreaterThan(normal.v * 2);
+    expect(kickWith(KICK | USE).v).toBeCloseTo(normal.v); // ikisi aynı anda: tek vuruş
+  });
+
+  it('elde tek eşya olur: güçlü şut silahı, silah güçlü şutu siler', () => {
+    const g = createGame(1);
+    const p = addPlayer(g, 'a', 'A', 'red');
+    p.gun = 3;
+    openCrate(g, p, p.x, p.y, 'power');
+    expect(p).toMatchObject({ power: true, gun: 0 });
+    openCrate(g, p, p.x, p.y, 'gun');
+    expect(p.power).toBe(false);
+  });
+
   it('top kale çizgisini geçince gol sayılır ve başlama vuruşu sıfırlanır', () => {
     const g = createGame(1);
     addPlayer(g, 'a', 'A', 'red');
@@ -751,6 +777,23 @@ describe('bazuka', () => {
       bits = botInput(g, a);
     }
     expect(bits & USE).toBe(USE);
+  });
+
+  it('güçlü şutu olan bot vuruşu Space ile değil E/Shift ile atar', () => {
+    const kickBits = (power: boolean) => {
+      const g = createGame(1);
+      const p = addPlayer(g, 'a', 'A', 'red');
+      Object.assign(p, { bot: true, power, x: -(PLAYER.radius + BALL.radius + 1), y: 0 });
+      g.phase = 'play';
+      let bits = 0;
+      for (let t = 0; t < 30 && !(bits & (KICK | USE)); t++) {
+        g.tick++;
+        bits = botInput(g, p);
+      }
+      return bits & (KICK | USE);
+    };
+    expect(kickBits(false)).toBe(KICK);
+    expect(kickBits(true)).toBe(USE);
   });
 });
 

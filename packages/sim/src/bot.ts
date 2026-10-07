@@ -94,7 +94,7 @@ export function botInput(g: Game, p: Player): number {
   else if (dx < -4) bits |= LEFT;
   if (dy > 4) bits |= DOWN;
   else if (dy < -4) bits |= UP;
-  if (wantKick && p.kickArmed && roll(g, p) < BOT.kickChance * 100) bits |= KICK;
+  if (wantKick && p.kickArmed && roll(g, p) < BOT.kickChance * 100) bits |= p.power ? USE : KICK;
   // Far from where it wants to be and already facing that way (fx/fy follow the keys): blink there.
   if (
     p.teleport &&

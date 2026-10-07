@@ -104,6 +104,10 @@ export function createParticles(): Particles {
   const ring = (x: number, y: number, color: string, size: number, life: number) =>
     add({ x, y, shape: 3, size, grow: size * 4, life, color, drag: 0 });
 
+  /** A dark scorch mark that fades on the grass after a blast. */
+  const scorch = (x: number, y: number) =>
+    add({ x, y, size: 22, grow: 4, life: 1.6, drag: 0, color: 'rgba(40,28,20,.32)', ground: true });
+
   /** Arena weather: rain streaks, ice glints, lava embers, wind streaks (world coordinates). */
   const W = 470;
   const Hh = 250;
@@ -276,7 +280,7 @@ export function createParticles(): Particles {
               drag: 8,
             });
           }
-          add({ x: e.x, y: e.y, size: 9, grow: -30, life: 0.08, color: '#FFF4C0', drag: 0 });
+          // No flash puff here: the gun draws its own muzzle flash (a puff over the players hid it).
           break;
         }
         case 'hit':
@@ -322,6 +326,7 @@ export function createParticles(): Particles {
               ground: true,
             });
             ring(e.x, e.y, '#FF6A3D', 22, 0.4);
+            scorch(e.x, e.y);
             shake = Math.max(shake, 14);
             break;
           }
@@ -342,6 +347,7 @@ export function createParticles(): Particles {
               ground: true,
             });
             ring(e.x, e.y, '#FFB760', ITEMS.blastRadius / 4, 0.35);
+            scorch(e.x, e.y);
             shake = Math.max(shake, 12);
           } else if (e.kind === 'ice') {
             burst(e.x, e.y, 28, [80, 260], colors, { shape: 2, size: 5, life: 0.8, spin: 8, drag: 4 });
