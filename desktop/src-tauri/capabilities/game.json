@@ -4,7 +4,7 @@
   "description": "The game page may only toggle fullscreen (F11 / Alt+Enter).",
   "windows": ["main"],
   "remote": {
-    "urls": ["https://playcrateball.com/*", "http://localhost:*/*"]
+    "urls": ["https://playcrateball.com/*"]
   },
   "permissions": ["core:window:allow-set-fullscreen", "core:window:allow-is-fullscreen"]
 }

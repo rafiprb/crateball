@@ -50,4 +50,37 @@ describe('yayın: yüklenen arşiv yalnızca derleme bağlamı', () => {
     const ignore = read('.dockerignore').split('\n');
     for (const p of ['.deploy.env', '.grafana.env', '*.pem', '*.key', 'id_*']) expect(ignore).toContain(p);
   });
+
+  it('Caddy güvenlik başlıkları: çerçeveleme yok, HSTS, nosniff, referrer; fontlar ve soket izinli', () => {
+    const caddy = read('deploy/Caddyfile');
+    const csp = /Content-Security-Policy "([^"]+)"/.exec(caddy)?.[1] ?? '';
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain('https://fonts.googleapis.com');
+    expect(csp).toContain('https://fonts.gstatic.com');
+    expect(csp).toMatch(/connect-src [^;]*wss:\/\/playcrateball\.com/);
+    expect(csp).toMatch(/connect-src [^;]*ipc:/); // the desktop app's fullscreen keys
+    expect(caddy).toMatch(/Strict-Transport-Security "max-age=\d+/);
+    expect(caddy).toContain('X-Content-Type-Options "nosniff"');
+    expect(caddy).toContain('Referrer-Policy');
+  });
+
+  it('yapı girdileri sabitlenmiş: Actions commit SHA, imajlar digest', () => {
+    for (const wf of ['ci', 'release', 'desktop']) {
+      const y = read(`.github/workflows/${wf}.yml`);
+      for (const m of y.matchAll(/uses: (\S+)/g)) expect(m[1], wf).toMatch(/@[0-9a-f]{40}$/);
+    }
+    for (const m of read('Dockerfile').matchAll(/^FROM (\S+)/gm)) expect(m[1]).toMatch(/@sha256:[0-9a-f]{64}/);
+    for (const m of read('deploy/compose.yml').matchAll(/image: (\S+)/g))
+      if (!m[1]!.startsWith('crateball:')) expect(m[1]).toMatch(/@sha256:[0-9a-f]{64}/);
+  });
+
+  it('masaüstü: yalnızca http/https dışarı açılır, gömülü sayfada CSP var, prodda localhost izni yok', () => {
+    const rs = read('desktop/src-tauri/src/main.rs');
+    expect(rs).toMatch(/matches!\(url\.scheme\(\), "http" \| "https"\)/);
+    expect(rs).not.toMatch(/"about" \| "data" \| "blob"/);
+    const conf = JSON.parse(read('desktop/src-tauri/tauri.conf.json')) as { app: { security: { csp: unknown } } };
+    expect(conf.app.security.csp).not.toBeNull();
+    expect(read('desktop/src-tauri/capabilities/game.json')).not.toContain('localhost');
+  });
 });

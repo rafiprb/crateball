@@ -16,8 +16,21 @@ const HOME_URL: &str = "http://tauri.localhost/index.html";
 #[cfg(not(windows))]
 const HOME_URL: &str = "tauri://localhost/index.html";
 
+/// The bundled start page itself (and the empty page a webview may pass through), nothing broader:
+/// no data:, blob: or other about: pages.
 fn is_local(url: &Url) -> bool {
-    matches!(url.scheme(), "tauri" | "about" | "data" | "blob") || url.host_str() == Some("tauri.localhost")
+    let host = url.host_str();
+    (url.scheme() == "tauri" && host == Some("localhost"))
+        || (url.scheme() == "http" && host == Some("tauri.localhost"))
+        || url.as_str() == "about:blank"
+}
+
+/// Only plain web links leave the window, opened in the user's browser. Anything else (file:, another
+/// app's custom scheme, javascript:) is dropped: the opener would hand it to the OS as is.
+fn open_external(url: &Url) {
+    if matches!(url.scheme(), "http" | "https") && url.host_str().is_some() {
+        let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+    }
 }
 
 fn main() {
@@ -68,13 +81,11 @@ addEventListener('keydown', (e) => {{
                     if is_local(url) || url.origin() == nav_origin {
                         return true;
                     }
-                    let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+                    open_external(url);
                     false
                 })
                 .on_new_window(|url, _features| {
-                    if url.scheme().starts_with("http") {
-                        let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
-                    }
+                    open_external(&url);
                     NewWindowResponse::Deny
                 })
                 .on_page_load(move |win, payload| {

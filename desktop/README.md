@@ -19,4 +19,13 @@ needs rebuilding when the wrapper changes.
 
 Steam launch options: `Crateball.exe` (Windows), `Crateball.app` (macOS).
 F11 or Alt+Enter toggles fullscreen, F5 reloads. `CRATEBALL_URL` points the app at another server
-(e.g. a dev server); `CRATEBALL_SMOKE=<file>` writes what loaded into the file and quits.
+(e.g. a dev server; the game page there gets no fullscreen permission: only playcrateball.com does);
+`CRATEBALL_SMOKE=<file>` writes what loaded into the file and quits.
+
+Security: only http/https links leave the window (opened in the browser); the window itself only
+navigates to the bundled start page and the game's origin. The bundled start page has a CSP (Tauri adds
+hashes for its inline script at build time).
+
+`Cargo.lock` is not committed: there is no Rust toolchain outside CI (by choice), so it cannot be generated
+and reviewed here. CI resolves dependencies within the `Cargo.toml` ranges on each build; to pin them,
+let the Desktop workflow upload `src-tauri/Cargo.lock` once and commit that file.
