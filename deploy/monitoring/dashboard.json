@@ -205,7 +205,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "count(sum by (room) (count_over_time({job=\"crateball\", msg=\"oda istatistik\"} | json room=\"room\" [1m])))",
+          "expr": "count(sum by (room) (count_over_time({job=\"crateball\", msg=\"oda istatistik\"} | json room=\"room\" [1m]))) or vector(0)",
           "datasource": {
             "type": "loki",
             "uid": "${loki}"
@@ -217,7 +217,8 @@
       "fieldConfig": {
         "defaults": {},
         "overrides": []
-      }
+      },
+      "description": "Son bir dakikada istatistik yazan odalar/oyuncular; kimse yoksa 0."
     },
     {
       "id": 7,
@@ -236,7 +237,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "count(sum by (name) (count_over_time({job=\"crateball\", msg=\"istemci istatistik\"} | json name=\"name\" [1m])))",
+          "expr": "count(sum by (name) (count_over_time({job=\"crateball\", msg=\"istemci istatistik\"} | json name=\"name\" [1m]))) or vector(0)",
           "datasource": {
             "type": "loki",
             "uid": "${loki}"
@@ -248,7 +249,8 @@
       "fieldConfig": {
         "defaults": {},
         "overrides": []
-      }
+      },
+      "description": "Son bir dakikada istatistik yazan odalar/oyuncular; kimse yoksa 0."
     },
     {
       "id": 8,
