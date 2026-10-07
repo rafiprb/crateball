@@ -116,7 +116,9 @@ const H = FIELD.halfH + FIELD.margin + 10;
 
 export interface Renderer {
   resize(w: number, h: number, dpr: number): void;
-  draw(p: Predictor, alpha: number, fx: Particles, hud: { rtt: number | null }): void;
+  /** `banners: false` leaves out the centre-screen words (GOAL!, the countdown) and the wind pill: the
+   * trailer frames its own shots and would cut them in half. */
+  draw(p: Predictor, alpha: number, fx: Particles, hud: { rtt: number | null; banners?: boolean }): void;
   /** A chat line from a player: shown in a speech bubble above them for a few seconds. */
   say(id: string, text: string): void;
 }
@@ -643,7 +645,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
   };
 
-  const drawHud = (g: Game, pr: Predictor, w: number) => {
+  const drawHud = (g: Game, pr: Predictor, w: number, banners = true) => {
     const mid = w / 2;
     ctx.fillStyle = 'rgba(20,24,40,.82)';
     ctx.beginPath();
@@ -702,7 +704,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const why = golden ? 'FULL TIME' : `FIRST TO ${g.settings.scoreLimit}`;
       text(`${why}  ·  ${g.score[0]} – ${g.score[1]}`, mid, h / 2 + 56, 26, '#FFF4E0', 800);
     }
-    if (g.arena.kind === 'wind') {
+    if (banners && g.arena.kind === 'wind') {
       // Wind indicator under the scoreboard.
       const ax = mid;
       const ay = HUD_H + 18;
@@ -734,7 +736,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       text(look.name.toUpperCase(), mid, h / 2 - 150, 40, '#FFF4E0', 800);
       text(look.hint, mid, h / 2 - 118, 18, '#FFF4E0', 700);
     }
-    if (banner) text(banner, mid, h / 2, 72, color, 800);
+    if (!banners) {
+      // trailer: no centre-screen words
+    } else if (banner) text(banner, mid, h / 2, 72, color, 800);
     else if (g.phase === 'play' && timed && g.clock > 0 && secs <= 10) {
       // Final countdown, big and fading in the middle of the pitch.
       ctx.globalAlpha = 0.55;
@@ -796,7 +800,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.setTransform(scale, 0, 0, scale, cx + sx, cy + sy);
       drawWorld(g, pr, alpha, now, fx);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawHud(g, pr, canvas.width / dpr);
+      drawHud(g, pr, canvas.width / dpr, hudInfo.banners);
       drawPing(hudInfo.rtt, canvas.width / dpr);
     },
   };

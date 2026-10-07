@@ -9,6 +9,8 @@ export const BLUE = '#4A7DE8';
 export const CREAM = '#FFF4E0';
 export const ORANGE = '#FF9A3D';
 export const GOLD = '#FFCF4A';
+/** Teleport purple: the game's own warp colour, used for the teleport tag only. */
+export const VIOLET = '#C77DFF';
 
 export const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 export const easeOut = (k: number) => 1 - (1 - clamp01(k)) ** 3;
@@ -274,4 +276,21 @@ export function drawBits(o: Ctx, bits: Bit[], dt: number): void {
     o.restore();
   }
   for (let i = bits.length - 1; i >= 0; i--) if (bits[i]!.life <= 0) bits.splice(i, 1);
+}
+
+/**
+ * The brand lock-up: mark, name, tagline. One definition for the title card and the end card.
+ * `ballK`/`open`/`crateY` animate the mark (see logoMark); `titleT`/`tagT` are the local times the
+ * name and the tagline slam in (negative = not yet).
+ */
+export function lockup(
+  o: Ctx,
+  cx: number,
+  cy: number,
+  a: { crateY?: number; ballK?: number; open?: number; markScale?: number; titleT: number; tagT: number },
+): void {
+  const mark = 300 * (a.markScale ?? 1);
+  logoMark(o, cx, cy - 190, mark, (a.crateY ?? 0) / (mark / 64), a.ballK ?? 1, a.open ?? 1);
+  slam(o, 'CRATEBALL', cx, cy + 50, a.titleT, { size: 180, color: GOLD, from: 2 });
+  slam(o, '3v3 ARCADE FOOTBALL', cx, cy + 165, a.tagT, { size: 60, color: CREAM, from: 1.25 });
 }

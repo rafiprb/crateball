@@ -1,6 +1,7 @@
 /* global window */
 // Renders the trailer (packages/client/trailer.html) to an MP4: every frame drawn in a headless browser,
-// piped to ffmpeg, then the soundtrack (rendered offline in the page) muxed in.
+// piped to ffmpeg, then the soundtrack (rendered offline in the page) loudness-normalised (-14 LUFS,
+// -1 dBTP: what YouTube and Steam play at) and muxed in. Refuses to render if a shot fails check().
 // Needs the client dev server (pnpm dev) and ffmpeg (on PATH, or FFMPEG=/path/to/ffmpeg).
 // Usage: node scripts/trailer.mjs [out.mp4]
 import { chromium } from '@playwright/test';
@@ -15,13 +16,17 @@ mkdirSync(path.dirname(outFile), { recursive: true });
 const videoOnly = outFile.replace(/\.mp4$/, '.video.mp4');
 const wav = outFile.replace(/\.mp4$/, '.wav');
 
-const ffmpeg = (args) => {
-  const proc = spawn(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', ...args], {
-    stdio: ['pipe', 'inherit', 'inherit'],
+const ffmpeg = (args, level = 'error') => {
+  const proc = spawn(FFMPEG, ['-hide_banner', '-loglevel', level, '-y', ...args], {
+    stdio: ['pipe', 'inherit', 'pipe'],
   });
+  let log = '';
+  proc.stderr.on('data', (d) => (log += d));
   const done = new Promise((resolve, reject) => {
     proc.on('error', reject);
-    proc.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited with ${code}`))));
+    proc.on('exit', (code) =>
+      code === 0 ? resolve(log) : reject(new Error(`ffmpeg exited with ${code}: ${log}`)),
+    );
   });
   return { proc, done };
 };
@@ -29,9 +34,14 @@ const ffmpeg = (args) => {
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on('pageerror', (e) => console.error('page error:', e.message));
-await page.goto(URL);
+await page.goto(URL, { waitUntil: 'networkidle' }); // Vite may reload once after a code change
 await page.waitForFunction(() => window.trailer);
 await page.evaluate(() => window.trailer.ready());
+const problems = await page.evaluate(() => window.trailer.check());
+if (problems.length) {
+  console.error('shots that do not show what their label says:\n  ' + problems.join('\n  '));
+  process.exit(1);
+}
 const { frames, fps } = await page.evaluate(() => ({
   frames: window.trailer.frames,
   fps: window.trailer.fps,
@@ -46,6 +56,14 @@ const enc = ffmpeg([
   'mjpeg',
   '-i',
   '-',
+  '-vf',
+  'scale=out_color_matrix=bt709:out_range=tv',
+  '-colorspace',
+  'bt709',
+  '-color_primaries',
+  'bt709',
+  '-color_trc',
+  'bt709',
   '-c:v',
   'libx264',
   '-preset',
@@ -71,11 +89,29 @@ await enc.done;
 
 writeFileSync(wav, Buffer.from(await page.evaluate(() => window.trailer.audio()), 'base64'));
 await browser.close();
+// Two-pass loudness normalisation: measure, then apply linearly.
+// -13.5 in, -14 out: the limiter after it takes about half a LU.
+const target = 'I=-13.5:TP=-1:LRA=11';
+const measured = await ffmpeg(
+  ['-i', wav, '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-'],
+  'info',
+).done;
+const m = JSON.parse(measured.slice(measured.lastIndexOf('{'), measured.lastIndexOf('}') + 1));
+const norm =
+  `loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
+  `:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true` +
+  // and a brick-wall ceiling at -2.9 dBFS so the AAC file stays below -1.5 dBTP (encoding overshoots)
+  ',alimiter=limit=0.72:attack=5:release=50:level=false';
+console.log(`audio: ${m.input_i} LUFS, peak ${m.input_tp} dBTP -> ${target}`);
 await ffmpeg([
   '-i',
   videoOnly,
   '-i',
   wav,
+  '-af',
+  norm,
+  '-ar',
+  '48000',
   '-c:v',
   'copy',
   '-c:a',

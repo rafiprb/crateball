@@ -49,25 +49,64 @@ export function newMatch(spec: MatchSpec): Game {
   return g;
 }
 
+/** What a shot is about: the event that has to happen on screen while its label is up. */
+export type Key =
+  'loot' | 'gun' | 'rocket' | 'teleport' | 'mine' | 'ice' | 'dizzy' | 'erupt' | 'goal' | 'save';
+
+export const KEYS: Record<Key, (e: GameEvent) => boolean> = {
+  /** A crate opening with something good inside. */
+  loot: (e) =>
+    e.type === 'item' && ['gun', 'bazooka', 'teleport', 'power', 'shield', 'boost'].includes(e.kind),
+  gun: (e) => e.type === 'shot' && !e.rocket,
+  rocket: (e) => e.type === 'item' && e.kind === 'rocket',
+  teleport: (e) => e.type === 'item' && e.kind === 'warp',
+  mine: (e) => e.type === 'item' && e.kind === 'mine',
+  ice: (e) => e.type === 'item' && e.kind === 'ice',
+  dizzy: (e) => e.type === 'item' && e.kind === 'dizzy',
+  erupt: (e) => e.type === 'item' && e.kind === 'erupt',
+  goal: (e) => e.type === 'goal',
+  save: (e) => e.type === 'item' && e.kind === 'save',
+};
+
+/** Where an event happened, if it has a place. */
+export function where(e: GameEvent): { x: number; y: number } | null {
+  return 'x' in e && 'y' in e ? { x: e.x, y: e.y } : null;
+}
+
 export interface Moment {
   tick: number;
   events: GameEvent[];
+  /** Ball and (living) player positions after this tick. */
+  ball: { x: number; y: number };
+  players: Array<{ x: number; y: number }>;
+  phase: string;
 }
 
-/** Plays a match headless and lists every tick that produced an event worth showing. */
-export function scan(spec: MatchSpec, ticks: number): Moment[] {
+/** Plays `ticks` ticks of a match from `from` headless and records every tick (ball, phase, events). */
+export function dryRun(spec: MatchSpec, from: number, ticks: number): Moment[] {
   const g = newMatch(spec);
+  while (g.tick < from) step(g);
   const track = createEventTracker();
-  const out: Moment[] = [];
   track(g);
+  const out: Moment[] = [];
   for (let i = 0; i < ticks; i++) {
     step(g);
-    const ev = track(g).filter(
-      (e) => e.type === 'goal' || e.type === 'item' || e.type === 'shot' || e.type === 'hit',
-    );
-    if (ev.length) out.push({ tick: g.tick, events: ev });
+    out.push({
+      tick: g.tick,
+      events: track(g),
+      ball: { x: g.ball.x, y: g.ball.y },
+      players: g.players.filter((p) => p.dead === 0).map((p) => ({ x: p.x, y: p.y })),
+      phase: g.phase,
+    });
   }
   return out;
+}
+
+/** Ticks (and places) where a key event happens in the first `ticks` ticks of a match. */
+export function scan(spec: MatchSpec, ticks: number, key: Key) {
+  return dryRun(spec, 0, ticks).flatMap((m) =>
+    m.events.filter(KEYS[key]).map((e) => ({ tick: m.tick, ...where(e), phase: m.phase })),
+  );
 }
 
 /**
