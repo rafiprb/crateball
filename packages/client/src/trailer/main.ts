@@ -14,7 +14,7 @@ import { createRenderer } from '../render';
 import { createSound } from '../sound';
 import { OUT_H, OUT_W } from './fx';
 import { KEYS, dryRun, replay, scan, where, type Key, type MatchSpec, type Moment } from './match';
-import { renderMusic, toWav } from './music';
+import { BEAT, impact, renderMusic, toWav } from './music';
 import { DURATION, SEGMENTS, enterFx, exitFx, vignette, type Segment } from './story';
 
 declare global {
@@ -210,6 +210,8 @@ function onScreen(v: ReturnType<typeof view>, x: number, y: number) {
 }
 
 const sounds: Array<{ t: number; e: GameEvent }> = [];
+/** Key moments as they were shown (for the music's accents). */
+const hits: Array<{ t: number; big: boolean }> = [];
 let seg: Segment | null = null;
 let run: ReturnType<typeof replay> | null = null;
 let fx: Particles = createParticles();
@@ -244,6 +246,8 @@ function drawShot(s: Segment, t: number, lt: number) {
   fx.ambient(r.game, (id) => r.pred.pos(id, acc), speed / FPS);
   fx.update(speed / FPS);
   renderer.draw(r.pred, acc, fx, { rtt: null, banners: false });
+  if (cur.key && frameInSeg === Math.round(cur.key.frame) && s.shot.key)
+    hits.push({ t, big: ['rocket', 'mine', 'erupt', 'goal'].includes(s.shot.key) });
   const v = view(s, cur, frameInSeg);
   // A short, decaying shake on each explosion (stronger on the one the shot is about).
   let dx = 0;
@@ -331,6 +335,11 @@ function check(): string[] {
       problems.push(`${name}: the key event never happens`);
       return;
     }
+    // On the beat (within two frames), so the music hits with it.
+    const kt = s.t0 + p.key.frame / FPS;
+    const off = kt - Math.round(kt / BEAT) * BEAT;
+    if (Math.abs(off) > 2 / FPS)
+      problems.push(`${name}: key event ${(off * 1000).toFixed(0)} ms off the beat`);
     const at = p.key.frame / frames;
     if (at < 0.12 || at > 0.85) problems.push(`${name}: key event at ${(at * 100).toFixed(0)}% of the shot`);
     for (const pt of p.key.points) {
@@ -373,12 +382,13 @@ async function audio(): Promise<string> {
   comp.threshold.value = -14;
   comp.ratio.value = 2;
   const master = ctx.createGain();
-  master.gain.value = 0.55; // headroom: loudness is set afterwards (scripts/trailer.mjs)
+  master.gain.value = 0.42; // headroom: loudness is set afterwards (scripts/trailer.mjs)
   comp.connect(master).connect(ctx.destination);
   renderMusic(ctx, comp);
   const sfx = ctx.createGain();
   sfx.gain.value = 0.7;
   sfx.connect(comp);
+  for (const h of hits) impact(ctx, comp, h.t, h.big);
   let when = 0;
   const sound = createSound({ ctx, out: sfx, now: () => when });
   for (const s of sounds) {

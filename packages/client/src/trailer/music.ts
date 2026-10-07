@@ -1,5 +1,5 @@
 // The trailer's soundtrack, synthesised offline (no samples, nothing licensed): 128 BPM, A minor,
-// Am–F–C–G. Sections follow story.ts: cold open, title hit, build, drop (loot, traps, arenas), break,
+// Am–F–C–G. Sections follow story.ts: title hit, build, drop (loot, traps, arenas), break,
 // second drop, end card.
 
 export const BPM = 128;
@@ -8,16 +8,15 @@ export const BAR = BEAT * 4;
 
 /** Section starts in bars. */
 export const SECTION = {
-  cold: 0,
-  title: 1,
-  build: 2,
-  drop: 4,
-  traps: 7,
-  arenas: 10,
-  brk: 14,
-  drop2: 16,
-  outro: 20,
-  end: 23.5,
+  title: 0,
+  build: 1,
+  drop: 3,
+  traps: 6,
+  arenas: 9,
+  brk: 13,
+  drop2: 15,
+  outro: 19,
+  end: 22.5,
 } as const;
 
 const ROOTS = [57, 53, 48, 55]; // A3 F3 C3 G3 (MIDI), one per bar
@@ -140,12 +139,10 @@ export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
     return f;
   };
 
-  // Cold open (bar 0): a low drone and quiet ticks under the game's own explosions.
-  synth(at(SECTION.cold), BAR, [33, 45], { vol: 0.1, cutoff: 220, voices: 2, detune: 10 });
-  for (let i = 0; i < 8; i++) hat(at(SECTION.cold, i / 2), 0.04);
-  // Title (bar 1): one big hit, then it rings out.
-  kick(at(SECTION.title), 0.9);
-  crash(at(SECTION.title), 0.32);
+  // Title (bar 0): the trailer opens on one big hit, then it rings out.
+  kick(at(SECTION.title), 1);
+  crash(at(SECTION.title), 0.34);
+  noise(at(SECTION.title), 0.9, 0.22, 'lowpass', 300);
   synth(at(SECTION.title), BAR, [45, ...CHORDS[0]!.map((n) => n + 12)], {
     vol: 0.07,
     cutoff: 2400,
@@ -153,7 +150,7 @@ export function renderMusic(ctx: BaseAudioContext, out: AudioNode): void {
     detune: 20,
     echo: true,
   });
-  // Build (bars 2-3): kick on every beat, the chords opening up, then a riser and a snare roll.
+  // Build (bars 1-2): kick on every beat, the chords opening up, then a riser and a snare roll.
   for (let b: number = SECTION.build; b < SECTION.drop; b++) {
     const f = synth(at(b), BAR, CHORDS[b % 4]!, { vol: 0.07, cutoff: 600 + b * 300, voices: 3 });
     f.frequency.linearRampToValueAtTime(900 + b * 450, at(b + 1));
@@ -300,4 +297,33 @@ export function toWav(buf: AudioBuffer): ArrayBuffer {
       o += 2;
     }
   return data.buffer;
+}
+
+/**
+ * An accent on the music for a key moment of the footage (they all land on beats): a sub drop and a
+ * crash for an explosion or a goal, a bright stab for the rest. Same timeline as renderMusic.
+ */
+export function impact(ctx: BaseAudioContext, out: AudioNode, t: number, big: boolean): void {
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.frequency.setValueAtTime(big ? 120 : 600, t);
+  o.frequency.exponentialRampToValueAtTime(big ? 30 : 900, t + (big ? 0.5 : 0.12));
+  g.gain.setValueAtTime(big ? 0.9 : 0.12, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + (big ? 0.6 : 0.2));
+  o.connect(g).connect(out);
+  o.start(t);
+  o.stop(t + 0.7);
+  const len = Math.ceil(ctx.sampleRate * 1.2);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** (big ? 2 : 6);
+  const n = ctx.createBufferSource();
+  n.buffer = buf;
+  const f = ctx.createBiquadFilter();
+  f.type = 'highpass';
+  f.frequency.value = big ? 3500 : 6000;
+  const ng = ctx.createGain();
+  ng.gain.value = big ? 0.3 : 0.12;
+  n.connect(f).connect(ng).connect(out);
+  n.start(t);
 }
