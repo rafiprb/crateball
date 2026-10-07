@@ -5,6 +5,7 @@ export default defineConfig({
   timeout: 30_000,
   workers: 1,
   reporter: 'list',
-  use: { baseURL: process.env.PROD_URL ?? 'http://localhost:8080' },
+  // The hardened stack smoke runs Caddy on localhost with its own internal certificate.
+  use: { baseURL: process.env.PROD_URL ?? 'http://localhost:8080', ignoreHTTPSErrors: true },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

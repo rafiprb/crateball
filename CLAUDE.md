@@ -24,6 +24,7 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 | `pnpm netsim [sn] [tohum]` | Ağ ölçümü: gerçek sunucu odası + 4 tahminci, sanal saat ve modellenmiş bağlantılarla; top düzeltmesi, çizilen topun hatası, kuyruk tablosu (`tests/netsim`) |
 | `pnpm build` | `dist/client` + `dist/server/server.mjs` |
 | `pnpm docker:prod` | Prod imajını yerelde kurup smoke testini koşar (`docker smoke OK`) |
+| `pnpm docker:stack` | Sunucudaki sertleştirilmiş compose yığınını yerelde koşar: Caddy (localhost:18443, kendi sertifikası), CSP/HSTS başlıkları, salt okunur/yetkisiz konteynerler + tarayıcı testi (`docker stack smoke OK`). Compose/Caddyfile değişikliğinden sonra `install-deploy.sh`'tan önce koş |
 | `pnpm deploy` | (`.deploy.env` gerekir) Commit'lenmiş HEAD'i VPS'e gönderir, orada derler. Maç oynanıyorsa bekler; `pnpm deploy --force` beklemez (açık odalar silinir) |
 | `pnpm logs` / `pnpm watch` | VPS'teki oyun logunu canlı izler / sadece önemli olayları süzer (`scripts/watch.mjs`) |
 

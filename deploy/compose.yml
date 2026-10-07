@@ -11,6 +11,8 @@ services:
       NODE_ENV: production
       PORT: '8080'
       APP_VERSION: ${APP_VERSION:-unknown}
+      # Empty on the server; only the local stack smoke test allows its https://localhost Origin.
+      CRATEBALL_ORIGINS: ${CRATEBALL_ORIGINS:-}
     expose: ['8080']
     read_only: true
     tmpfs: ['/tmp:size=16m']
@@ -21,13 +23,21 @@ services:
     # Logs go to the server's journal so they survive redeploys (journald caps the total size).
     # Read them with: journalctl -o cat CONTAINER_TAG=crateball-game
     logging:
-      driver: journald
+      # journald on the server; the local stack smoke uses json-file (Docker Desktop has no journald).
+      driver: ${CRATEBALL_LOG_DRIVER:-journald}
       options: { tag: crateball-game }
   caddy:
     # Pinned by digest (refresh: docker buildx imagetools inspect caddy:2, then install-deploy.sh).
     image: caddy:2@sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772
     restart: unless-stopped
-    ports: ['80:80', '443:443', '443:443/udp']
+    # The CRATEBALL_* variables are only set by the local stack smoke test (scripts/docker-smoke.sh
+    # stack); on the server they are unset and these are the real ports and site.
+    ports:
+      - '${CRATEBALL_HTTP_PORT:-80}:80'
+      - '${CRATEBALL_HTTPS_PORT:-443}:443'
+      - '${CRATEBALL_HTTPS_PORT:-443}:443/udp'
+    environment:
+      CRATEBALL_SITE: ${CRATEBALL_SITE:-playcrateball.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

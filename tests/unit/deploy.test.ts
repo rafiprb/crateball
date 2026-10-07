@@ -61,7 +61,9 @@ describe('yayın: yüklenen arşiv yalnızca derleme bağlamı', () => {
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain('https://fonts.googleapis.com');
     expect(csp).toContain('https://fonts.gstatic.com');
-    expect(csp).toMatch(/connect-src [^;]*wss:\/\/playcrateball\.com/);
+    expect(csp).toMatch(/connect-src [^;]*wss:\/\/\{\$CRATEBALL_SITE:playcrateball\.com\}/);
+    // On the server the site placeholder is unset: the default is the real site.
+    expect(caddy).toMatch(/^\{\$CRATEBALL_SITE:playcrateball\.com\} \{/m);
     expect(csp).toMatch(/connect-src [^;]*ipc:/); // the desktop app's fullscreen keys
     expect(caddy).toMatch(/Strict-Transport-Security "max-age=\d+/);
     expect(caddy).toContain('X-Content-Type-Options "nosniff"');

@@ -18,6 +18,7 @@
     "netsim": "pnpm --filter @crateball/server exec tsx ../../tests/netsim/run.ts",
     "verify": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test && pnpm e2e",
     "docker:prod": "sh scripts/docker-smoke.sh",
+    "docker:stack": "sh scripts/docker-smoke.sh stack",
     "deploy": "sh scripts/deploy.sh",
     "logs": "sh scripts/server.sh 'journalctl -f -n 50 -o cat CONTAINER_TAG=crateball-game'",
     "watch": "sh scripts/server.sh 'journalctl -f -n 0 -o cat CONTAINER_TAG=crateball-game' | node scripts/watch.mjs",

@@ -1,12 +1,14 @@
 # Caddy gets and renews the HTTPS certificate on its own once DNS points here.
 # Lives root-owned in /etc/crateball/Caddyfile on the server: change it here, commit, then
 # scripts/install-deploy.sh (the next release recreates Caddy, or "install-deploy.sh apply" does it now).
-playcrateball.com {
+# CRATEBALL_SITE is only set by the local stack smoke test (scripts/docker-smoke.sh stack: localhost
+# with Caddy's internal certificate); on the server it is unset and the site is playcrateball.com.
+{$CRATEBALL_SITE:playcrateball.com} {
 	encode zstd gzip
 	header {
 		# Scripts only from this site; Google Fonts for the two typefaces; sockets to this site (and the
 		# desktop app's IPC, which runs inside the game page); nobody may frame the game.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss://playcrateball.com ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss://{$CRATEBALL_SITE:playcrateball.com} ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
@@ -17,6 +19,6 @@ playcrateball.com {
 	reverse_proxy game:8080
 }
 
-www.playcrateball.com {
-	redir https://playcrateball.com{uri} permanent
+www.{$CRATEBALL_SITE:playcrateball.com} {
+	redir https://{$CRATEBALL_SITE:playcrateball.com}{uri} permanent
 }
