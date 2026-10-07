@@ -5,12 +5,19 @@ prometheus.exporter.unix "host" {
   procfs_path    = "/host/proc"
   sysfs_path     = "/host/sys"
   rootfs_path    = "/host/root"
-  disable_collectors = ["mdadm", "nfs", "nfsd", "xfs", "zfs", "btrfs", "infiniband", "ipvs", "tapestats", "fibrechannel"]
+  // Only what the dashboard needs: keeps us far under the free tier's 10k series.
+  set_collectors = ["cpu", "meminfo", "loadavg", "filesystem", "netdev", "diskstats", "uptime", "pressure"]
+  filesystem {
+    fs_types_exclude = "^(tmpfs|overlay|squashfs|proc|sysfs|cgroup2?|devtmpfs|devpts|mqueue|nsfs|tracefs|fusectl|debugfs|securityfs|pstore|bpf|configfs|autofs|binfmt_misc|hugetlbfs|ramfs|rpc_pipefs)$"
+  }
+  netdev {
+    device_exclude = "^(veth.*|br-.*|docker.*|lo)$"
+  }
 }
 
 prometheus.scrape "host" {
   targets         = prometheus.exporter.unix.host.targets
-  scrape_interval = "30s"
+  scrape_interval = "60s" // the free tier counts one sample a minute per series
   forward_to      = [prometheus.relabel.instance.receiver]
 }
 
