@@ -119,11 +119,27 @@ const sessionToken = (() => {
     return undefined;
   }
 })();
+// The splash in index.html stays until the fonts are in and the server has answered (or refused), so the
+// menu never shows in fallback fonts or before it knows whether we are online. 5 s at most.
+let connAnswered!: () => void;
+const answered = new Promise<void>((done) => (connAnswered = done));
+const splash = document.querySelector<HTMLElement>('#splash');
+if (splash) {
+  const hide = () => {
+    splash.classList.add('gone');
+    setTimeout(() => splash.remove(), 400);
+  };
+  void Promise.race([
+    Promise.all([document.fonts.ready, answered]),
+    new Promise((done) => setTimeout(done, 5000)),
+  ]).then(hide);
+}
 const conn = connect({
   sessionToken,
   url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
   createSocket: laggySocket ? (url) => laggySocket(url, lag, jitter) : undefined,
   onStatus: (s) => {
+    if (s !== 'connecting') connAnswered();
     if (s === 'taken') {
       // The same tab connected again elsewhere (a duplicated tab took the seat): this one steps aside.
       toMenu();
