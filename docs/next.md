@@ -1,0 +1,105 @@
+# Next up
+
+Work agreed but not started (or not finished). Newest decisions first in each section.
+
+## In progress
+
+- **Netcode + security branch (`netcode`).** Input relay, adaptive client lead, smoother corrections, plus
+  the security audit fixes. Ships only after Codex (gpt-6.1-sol) says OK. Merge notes:
+  - The branch sits on `fead83c`, which main later reverted (`3b658ac`). Rebase it onto main (or revert
+    the revert first); a plain merge silently drops part of the protocol change.
+  - The deploy flow changes: run the one-time server install script before the first release with it.
+- **PR #2, match stats and results screen** (external contributor). Review sent back with the bugs found
+  (touches in a scramble, saves, Enter opening the lobby chat) and the scoring spec below. Goes in after
+  the netcode branch; `PROTOCOL_VERSION` becomes 13 by hand (git will not show it as a conflict).
+
+## Load test
+
+Measure before deciding anything about capacity (no scaling work without numbers and an explicit OK).
+
+- Headless bot clients that join real rooms and play, named `load-…` so dashboards can tell them apart.
+- Steps of 20, 50, 100, 200 players; run against prod at a quiet hour.
+- Generate load from more than one place: the laptop's own downlink fills first (about 1 Mbit/s per
+  client today). Clients on the server itself measure CPU without the network; combine both.
+- Watch it in Grafana: per-core CPU, network, tick time, rooms and players. Add proper game metrics for
+  it (tick time, bytes sent, rooms, players) instead of the 5 s log lines.
+- Rough estimate to check: about 100 concurrent players / 15-25 full rooms on one Node process, with
+  bandwidth (full JSON snapshots at 60 Hz) as the first limit.
+
+## Capacity (only if the load test says so)
+
+1. **Delta + binary snapshots.** Diff computed once per room against the previous tick, with a full
+   state every so often and on join/reconnect; quantised positions. Expected 5-10x less traffic, and
+   less CPU (encoding and TLS cost more than the diff).
+2. **Several processes.** A coordinator keeps the room list in memory (a `Map`), workers run rooms and
+   report changes over IPC; the coordinator hands each WebSocket to the room's worker. One public port.
+3. **Several servers.** Same model across machines (room list in the coordinator or Redis, clients
+   connect straight to the room's server). Also allows regions.
+
+Rewriting the backend in Go is not planned: the sim would exist twice (TS client prediction + Go server)
+and any difference shows up as constant corrections.
+
+## Match recording and replays
+
+- Record every match: seed, settings, the server-only loot RNG seed and each player's input per tick
+  (about 360 B/s for 6 players; a few KB per match compressed). Keep 30 days on disk.
+- Uses: backtest the scoring on real matches, goal replays / clips with the game's own renderer (as in
+  the trailer), looking into cheating reports, debugging R reports.
+- After the netcode branch lands (it touches the same server files).
+
+## Scoring (MVP) spec
+
+Built to resist farming: count outcomes, not intent; a scramble produces nothing; goals and assists
+decide the MVP.
+
+- **Possession.** A player owns the ball after touching it if nobody else touches it within 0.5 s.
+  Touches alternating between teams faster than that make the ball *loose*: no shots, passes or
+  tackles are counted until a team owns it again (0.5 s alone, or a kick that travels 1.5 s untouched).
+- **Shot on target.** A kick (not a contact), by an owner or a clean strike on a loose ball, from the
+  opponent half, above a minimum speed, whose outcome is a goal, a keeper save or a defender's block in
+  the box. Wide/post/out = off target (shown, not scored). One per possession.
+- **Save (keeper only).** Stops a shot on target; no goal within 2 s; one per shot.
+- **Assist.** The scorer's dribble counts as one spell; the touch before its first touch must be a
+  teammate's, at most 3 s earlier, with no opponent touch in between. Walls, mines, lava and wind do not
+  break the chain. Only the last passer counts. No assist on own goals or straight from kickoff. Open:
+  rebound off the post counts (proposed yes); any opponent contact breaks the chain (proposed yes).
+- **Completed pass (midfield).** From possession, reaches a teammate after at least 80 px with no
+  opponent touch; the same pair counts once per 10 s.
+- **Tackle (defence).** The opponent owned the ball for 0.5 s or more, then your side owns it for 0.5 s.
+- **Block (defence).** Stops a shot on target in the box before the keeper.
+- **Points.**
+
+  | Role | Goal | Assist | Role extras (capped at 3 points) |
+  |---|---|---|---|
+  | Forward | 3 | 2 | shot on target 0.5 |
+  | Midfield | 2 | 3 | completed pass 0.25 |
+  | Defence | 2 | 2 | tackle 0.5, block 1 |
+  | Keeper | 2 | 2 | save 1, clean sheet +2; goal conceded −0.5 (outside the cap) |
+  | No role | 3 | 2 | none |
+
+  Own goal −1. Deaths, damage and crates are shown but never scored. Ties: winning side, then goals,
+  then assists. Roles off: everyone scores as "no role". Nothing counts during kickoff, the goal pause
+  or after the whistle. Stats stay write-only (the sim never reads them).
+- Tests for every rule, including the farming cases: two players kicking it back and forth in front of
+  goal for 10 s (0 shots, 0 tackles), teammates rubbing passes side by side (0 passes), a roll toward
+  goal from your own half (no shot), a keeper fumbling and catching again (1 save).
+- Tune the weights on recorded matches (see above) so a good player in any role has a similar chance.
+
+## Gameplay and UI
+
+- **Kickoff countdown.** The kicking team has 5 s, then the ball is live for everyone; nothing shows
+  this. Draw a shrinking ring around the centre circle with "BLUE KICKS OFF", then "BALL IS LIVE".
+  Maybe shorten to 3 s.
+- **Beach arena** (prototype at scratchpad `beach.html`): umbrellas outside the pitch, a water zone
+  (slower, floatier, rings around swimmers), rubber ducks that quack and shed feathers when hit. Ducks
+  would be sim entities (deterministic, in snapshots).
+- **Arena goal effects and balls** (prototype `arenas.html`): per-arena goal effects and sounds first;
+  arena balls cosmetic only, with a "standard ball" option, tried in real matches before deciding
+  (volcano ball is the least readable). Could later be cosmetics/DLC.
+- **Server-enforced minimum kick interval** against macro scripts: only if it does not change the feel.
+
+## Steam
+
+- Trailer: upload `crateball-trailer.mp4` on the store page (Trailers), set it first.
+- Set the main build live when the store page is approved.
+- Supporter pack / DLC: see the prototype; Steam ownership check later.
