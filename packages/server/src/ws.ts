@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Logger } from 'pino';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
   MAX_MESSAGE_BYTES,
   PROTOCOL_VERSION,
@@ -19,34 +19,68 @@ export const CLOSE_RATE_LIMIT = 4008;
 export const CLOSE_TOO_SLOW = 4009;
 /** The same tab (session token) connected again: this older socket is replaced. */
 export const CLOSE_TAKEN_OVER = 4011;
+/** No complete message for LIMITS.idleMs (a half-sent message, or a peer only answering heartbeats). */
+export const CLOSE_IDLE = 4012;
 /** Heartbeat: a socket that misses this many pings in a row is dead (sleeping laptop, network switch). */
-const PING_EVERY_MS = 5000;
 const MISSED_PINGS = 2;
 export const CLOSE_TOO_MANY = 4010;
 
-/** Abuse limits. Normal play sends ~62 messages/s (60 inputs + ping + stats). */
+/**
+ * Abuse limits. Normal play sends ~62 messages/s (60 inputs + ping + stats), about 2 KB/s.
+ * Per-address limits are sized for an office: one public address (NAT) with ~30 people, several rooms
+ * and a few tabs each must never hit them. The global caps protect the one server process.
+ */
 export const LIMITS = {
   /** Token bucket per connection: burst size and refill per second. The burst covers ~10 s of normal
    * traffic: after a network stall TCP hands over everything the client sent meanwhile at once, and
    * that is a laggy player, not a flood. A real flood (over 2x normal, sustained) is still cut. */
   msgBurst: 720,
   msgPerSec: 120,
-  /** Open connections from one address. */
-  connectionsPerIp: 12,
+  /** Bytes, counted before anything is parsed: per connection, and per address (survives reconnects). */
+  bytesBurst: 256 * 1024,
+  bytesPerSec: 24 * 1024,
+  ipBytesBurst: 4 * 1024 * 1024,
+  ipBytesPerSec: 768 * 1024,
+  /** Size cap per message type (bytes); anything else is far smaller than the default. */
+  maxBytes: { report: 8192 } as Partial<Record<string, number>>,
+  maxBytesDefault: 2048,
+  /** Open sockets server-wide: 600 players plus spectators and people browsing rooms. */
+  maxSockets: 1000,
+  /** Open connections from one address (an office behind one NAT: ~30 people, a few tabs each). */
+  connectionsPerIp: 96,
+  /** New connections from one address: burst and per second (reloads, reconnects after a blip). */
+  connectsPerIpBurst: 120,
+  connectsPerIpPerSec: 2,
   /** Room creations from one address per minute, and per connection at most one every N ms. */
-  createsPerIpPerMin: 10,
+  createsPerIpPerMin: 30,
   createGapMs: 2000,
   /** Lobby/room actions (everything but inputs, pings and stats) per connection: burst and per second.
    * Each one can rebuild every member's lobby, so a flood must not fan out. */
   actionBurst: 20,
   actionsPerSec: 8,
-  /** Joins to a code that does not exist, per address per minute (guessing private codes). */
-  failedJoinsPerIpPerMin: 20,
+  /** Joins to a code that does not exist (guessing private codes): per address per minute, and
+   * server-wide per minute. Past the server-wide budget only addresses with no recent miss may try a
+   * code, so a guesser cannot lock everyone else out and an office mistyping once is not punished. */
+  failedJoinsPerIpPerMin: 60,
+  failedJoinsPerMin: 300,
   /** R reports per connection: at most one every N ms. */
   reportGapMs: 2000,
   /** Outgoing buffer: above this snapshots are skipped, above the hard cap the client is dropped. */
   softBufferBytes: 256 * 1024,
   hardBufferBytes: 2 * 1024 * 1024,
+  /** Native WebSocket pings and pongs a peer may send (we answer pings ourselves): burst, per second. */
+  controlBurst: 10,
+  controlPerSec: 1,
+  /** A complete message at least this often (the client pings every second; a hidden tab's timers can
+   * slow to one a minute). Control frames do not count: they cannot keep a half-sent message alive. */
+  idleMs: 90_000,
+  /** Heartbeat ping (and the sweep for idle or backed-up sockets) every N ms. */
+  heartbeatMs: 5000,
+  /** Server-wide budget for log lines a client can cause: burst and per second. */
+  logBurst: 200,
+  logPerSec: 20,
+  /** Remembered addresses (admission maps) at most; the oldest are forgotten first. */
+  maxTrackedIps: 20_000,
 };
 
 const ERROR_TEXT: Record<ErrorCode, string> = {
@@ -63,6 +97,18 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
+/** Browser pages allowed to open game sockets in production (the desktop app loads the same site). A
+ * missing Origin (not a browser) is let through: native clients can claim any Origin anyway, this only
+ * stops other websites from using their visitors' browsers. */
+export const PROD_ORIGINS = ['https://playcrateball.com', 'https://www.playcrateball.com'];
+const DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
+export function originAllowed(origin: string | undefined, production: boolean, extra: string[] = []): boolean {
+  if (!origin) return true;
+  if (extra.includes(origin)) return true;
+  return production ? PROD_ORIGINS.includes(origin) : DEV_ORIGIN.test(origin);
+}
+
 /** Behind Caddy the client address is in X-Forwarded-For (Caddy sets it; it does not trust incoming ones). */
 function clientIp(req: IncomingMessage): string {
   const fwd = req.headers['x-forwarded-for'];
@@ -70,35 +116,112 @@ function clientIp(req: IncomingMessage): string {
   return first || req.socket.remoteAddress || 'unknown';
 }
 
+/** A refilling budget. */
+function bucket(burst: number, perSec: number, now: () => number) {
+  let tokens = burst;
+  let at = now();
+  return {
+    take(n = 1): boolean {
+      const t = now();
+      tokens = Math.min(burst, tokens + ((t - at) / 1000) * perSec);
+      at = t;
+      if (tokens < n) return false;
+      tokens -= n;
+      return true;
+    },
+  };
+}
+
+/** Map with a size cap: the oldest entries go first (insertion order; re-set moves to the end). */
+function boundedSet<V>(m: Map<string, V>, key: string, value: V, max: number) {
+  m.delete(key);
+  m.set(key, value);
+  while (m.size > max) m.delete(m.keys().next().value as string);
+}
+
+const typeOf = (data: Buffer) => /^\{"t":"([a-z]+)"/.exec(data.subarray(0, 24).toString('latin1'))?.[1];
+
 export function attachWebSocket(
   server: Server,
   log: Logger,
   rooms: Rooms,
-  opts: { helloTimeoutMs?: number; version?: string } = {},
+  opts: { helloTimeoutMs?: number; version?: string; production?: boolean; origins?: string[] } = {},
 ): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_MESSAGE_BYTES });
-  /** sessionToken → player id, so a reconnect within the grace period gets its slot back. */
-  const sessions = new Map<string, string>();
+  const now = () => Date.now();
+  const production = opts.production ?? process.env.NODE_ENV === 'production';
+  const connectsByIp = new Map<string, ReturnType<typeof bucket>>();
+  const bytesByIp = new Map<string, ReturnType<typeof bucket>>();
   const connectionsByIp = new Map<string, number>();
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    maxPayload: MAX_MESSAGE_BYTES,
+    // Native pings are answered by us, within a budget (ws would answer every one, unmetered).
+    autoPong: false,
+    // Before the upgrade: other websites, a full server, an address opening sockets too fast.
+    verifyClient: (info, done) => {
+      const ip = clientIp(info.req);
+      if (!originAllowed(info.origin || undefined, production, opts.origins)) {
+        logLimited(() => log.warn({ ip, origin: info.origin }, 'yabancı Origin reddedildi'));
+        return done(false, 403);
+      }
+      if (wss.clients.size >= LIMITS.maxSockets) return done(false, 503);
+      let b = connectsByIp.get(ip);
+      if (!b) {
+        b = bucket(LIMITS.connectsPerIpBurst, LIMITS.connectsPerIpPerSec, now);
+        boundedSet(connectsByIp, ip, b, LIMITS.maxTrackedIps);
+      }
+      if (!b.take()) return done(false, 429);
+      done(true);
+    },
+  });
+  /** sessionToken (server-issued) → player id, so a reconnect within the grace period gets its slot back. */
+  const sessions = new Map<string, string>();
   const createsByIp = new Map<string, number[]>();
   const failedJoinsByIp = new Map<string, number[]>();
+  let failedJoins: number[] = [];
   /** Player id → the socket that currently speaks for it (a takeover replaces it). */
   const owners = new Map<string, WebSocket>();
   const missed = new WeakMap<WebSocket, number>();
+  /** Heartbeat challenge outstanding per socket: only a pong carrying it counts as an answer. */
+  const challenges = new WeakMap<WebSocket, Buffer>();
+  const lastMessageAt = new WeakMap<WebSocket, number>();
+
+  // Server-wide budget for log lines clients can trigger; what does not fit is counted and summarised.
+  const logBudget = bucket(LIMITS.logBurst, LIMITS.logPerSec, now);
+  let logsDropped = 0;
+  function logLimited(write: () => void) {
+    if (logBudget.take()) write();
+    else logsDropped++;
+  }
 
   // Heartbeat: browsers answer pings on their own. A socket that stops answering is gone even if TCP
-  // has not noticed yet; closing it starts the reconnect grace instead of leaving a ghost player.
+  // has not noticed yet; closing it starts the reconnect grace instead of leaving a ghost player. The
+  // same sweep drops sockets whose output piled up (also from control frames) or that sent no complete
+  // message for too long.
   const heartbeat = setInterval(() => {
+    const t = now();
     for (const s of wss.clients) {
+      if (s.bufferedAmount > LIMITS.hardBufferBytes) {
+        s.terminate();
+        continue;
+      }
+      if (t - (lastMessageAt.get(s) ?? t) > LIMITS.idleMs) {
+        s.close(CLOSE_IDLE, 'idle');
+        setTimeout(() => s.terminate(), 1000).unref();
+        continue;
+      }
       const n = (missed.get(s) ?? 0) + 1;
       if (n > MISSED_PINGS) {
         s.terminate();
         continue;
       }
       missed.set(s, n);
-      s.ping();
+      const challenge = randomBytes(8);
+      challenges.set(s, challenge);
+      s.ping(challenge);
     }
-  }, PING_EVERY_MS);
+  }, LIMITS.heartbeatMs);
   heartbeat.unref();
 
   /** An id nobody in a room or on a socket is using (ids are short to keep snapshots small). */
@@ -114,13 +237,29 @@ export function attachWebSocket(
     const open = (connectionsByIp.get(ip) ?? 0) + 1;
     if (open > LIMITS.connectionsPerIp) {
       // Refused outright: no handlers, nothing it sends is read.
-      log.warn({ ip }, 'bir adresten çok fazla bağlantı');
+      logLimited(() => log.warn({ ip }, 'bir adresten çok fazla bağlantı'));
       socket.close(CLOSE_TOO_MANY, 'too many connections');
       setTimeout(() => socket.terminate(), 1000).unref();
       return;
     }
     connectionsByIp.set(ip, open);
-    socket.on('pong', () => missed.set(socket, 0));
+    lastMessageAt.set(socket, now());
+    const control = bucket(LIMITS.controlBurst, LIMITS.controlPerSec, now);
+    const controlFlood = () => {
+      logLimited(() => clog.warn('kontrol çerçevesi seli, bağlantı kesildi'));
+      socket.terminate();
+    };
+    socket.on('ping', (data) => {
+      if (!control.take()) return controlFlood();
+      if (socket.bufferedAmount <= LIMITS.softBufferBytes) socket.pong(data);
+    });
+    socket.on('pong', (data) => {
+      const expected = challenges.get(socket);
+      if (expected && data.equals(expected)) {
+        challenges.delete(socket);
+        missed.set(socket, 0);
+      } else if (!control.take()) controlFlood(); // unsolicited pongs cost budget, and prove nothing
+    });
 
     let clientId = freshId();
     owners.set(clientId, socket);
@@ -128,19 +267,21 @@ export function attachWebSocket(
     let token: string | null = null;
     let tokens = LIMITS.msgBurst;
     let rateLimited = false;
-    let refilledAt = Date.now();
+    let refilledAt = now();
+    const bytes = bucket(LIMITS.bytesBurst, LIMITS.bytesPerSec, now);
     let lastStatsAt = 0;
     let lastReportAt = 0;
     let lastCreateAt = 0;
     let actions = LIMITS.actionBurst;
-    let actionsAt = Date.now();
+    let actionsAt = now();
+    let badMessages = 0;
 
     const send = (m: ServerMessage) => sendRaw(encode(m));
     const sendRaw = (raw: string, droppable = false) => {
       if (socket.readyState !== socket.OPEN) return;
       // A client that stops reading must not make the server buffer snapshots forever.
       if (socket.bufferedAmount > LIMITS.hardBufferBytes) {
-        clog.warn({ buffered: socket.bufferedAmount }, 'istemci yetişemiyor, bağlantı kesildi');
+        logLimited(() => clog.warn({ buffered: socket.bufferedAmount }, 'istemci yetişemiyor, bağlantı kesildi'));
         socket.terminate();
         return;
       }
@@ -150,26 +291,33 @@ export function attachWebSocket(
     const fail = (code: ErrorCode | null) => {
       if (code) send({ t: 'error', code, message: ERROR_TEXT[code] });
     };
+    const rejectBad = (why: string) => {
+      // One line for the first, then one per 100: a malformed flood cannot flood the log.
+      if (badMessages++ % 100 === 0) logLimited(() => clog.warn({ why, count: badMessages }, 'bozuk mesaj atıldı'));
+      send({ t: 'error', code: 'bad_message', message: 'Could not read message' });
+    };
     const mayCreate = () => {
-      const now = Date.now();
-      if (now - lastCreateAt < LIMITS.createGapMs) return false;
-      const recent = (createsByIp.get(ip) ?? []).filter((t) => now - t < 60_000);
+      const t = now();
+      if (t - lastCreateAt < LIMITS.createGapMs) return false;
+      const recent = (createsByIp.get(ip) ?? []).filter((x) => t - x < 60_000);
       if (recent.length >= LIMITS.createsPerIpPerMin) return false;
-      recent.push(now);
-      createsByIp.set(ip, recent);
-      lastCreateAt = now;
+      recent.push(t);
+      boundedSet(createsByIp, ip, recent, LIMITS.maxTrackedIps);
+      lastCreateAt = t;
       return true;
     };
 
+    const myFailedJoins = () => (failedJoinsByIp.get(ip) ?? []).filter((x) => now() - x < 60_000);
     const mayJoin = () => {
-      const now = Date.now();
-      return (
-        (failedJoinsByIp.get(ip) ?? []).filter((t) => now - t < 60_000).length < LIMITS.failedJoinsPerIpPerMin
-      );
+      const mine = myFailedJoins();
+      if (mine.length >= LIMITS.failedJoinsPerIpPerMin) return false;
+      failedJoins = failedJoins.filter((x) => now() - x < 60_000);
+      // Server-wide guessing budget spent: addresses that missed recently wait; everyone else joins.
+      return failedJoins.length < LIMITS.failedJoinsPerMin || mine.length === 0;
     };
     const joinFailed = () => {
-      const now = Date.now();
-      failedJoinsByIp.set(ip, [...(failedJoinsByIp.get(ip) ?? []).filter((t) => now - t < 60_000), now]);
+      boundedSet(failedJoinsByIp, ip, [...myFailedJoins(), now()], LIMITS.maxTrackedIps);
+      failedJoins.push(now());
     };
 
     let greeted = false;
@@ -192,26 +340,35 @@ export function attachWebSocket(
         if (token && rooms.isMember(clientId)) rooms.disconnect(clientId);
         else rooms.leave(clientId);
       }
+      if (badMessages > 1) logLimited(() => clog.warn({ count: badMessages }, 'bozuk mesajlar (toplam)'));
       clog.info({ code }, 'ws kapandı');
     });
-    socket.on('error', (err) => clog.warn({ err }, 'ws hatası'));
-    socket.on('message', (data, isBinary) => {
-      const now = Date.now();
-      tokens = Math.min(LIMITS.msgBurst, tokens + ((now - refilledAt) / 1000) * LIMITS.msgPerSec);
-      refilledAt = now;
+    socket.on('error', (err) => logLimited(() => clog.warn({ err }, 'ws hatası')));
+    socket.on('message', (data: RawData, isBinary) => {
+      // Superseded by a newer socket of the same tab, or on its way out: nothing it sends counts.
+      if (owners.get(clientId) !== socket || socket.readyState !== socket.OPEN) return;
+      lastMessageAt.set(socket, now());
+      const t = now();
+      tokens = Math.min(LIMITS.msgBurst, tokens + ((t - refilledAt) / 1000) * LIMITS.msgPerSec);
+      refilledAt = t;
       if (rateLimited) return; // closing: whatever was still in flight is ignored (and not logged again)
-      if (--tokens < 0) {
+      const buf = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
+      let ipBytes = bytesByIp.get(ip);
+      if (!ipBytes) {
+        ipBytes = bucket(LIMITS.ipBytesBurst, LIMITS.ipBytesPerSec, now);
+        boundedSet(bytesByIp, ip, ipBytes, LIMITS.maxTrackedIps);
+      }
+      // Counted before anything is parsed: a message count limit alone lets 64 KB pings through.
+      if (--tokens < 0 || !bytes.take(buf.length) || !ipBytes.take(buf.length)) {
         rateLimited = true;
-        clog.warn('mesaj sınırı aşıldı, bağlantı kesildi');
+        logLimited(() => clog.warn({ ip }, 'mesaj sınırı aşıldı, bağlantı kesildi'));
         socket.close(CLOSE_RATE_LIMIT, 'rate limit');
         return;
       }
-      const msg = isBinary ? null : decodeClientMessage(data.toString());
-      if (!msg) {
-        clog.warn('bozuk mesaj atıldı');
-        send({ t: 'error', code: 'bad_message', message: 'Could not read message' });
-        return;
-      }
+      const type = isBinary ? undefined : typeOf(buf);
+      if (buf.length > (LIMITS.maxBytes[type ?? ''] ?? LIMITS.maxBytesDefault)) return rejectBad('size');
+      const msg = isBinary ? null : decodeClientMessage(buf.toString());
+      if (!msg) return rejectBad('decode');
       if (
         msg.t !== 'hello' &&
         msg.t !== 'in' &&
@@ -219,8 +376,8 @@ export function attachWebSocket(
         msg.t !== 'stats' &&
         msg.t !== 'report'
       ) {
-        actions = Math.min(LIMITS.actionBurst, actions + ((now - actionsAt) / 1000) * LIMITS.actionsPerSec);
-        actionsAt = now;
+        actions = Math.min(LIMITS.actionBurst, actions + ((t - actionsAt) / 1000) * LIMITS.actionsPerSec);
+        actionsAt = t;
         if (actions < 1) {
           fail('rate_limited');
           return;
@@ -229,7 +386,7 @@ export function attachWebSocket(
       }
       if (msg.t === 'hello') {
         if (msg.protocolVersion !== PROTOCOL_VERSION) {
-          clog.warn({ theirs: msg.protocolVersion, ours: PROTOCOL_VERSION }, 'sürüm uyuşmazlığı');
+          logLimited(() => clog.warn({ theirs: msg.protocolVersion, ours: PROTOCOL_VERSION }, 'sürüm uyuşmazlığı'));
           send({ t: 'error', code: 'version_mismatch', message: 'The game was updated — reload the page' });
           socket.close(CLOSE_VERSION_MISMATCH, 'version mismatch');
           return;
@@ -237,30 +394,32 @@ export function attachWebSocket(
         if (greeted) return;
         greeted = true;
         clearTimeout(timer);
-        if (msg.sessionToken) {
-          token = msg.sessionToken;
-          // Same browser tab back within the grace period: continue as the same player.
-          const previous = sessions.get(token);
-          if (previous && rooms.isMember(previous)) {
-            // The same tab is back. If its old socket still looks connected (a laptop that slept, a
-            // network switch: TCP has not noticed yet), the token proves who it is: take the slot over
-            // and close the old socket, which tells a duplicated tab it was replaced.
-            const old = owners.get(previous);
-            if (!rooms.isAway(previous)) rooms.disconnect(previous);
-            if (rooms.reattach(previous, sendRaw)) {
-              owners.delete(clientId);
-              clientId = previous;
-              owners.set(clientId, socket);
-              clog = log.child({ clientId });
-              clog.info(old ? 'oyuncu yeni bağlantıyla devraldı' : 'oyuncu yeniden bağlandı');
-              if (old && old !== socket) {
-                old.close(CLOSE_TAKEN_OVER, 'taken over');
-                setTimeout(() => old.terminate(), 1000).unref();
-              }
+        // Only tokens this server issued count: a made-up one gets a fresh identity, so a kick or a chat
+        // budget cannot be reset by choosing a new token (a fresh anonymous identity can still be had:
+        // rooms also budget joins and chat room-wide).
+        const known = msg.sessionToken !== undefined && sessions.has(msg.sessionToken);
+        token = known ? msg.sessionToken! : randomBytes(24).toString('base64url');
+        // Same browser tab back within the grace period: continue as the same player.
+        const previous = known ? sessions.get(token) : undefined;
+        if (previous && rooms.isMember(previous)) {
+          // The same tab is back. If its old socket still looks connected (a laptop that slept, a
+          // network switch: TCP has not noticed yet), the token proves who it is: take the slot over
+          // and close the old socket, which tells a duplicated tab it was replaced.
+          const old = owners.get(previous);
+          if (!rooms.isAway(previous)) rooms.disconnect(previous);
+          if (rooms.reattach(previous, sendRaw)) {
+            owners.delete(clientId);
+            clientId = previous;
+            owners.set(clientId, socket);
+            clog = log.child({ clientId });
+            clog.info(old ? 'oyuncu yeni bağlantıyla devraldı' : 'oyuncu yeniden bağlandı');
+            if (old && old !== socket) {
+              old.close(CLOSE_TAKEN_OVER, 'taken over');
+              setTimeout(() => old.terminate(), 1000).unref();
             }
           }
-          sessions.set(token, clientId);
         }
+        sessions.set(token, clientId);
         clog.info('oyuncu bağlandı');
         send({
           t: 'welcome',
@@ -268,6 +427,7 @@ export function attachWebSocket(
           clientId,
           serverTime: Date.now(),
           version: opts.version,
+          token,
         });
         return;
       }
@@ -275,6 +435,7 @@ export function attachWebSocket(
         send({ t: 'error', code: 'bad_message', message: 'Send hello first' });
         return;
       }
+      const key = token ?? clientId;
       switch (msg.t) {
         case 'ping':
           send({ t: 'pong', id: msg.id, serverTime: Date.now() });
@@ -303,7 +464,7 @@ export function attachWebSocket(
             msg.public,
             msg.settings,
             sendRaw,
-            token ?? clientId,
+            key,
             // Local development (tests, several tabs) shares one address: no per-address room cap there.
             LOOPBACK.has(ip) ? clientId : ip,
           );
@@ -316,7 +477,7 @@ export function attachWebSocket(
             fail('rate_limited');
             break;
           }
-          const r = rooms.join(msg.code, clientId, msg.name, sendRaw, token ?? clientId);
+          const r = rooms.join(msg.code, clientId, msg.name, sendRaw, key);
           if (typeof r !== 'string') send({ t: 'joined', code: r.code, playerId: clientId });
           else {
             if (r === 'room_not_found') joinFailed();
@@ -349,25 +510,34 @@ export function attachWebSocket(
           fail(rooms.swap(clientId, msg.a, msg.b));
           break;
         case 'stats':
-          if (now - lastStatsAt < 1000) break; // at most 1/s per client, whatever it sends
-          lastStatsAt = now;
-          clog.info({ ...rooms.whereIs(clientId), ...msg.s }, 'istemci istatistik');
+          // Gameplay telemetry only from someone in a room, at most 1/s, within the log budget.
+          if (!rooms.isMember(clientId) || t - lastStatsAt < 1000) break;
+          lastStatsAt = t;
+          logLimited(() => clog.info({ ...rooms.whereIs(clientId), ...msg.s }, 'istemci istatistik'));
           break;
         case 'report':
-          if (now - lastReportAt < LIMITS.reportGapMs) break;
-          lastReportAt = now;
-          clog.warn({ ...rooms.whereIs(clientId), note: msg.note, recent: msg.recent }, 'oyuncu raporu (R)');
+          if (!rooms.isMember(clientId) || t - lastReportAt < LIMITS.reportGapMs) break;
+          lastReportAt = t;
+          logLimited(() =>
+            clog.warn({ ...rooms.whereIs(clientId), note: msg.note, recent: msg.recent }, 'oyuncu raporu (R)'),
+          );
           break;
       }
     });
   });
 
-  // Tokens of players who are gone for good are forgotten.
+  // Tokens of players who are gone for good (and not on a socket either) are forgotten; old admission
+  // records expire; dropped log lines are summarised.
   const prune = setInterval(() => {
-    for (const [t, id] of sessions) if (!rooms.isMember(id)) sessions.delete(t);
-    const now = Date.now();
-    for (const [ip, ts] of createsByIp) if (ts.every((t) => now - t > 60_000)) createsByIp.delete(ip);
-    for (const [ip, ts] of failedJoinsByIp) if (ts.every((t) => now - t > 60_000)) failedJoinsByIp.delete(ip);
+    const connected = new Set(owners.keys());
+    for (const [tk, id] of sessions) if (!rooms.isMember(id) && !connected.has(id)) sessions.delete(tk);
+    const t = now();
+    for (const [ip, ts] of createsByIp) if (ts.every((x) => t - x > 60_000)) createsByIp.delete(ip);
+    for (const [ip, ts] of failedJoinsByIp) if (ts.every((x) => t - x > 60_000)) failedJoinsByIp.delete(ip);
+    if (logsDropped > 0) {
+      log.warn({ dropped: logsDropped }, 'log bütçesi aşıldı, satırlar atlandı');
+      logsDropped = 0;
+    }
   }, 60_000);
   prune.unref();
   wss.on('close', () => {

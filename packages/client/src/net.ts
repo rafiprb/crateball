@@ -30,8 +30,10 @@ export interface SocketLike {
 export interface ConnectionOptions {
   url: string;
   createSocket?: (url: string) => SocketLike;
-  /** Sent in hello so the server can give a reconnecting tab its old slot back. */
+  /** Sent in hello so the server can give a reconnecting tab its old slot back (server-issued). */
   sessionToken?: string;
+  /** The server issued (or confirmed) this tab's reconnect token. */
+  onToken?: (token: string) => void;
   schedule?: (fn: () => void, ms: number) => unknown;
   now?: () => number;
   onStatus?: (status: NetStatus) => void;
@@ -61,6 +63,7 @@ export function connect(o: ConnectionOptions): Connection {
   let socket: SocketLike | null = null;
   const queued: ClientMessage[] = [];
   const now = o.now ?? (() => Date.now());
+  let sessionToken = o.sessionToken;
   let heardAt = now();
 
   const setStatus = (s: NetStatus) => {
@@ -78,7 +81,7 @@ export function connect(o: ConnectionOptions): Connection {
         encode({
           t: 'hello',
           protocolVersion: PROTOCOL_VERSION,
-          ...(o.sessionToken ? { sessionToken: o.sessionToken } : {}),
+          ...(sessionToken ? { sessionToken } : {}),
         }),
       );
     s.onmessage = (ev) => {
@@ -87,6 +90,10 @@ export function connect(o: ConnectionOptions): Connection {
       if (!m) return;
       if (m.t === 'welcome') {
         clientId = m.clientId;
+        if (m.token && m.token !== sessionToken) {
+          sessionToken = m.token;
+          o.onToken?.(m.token);
+        }
         if (m.version) o.onServerVersion?.(m.version);
         attempts = 0;
         setStatus('open');

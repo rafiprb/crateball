@@ -29,6 +29,7 @@ async function boot(over: Partial<ServerConfig> = {}, helloTimeoutMs?: number) {
     staticDir: null,
     logFile: join(dir, 'dev.log'),
     version: 'test',
+    extraOrigins: [],
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: silent }), { helloTimeoutMs });
@@ -824,10 +825,11 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     rooms.stop();
   });
 
-  it('bir adres en fazla 5 oda tutar; bot takası botları dengeler, bot adları küçük kalır', async () => {
+  it('bir adres en fazla ROOMS_PER_OWNER oda tutar; bot takası botları dengeler, bot adları küçük kalır', async () => {
     const rooms = await make();
-    for (const id of ['a', 'b', 'c', 'g', 'h'])
-      asRoom(rooms.create(id, id, 'R', false, settings, () => {}, id, 'ip1'));
+    const { ROOMS_PER_OWNER } = await import('../src/rooms');
+    const ids = ['a', 'b', 'c', 'g', 'h', ...Array.from({ length: ROOMS_PER_OWNER - 5 }, (_, i) => `x${i}`)];
+    for (const id of ids) asRoom(rooms.create(id, id, 'R', false, settings, () => {}, id, 'ip1'));
     expect(rooms.create('d', 'd', 'R', false, settings, () => {}, 'd', 'ip1')).toBe('rate_limited');
     expect(typeof rooms.create('e', 'e', 'R', false, settings, () => {}, 'e', 'ip2')).not.toBe('string');
     // a's room: a (red) vs a bot. b joins red -> two bots on blue; host swaps b with a blue bot.
@@ -1050,7 +1052,7 @@ describe('WebSocket sınırları', () => {
     await a.closed;
     const b = client(wsUrl);
     await b.opened;
-    hello(b, 'oturum-a');
+    hello(b, first.token!); // the token the server issued, not the one we made up
     const again = await until(b, 'welcome');
     expect(again.clientId).toBe(first.clientId);
     b.socket.send(encode({ t: 'join', code, name: 'Host' }));
@@ -1087,7 +1089,7 @@ describe('WebSocket sınırları', () => {
     // The old socket never closes (a sleeping laptop): the same token comes back on a new one.
     const b = client(wsUrl);
     await b.opened;
-    hello(b, 'oturum-x');
+    hello(b, first.token!);
     expect((await until(b, 'welcome')).clientId).toBe(first.clientId);
     expect(await a.closed).toBe(4011);
     b.socket.send(encode({ t: 'join', code, name: 'Host' }));
@@ -1175,6 +1177,74 @@ describe('gizli ganimet (sunucu)', () => {
       expect((JSON.parse(raw) as { g: { lootRng: unknown } }).g.lootRng).toBeNull();
       for (const s of secrets) expect(raw).not.toContain(`:${s},`);
     }
+    rooms.stop();
+  });
+});
+
+describe('oda sınırları (#4, #7)', () => {
+  const settings: Settings = { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false };
+  const make = async (now?: () => number) => {
+    const mod = await import('../src/rooms');
+    const rooms = mod.createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }), { now });
+    return { ...mod, rooms };
+  };
+
+  it('en fazla MAX_ROOMS oda ve sunucu çapında MAX_MEMBERS_TOTAL kişi', async () => {
+    const { rooms, MAX_ROOMS, MAX_MEMBERS_TOTAL } = await make();
+    expect(MAX_ROOMS).toBe(100);
+    expect(MAX_MEMBERS_TOTAL).toBe(600);
+    const codes: string[] = [];
+    for (let i = 0; i < MAX_ROOMS; i++) {
+      const r = rooms.create(`h${i}`, 'H', 'R', false, settings, () => {}, `k${i}`, `ip${i}`);
+      if (typeof r === 'string') throw new Error(r);
+      codes.push(r.code);
+    }
+    expect(rooms.create('extra', 'E', 'R', false, settings, () => {}, 'ke', 'ipe')).toBe('server_full');
+    let n = MAX_ROOMS;
+    for (const code of codes)
+      for (let j = 0; j < 5 && n < MAX_MEMBERS_TOTAL; j++, n++)
+        expect(typeof rooms.join(code, `m${n}`, 'M', () => {}, `km${n}`)).not.toBe('string');
+    expect(rooms.join(codes[99]!, 'late', 'L', () => {}, 'kl')).toBe('server_full');
+    rooms.stop();
+  });
+
+  it('atma kaydı süre dolunca kalkar ve oda başına sınırlıdır', async () => {
+    let t = 1_000_000;
+    const { rooms, BAN_MS, MAX_BANS } = await make(() => t);
+    const room = rooms.create('h', 'H', 'R', false, settings, () => {}, 'kh', 'ip');
+    if (typeof room === 'string') throw new Error(room);
+    for (let i = 0; i < MAX_BANS + 10; i++) {
+      t += 6000; // stay inside the join budget
+      expect(typeof rooms.join(room.code, `g${i}`, 'G', () => {}, `kg${i}`)).not.toBe('string');
+      expect(rooms.kick('h', `g${i}`)).toBeNull();
+    }
+    expect(room.banned.size).toBeLessThanOrEqual(MAX_BANS);
+    const last = `kg${MAX_BANS + 9}`;
+    expect(rooms.join(room.code, 'again', 'G', () => {}, last)).toBe('kicked');
+    t += BAN_MS + 1;
+    expect(typeof rooms.join(room.code, 'again', 'G', () => {}, last)).not.toBe('string');
+    rooms.stop();
+  });
+
+  it('yeni kimliklerle art arda katılma ve sohbet oda çapında sınırlı', async () => {
+    const { rooms, JOIN_BURST } = await make();
+    const room = rooms.create('h', 'H', 'R', false, settings, () => {}, 'kh', 'ip');
+    if (typeof room === 'string') throw new Error(room);
+    const results: string[] = [];
+    for (let i = 0; i < JOIN_BURST + 3; i++) {
+      const r = rooms.join(room.code, `g${i}`, 'G', () => {}, `kg${i}`);
+      results.push(typeof r === 'string' ? r : 'ok');
+      if (typeof r !== 'string') rooms.leave(`g${i}`);
+    }
+    expect(results.filter((r) => r === 'ok')).toHaveLength(JOIN_BURST);
+    expect(results.at(-1)).toBe('rate_limited');
+    // Chat: everyone has their own budget, the room as a whole has one too.
+    const other = rooms.create('h2', 'H', 'R', false, settings, () => {}, 'kh2', 'ip');
+    if (typeof other === 'string') throw new Error(other);
+    for (let i = 0; i < 11; i++) rooms.join(other.code, `c${i}`, 'C', () => {}, `kc${i}`);
+    const said = [...Array(11).keys()].flatMap((i) => [0, 1].map(() => rooms.chat(`c${i}`, 'hi')));
+    expect(said.filter((r) => r === null).length).toBeLessThanOrEqual(15);
+    expect(said).toContain('rate_limited');
     rooms.stop();
   });
 });

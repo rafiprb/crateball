@@ -109,18 +109,22 @@ const rememberRoom = (c: string | null) => {
     /* storage blocked */
   }
 };
-/** Per tab (sessionStorage): a reload or a dropped connection gets the same player back. */
+/** Per tab (sessionStorage): a reload or a dropped connection gets the same player back. The server
+ * issues the token (welcome); one it did not issue is ignored. */
 const sessionToken = (() => {
   try {
-    const existing = sessionStorage.getItem('crateball-session');
-    if (existing) return existing;
-    const fresh = crypto.randomUUID();
-    sessionStorage.setItem('crateball-session', fresh);
-    return fresh;
+    return sessionStorage.getItem('crateball-session') ?? undefined;
   } catch {
     return undefined;
   }
 })();
+const keepToken = (token: string) => {
+  try {
+    sessionStorage.setItem('crateball-session', token);
+  } catch {
+    /* storage blocked: a reload starts as a new player */
+  }
+};
 // The splash in index.html stays until the fonts are in and the server has answered (or refused), so the
 // menu never shows in fallback fonts or before it knows whether we are online. 5 s at most.
 let connAnswered!: () => void;
@@ -138,6 +142,7 @@ if (splash) {
 }
 const conn = connect({
   sessionToken,
+  onToken: keepToken,
   url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
   createSocket: laggySocket ? (url) => laggySocket(url, lag, jitter) : undefined,
   onStatus: (s) => {

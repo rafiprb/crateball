@@ -10,6 +10,9 @@ export interface ServerConfig {
   /** Dev'de tüm logların toplandığı dosya; prod'da null (stdout → fly logs). */
   logFile: string | null;
   version: string;
+  /** Extra browser Origins allowed to open game sockets in production (CRATEBALL_ORIGINS, comma
+   * separated): only for running the prod image locally (docker smoke test). */
+  extraOrigins: string[];
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): ServerConfig {
@@ -28,5 +31,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         ? (env.LOG_FILE ?? fileURLToPath(new URL('../../../logs/dev.log', import.meta.url)))
         : null,
     version: env.APP_VERSION ?? 'dev',
+    extraOrigins: (env.CRATEBALL_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
   };
 }

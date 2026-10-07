@@ -68,7 +68,18 @@ export const EMPTY_ROOM_TTL_MS = 2 * 60_000;
 /** A room that never had a match is cheap to recreate: it goes sooner (room slots are limited). */
 export const EMPTY_UNUSED_ROOM_TTL_MS = 30_000;
 /** Rooms one address may hold open at once (several friends behind one router still fit). */
-export const ROOMS_PER_OWNER = 5;
+export const ROOMS_PER_OWNER = 20;
+/** Everyone in a room (players and spectators), server-wide. */
+export const MAX_MEMBERS_TOTAL = 600;
+/** Kicks a room remembers (by session key), and for how long. */
+export const MAX_BANS = 64;
+export const BAN_MS = 30 * 60_000;
+/** Chat for the whole room (on top of each person's own budget): a fresh identity per line cannot flood. */
+const ROOM_CHAT_BURST = 15;
+const ROOM_CHAT_REFILL_MS = 500;
+/** New arrivals per room: burst, then one per N ms (a kicked griefer coming back under new names). */
+export const JOIN_BURST = 12;
+const JOIN_REFILL_MS = 5000;
 
 interface Member {
   id: string;
@@ -118,8 +129,11 @@ export interface Room {
   game: Game;
   members: Map<string, Member>;
   bots: number;
-  /** Players the host kicked (by session key): they cannot come back to this room. */
-  banned: Set<string>;
+  /** Players the host kicked (by session key) → until when: they cannot come back to this room. */
+  banned: Map<string, number>;
+  /** Room-wide chat and join budgets. */
+  roomChat: { tokens: number; at: number };
+  joins: { tokens: number; at: number };
   /** Recent chat, replayed to whoever joins. */
   chat: ChatLine[];
   /** Chat lines sent so far (numbers each line, so a client never shows one twice). */
@@ -191,7 +205,7 @@ const CHAT_HISTORY = 30;
 const CHAT_BURST = 5;
 const CHAT_REFILL_MS = 1500;
 /** Hard cap on rooms held in memory (anyone can create one). */
-export const MAX_ROOMS = 200;
+export const MAX_ROOMS = 100;
 /** How long a dropped player keeps their slot (and host role). */
 export const RECONNECT_GRACE_MS = 20_000;
 
@@ -262,6 +276,17 @@ export function createRooms(
   let timer: ReturnType<typeof setInterval> | null = null;
   let last = 0;
   let acc = 0;
+
+  const memberCount = () => byClient.size;
+  /** Takes one from a refilling budget (`refillMs` per token); false if empty. */
+  const refill = (b: { tokens: number; at: number }, burst: number, refillMs: number) => {
+    const t = now();
+    b.tokens = Math.min(burst, b.tokens + (t - b.at) / refillMs);
+    b.at = t;
+    if (b.tokens < 1) return false;
+    b.tokens--;
+    return true;
+  };
 
   const announce = (room: Room) => {
     const raw = encode({ t: 'room', room: info(room) });
@@ -656,7 +681,8 @@ export function createRooms(
     isMember: (id) => byClient.has(id),
     isAway: (id) => !!byClient.get(id)?.members.get(id)?.awayTimer,
     create(id, name, roomName, isPublic, settings, send, key = id, owner = id) {
-      if (rooms.size >= MAX_ROOMS) return 'server_full';
+      if (rooms.size >= MAX_ROOMS || (!byClient.has(id) && memberCount() >= MAX_MEMBERS_TOTAL))
+        return 'server_full';
       let mine = 0;
       for (const r of rooms.values()) if (r.owner === owner && r !== byClient.get(id)) mine++;
       if (mine >= ROOMS_PER_OWNER) return 'rate_limited';
@@ -671,7 +697,9 @@ export function createRooms(
         game: createGame(seed(), settings),
         members: new Map(),
         bots: 0,
-        banned: new Set(),
+        banned: new Map(),
+        roomChat: { tokens: ROOM_CHAT_BURST, at: now() },
+        joins: { tokens: JOIN_BURST, at: now() },
         chat: [],
         chatCount: 0,
         chatBuckets: new Map(),
@@ -697,8 +725,10 @@ export function createRooms(
         current.members.get(id)?.send(encode({ t: 'room', room: info(room) }));
         return room;
       }
-      if (room.banned.has(key)) return 'kicked';
+      if ((room.banned.get(key) ?? 0) > now()) return 'kicked';
       if (room.members.size >= MAX_MEMBERS) return 'room_full';
+      if (!byClient.has(id) && memberCount() >= MAX_MEMBERS_TOTAL) return 'server_full';
+      if (!refill(room.joins, JOIN_BURST, JOIN_REFILL_MS)) return 'rate_limited';
       // Only now leave the old room: a wrong code must not throw you out of the one you are in.
       leave(id);
       if (room.members.size === 0) room.host = id;
@@ -776,7 +806,13 @@ export function createRooms(
       if (room.host !== by) return 'not_host';
       if (id === by || !room.members.has(id)) return 'bad_message';
       const target = room.members.get(id);
-      if (target) room.banned.add(target.key);
+      if (target) {
+        const t = now();
+        for (const [k, until] of room.banned) if (until <= t) room.banned.delete(k);
+        room.banned.set(target.key, t + BAN_MS);
+        // Oldest kicks go first beyond the cap (insertion order).
+        while (room.banned.size > MAX_BANS) room.banned.delete(room.banned.keys().next().value as string);
+      }
       target?.send(encode({ t: 'error', code: 'kicked', message: 'The host removed you from this room' }));
       log.info({ room: room.code, id }, 'oyuncu atıldı');
       leave(id);
@@ -841,6 +877,7 @@ export function createRooms(
         for (const [k, b] of room.chatBuckets)
           if (t - b.at > CHAT_BURST * CHAT_REFILL_MS) room.chatBuckets.delete(k);
       if (bucket.tokens < 1) return 'rate_limited';
+      if (!refill(room.roomChat, ROOM_CHAT_BURST, ROOM_CHAT_REFILL_MS)) return 'rate_limited';
       bucket.tokens--;
       const team = m.spectator ? 'spec' : (room.game.players.find((p) => p.id === id)?.team ?? 'spec');
       const line: ChatLine = { t: 'chat', n: ++room.chatCount, id, name: m.name, team, text };

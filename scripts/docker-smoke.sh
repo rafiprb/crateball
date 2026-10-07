@@ -16,7 +16,8 @@ assert_absent() {
 }
 
 docker build -t "$IMAGE" .
-CID=$(docker run -d --rm -p "$PORT:8080" "$IMAGE")
+# The prod image only lets playcrateball.com open game sockets; this local run is on localhost.
+CID=$(docker run -d --rm -p "$PORT:8080" -e CRATEBALL_ORIGINS="$URL" "$IMAGE")
 trap 'docker stop "$CID" >/dev/null 2>&1 || true' EXIT
 
 i=0

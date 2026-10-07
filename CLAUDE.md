@@ -44,6 +44,7 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 - Sunucuda sabit, root'a ait dosyalar: `/etc/crateball/{compose.yml,Caddyfile,Dockerfile}` ve `/usr/local/bin/crateball-deploy` (`deploy/remote-deploy.sh`). Yayın (deploy anahtarı) bunları **değiştiremez**: yüklenen arşiv yalnızca oyun imajının derleme bağlamıdır (`/opt/crateball/src`), sabit Dockerfile ile derlenir. Bu dosyalardan biri (compose, Caddyfile, Dockerfile, deploy betiği) değişince: commit'le, sonra `sh scripts/install-deploy.sh` (dosyaları koyar; bir sonraki yayın uygular) ya da `sh scripts/install-deploy.sh apply` (hemen uygular; oyun konteyneri yeniden kurulursa açık odalar silinir). Oyun logu sunucunun journald'ına gider (yayınlardan sonra da kalır, toplam en fazla 500 MB): `journalctl -o cat CONTAINER_TAG=crateball-game`.
 - Odalar bellekte: yeniden başlatma açık odaları siler. Tek süreç, tek makine olmalı.
 - `/health`: `{ ok, version, rooms, playing, players }`.
+- Sınırlar (`ws.ts` `LIMITS`, `rooms.ts`): ofis dostu (tek IP'den ~30 kişi); sunucu çapında 100 oda, 600 kişi, 1000 soket. Prod'da WebSocket yalnızca `https://playcrateball.com` Origin'inden (prod imajını yerelde denerken `CRATEBALL_ORIGINS=http://localhost:8080`). Ayrıntı: `docs/design.md` "Güvenlik ve sınırlar".
 
 ## Debug akışı
 

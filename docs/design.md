@@ -186,6 +186,31 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   Sağlıksız yayın `crateball:previous` imajına döner.
 - Telemetri: istemci 2 sn'lik özet + R ile işaretli rapor; sunucu oda başına girdisiz tick ve tick süresi.
 
+## Güvenlik ve sınırlar (`packages/server/src/ws.ts` `LIMITS`, `rooms.ts`)
+
+- Sınırlar ofise göre gevşek: tek genel IP'nin (NAT) arkasında ~30 kişi, 4-5 oda hiçbir sınıra
+  takılmamalı. Adres başına: 96 açık bağlantı, 120'lik patlama + saniyede 2 yeni bağlantı, dakikada 30 oda
+  kurma, en fazla 20 oda. IP ile yasaklama yok; önek (prefix) bazlı kısıtlama yok.
+- Sunucu çapında: en fazla 100 oda, 600 kişi (oyuncu + izleyici), 1000 soket (lobi gezenler dahil).
+- Kabul (upgrade'den önce): prod'da tarayıcı Origin'i yalnızca `playcrateball.com` (masaüstü uygulaması da
+  bu siteyi yükler; Origin'siz istemciler geçer, yerel prod denemesi için `CRATEBALL_ORIGINS`), dev'de
+  localhost. Dolu sunucu 503, çok hızlı bağlanan adres 429.
+- Mesajlar ayrıştırılmadan önce sayılır: bağlantı başına mesaj ve bayt bütçesi, adres başına bayt bütçesi
+  (yeniden bağlanınca sıfırlanmaz), türe göre boyut sınırı (rapor 8 KB, gerisi 2 KB). Yerel WebSocket
+  ping'lerine sunucu kendisi, bütçeyle cevap verir (`autoPong: false`); kalp atışı rastgele bir yük taşır,
+  yalnızca onu taşıyan pong sayılır. 90 sn tam mesaj göndermeyen (yarım/parçalı mesajda kalan) soket kapanır.
+- Log: bozuk mesajlar bağlantı başına ilk ve her 100'üncü; istemcinin tetiklediği loglar sunucu çapında
+  saniyede 20 satır bütçeli (aşan sayılır, dakikada bir özetlenir); istatistik/rapor yalnızca odadakilerden.
+- Kimlik: yeniden bağlanma anahtarını sunucu verir (`welcome.token`); istemcinin uydurduğu anahtar yok
+  sayılır. Atma kaydı oda başına en fazla 64, 30 dk sürer. Yeni anonim kimlik her zaman alınabildiği için
+  oda çapında katılma (12'lik patlama, 5 sn'de bir) ve sohbet (15'lik patlama, saniyede 2) bütçesi var.
+- Özel oda: 4 harfli kod kriptografik rastgele; yanlış kod denemesi adres başına dakikada 60, sunucu
+  çapında dakikada 300. Bütçe dolunca yalnızca son dakikada ıskalamış adresler bekler (doğru kodla da: kod
+  geçerliliği sızmaz), hiç ıskalamamış ofis kullanıcısı etkilenmez.
+- Devralınan (aynı sekme yeniden bağlandı) ya da kapanmakta olan soketten gelen mesaj işlenmez.
+- Otomasyon (#13): tam dünya tahmini bot yazmayı kolaylaştırır; sunucu tarafında vuruş aralığı sınırı
+  eklenmedi (oyun hissini değiştirir, faydası belirsiz). Oyun kuralları zaten tamamen sunucuda.
+
 ## Fikir havuzu
 
 Penaltı/serbest vuruş yok; müzik; mobil kontroller; bot zorluk seviyesi;

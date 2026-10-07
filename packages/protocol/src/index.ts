@@ -112,7 +112,15 @@ export interface RoomListing {
 }
 
 export type ServerMessage =
-  | { t: 'welcome'; protocolVersion: number; clientId: string; serverTime: number; version?: string }
+  /** `token`: the server-issued reconnect token for this tab (send it back in the next hello). */
+  | {
+      t: 'welcome';
+      protocolVersion: number;
+      clientId: string;
+      serverTime: number;
+      version?: string;
+      token?: string;
+    }
   | { t: 'pong'; id: number; serverTime: number }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'joined'; code: string; playerId: string }
@@ -380,6 +388,7 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
             clientId: m.clientId,
             serverTime: m.serverTime,
             ...(isStr(m.version, 64) ? { version: m.version } : {}),
+            ...(isStr(m.token, 128) ? { token: m.token } : {}),
           }
         : null;
     case 'pong':
