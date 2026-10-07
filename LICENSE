@@ -1,0 +1,27 @@
+Crateball
+Copyright (c) 2026 RafiBuilds. All rights reserved.
+
+The source code in this repository is published so that people can read it, learn from it and
+send improvements. It is not open source. Crateball, its name, its look and its paid content belong
+to RafiBuilds.
+
+You MAY:
+  - read the code, and fork it on GitHub (as the GitHub Terms of Service allow);
+  - run it on your own computer to develop and test changes;
+  - send those changes back as a pull request.
+
+You may NOT, without written permission from RafiBuilds:
+  - run it as a server that other people can join, or publish it on any website or store;
+  - distribute it, or builds made from it, in whole or in part;
+  - unlock, copy or give away paid content (such as the Supporter Pack) outside the official game;
+  - use it, or anything made from it, commercially;
+  - use the Crateball name or logo for anything else.
+
+Contributions: by sending a pull request you agree that RafiBuilds may use, change and distribute
+your contribution as part of Crateball, including in paid versions and content, under these terms or
+any others.
+
+THE CODE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. IN NO EVENT SHALL RAFIBUILDS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM ITS USE.
+
+Questions or permission requests: open an issue at https://github.com/rafiprb/crateball/issues

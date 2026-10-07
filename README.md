@@ -44,3 +44,8 @@ Add `?lag=100&jitter=30` to the URL in dev to simulate a slow connection. Design
 (Turkish) are in [`docs/design.md`](docs/design.md).
 
 The previous project in this repo, Before Nightfall, is kept at the `before-nightfall` tag.
+
+## License
+
+Source available, not open source: you can read the code, run it locally and send pull requests, but
+not host it, redistribute it or unlock paid content. See [`LICENSE`](LICENSE).
