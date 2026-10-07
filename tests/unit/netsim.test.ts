@@ -21,6 +21,11 @@ describe('ağ ölçümü (netsim)', () => {
     expect(mean((c) => c.ballErr[1])).toBeLessThan(16);
   });
 
+  it('aynı tohum aynı maçı üretir (ganimetin gizli akışı da tohumlu)', () => {
+    const again = runSim({ seed: 7919, seconds: 90, clients: DEFAULT_CLIENTS });
+    expect(again).toEqual(runs.slice(0, DEFAULT_CLIENTS.length));
+  });
+
   it('girdi aktarımı bant genişliğine yük olmaz', () => {
     for (const c of runs) expect(c.relayKBps).toBeLessThan(2);
   });

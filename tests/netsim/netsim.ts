@@ -212,7 +212,15 @@ export function runSim(o: SimOptions): ClientReport[] {
   const log = { info() {}, warn() {}, error() {}, child: () => log } as unknown as Parameters<
     typeof createRooms
   >[0];
-  const rooms = createRooms(log, { seed: () => o.seed, random: rand, now: () => now });
+  // Loot is drawn from the server's secret stream (crypto in production); here a separate seeded
+  // stream, so a seed reproduces the same match.
+  const secretRand = rng(o.seed ^ 0x5bd1e995);
+  const rooms = createRooms(log, {
+    seed: () => o.seed,
+    random: rand,
+    now: () => now,
+    secret: () => Math.floor(secretRand() * 0x100000000),
+  });
 
   // Server truth per tick: ball and every player.
   const truth: Truth = new Map();
