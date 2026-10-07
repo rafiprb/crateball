@@ -1,0 +1,72 @@
+// Host metrics and the game log, shipped to Grafana Cloud (endpoints and token from grafana.env).
+
+// ── Host: CPU, memory, disk, network ────────────────────────────────────────────────────────────
+prometheus.exporter.unix "host" {
+  procfs_path    = "/host/proc"
+  sysfs_path     = "/host/sys"
+  rootfs_path    = "/host/root"
+  disable_collectors = ["mdadm", "nfs", "nfsd", "xfs", "zfs", "btrfs", "infiniband", "ipvs", "tapestats", "fibrechannel"]
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  scrape_interval = "30s"
+  forward_to      = [prometheus.relabel.instance.receiver]
+}
+
+prometheus.relabel "instance" {
+  rule {
+    target_label = "instance"
+    replacement  = "crateball-prod"
+  }
+  forward_to = [prometheus.remote_write.cloud.receiver]
+}
+
+prometheus.remote_write "cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_PROM_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_PROM_USER")
+      password = sys.env("GRAFANA_TOKEN")
+    }
+  }
+}
+
+// ── The game's log (JSON lines in journald, tag crateball-game) ────────────────────────────────
+loki.relabel "journal" {
+  forward_to = []
+  rule {
+    source_labels = ["__journal_container_tag"]
+    target_label  = "container"
+  }
+}
+
+loki.source.journal "game" {
+  matches       = "CONTAINER_TAG=crateball-game"
+  max_age       = "12h"
+  relabel_rules = loki.relabel.journal.rules
+  labels        = { job = "crateball", instance = "crateball-prod" }
+  forward_to    = [loki.process.game.receiver]
+}
+
+// Pull a few low-cardinality labels out of the JSON (message and level); everything else stays in
+// the line and is queried with `| json` in Grafana.
+loki.process "game" {
+  stage.json {
+    expressions = { msg = "msg", level = "level" }
+  }
+  stage.labels {
+    values = { msg = "", level = "" }
+  }
+  forward_to = [loki.write.cloud.receiver]
+}
+
+loki.write "cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_LOKI_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_LOKI_USER")
+      password = sys.env("GRAFANA_TOKEN")
+    }
+  }
+}

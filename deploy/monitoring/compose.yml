@@ -1,0 +1,31 @@
+# Monitoring on the game server: Grafana Alloy ships host metrics (CPU, RAM, disk, network) and the
+# game's journald log to Grafana Cloud. Kept apart from the game's compose project so a game deploy
+# never touches it. Installed and updated with: sh scripts/monitoring.sh
+name: crateball-monitoring
+services:
+  alloy:
+    image: grafana/alloy:v1.20.1
+    restart: unless-stopped
+    command: ['run', '--storage.path=/var/lib/alloy', '/etc/alloy/config.alloy']
+    # Grafana Cloud endpoints and the access token (chmod 600, never in the repo).
+    env_file: grafana.env
+    # Host metrics need the host's /proc, /sys and root filesystem; the log needs the journal.
+    pid: host
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    # The game comes first: a small CPU and memory budget and a low CPU share.
+    cpus: 0.5
+    cpu_shares: 256
+    mem_limit: 300m
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: '3' }
+volumes:
+  alloy_data:
