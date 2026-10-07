@@ -118,10 +118,12 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
 
 ## Yayın
 
-- İstanbul'da tek bir VPS (Türkiye'den ~20 ms). Docker Compose: oyun + Caddy (otomatik HTTPS),
-  domain `playcrateball.com`. Cloudflare proxy kullanılmıyor (Türkiye'den Amsterdam'a dolaşıyordu).
-- Durum tamamen bellekte (veritabanı yok); yayın açık odaları siler, `pnpm deploy` maç bitene kadar
-  bekler.
+- İstanbul'da tek bir VDS (ayrılmış vCPU; Türkiye'den ~20 ms). Paylaşımlı VPS'te CPU "steal" yüzünden
+  tick'ler ara ara 40-70 ms takılıyordu; VDS'te 4 ms'lik uykunun en kötüsü ~2 ms. Docker Compose: oyun +
+  Caddy (otomatik HTTPS), domain `playcrateball.com` (DNS GoDaddy'de, TTL 10 dk). Cloudflare proxy
+  kullanılmıyor (Türkiye'den Amsterdam'a dolaşıyordu).
+- Durum tamamen bellekte (veritabanı yok); yayın açık odaları siler. Deploy maç bitene kadar, lobide
+  insan varken de en fazla 10 dk bekler.
 - Telemetri: istemci 2 sn'lik özet + R ile işaretli rapor; sunucu oda başına girdisiz tick ve tick süresi.
 
 ## Fikir havuzu
