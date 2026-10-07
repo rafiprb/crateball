@@ -2,7 +2,6 @@ import './style.css';
 import { CODE_RE, PROTOCOL_VERSION, type RoomInfo } from '@crateball/protocol';
 import { DEFAULT_SETTINGS, TICK_HZ, type BlastKind } from '@crateball/sim';
 import { createChat } from './chat';
-import { createTickClock } from './clock';
 import { createEventTracker } from './events';
 import { createKeyboard } from './input';
 import { connect, type NetStatus } from './net';
@@ -33,7 +32,6 @@ addEventListener('resize', resize);
 resize();
 
 const pred = createPredictor();
-const clock = createTickClock();
 const fx = createParticles();
 const sound = createSound();
 const track = createEventTracker(() => pred.me);
@@ -227,13 +225,9 @@ const conn = connect({
         if (room?.state === 'playing') {
           const ts = performance.now();
           pred.snapshot(m.ack, m.g);
-          clock.feedback(m.lead);
           work.snap = Math.max(work.snap, performance.now() - ts);
           queueAvg = queueAvg * 0.9 + m.q * 0.1;
         }
-        break;
-      case 'ri':
-        if (room?.state === 'playing') pred.remoteInput(m.id, m.k, m.b);
         break;
       case 'pong':
         rtt = performance.now() - m.id;
@@ -417,8 +411,7 @@ function loop(now: number) {
   const dt = now - last;
   last = now;
   acc = Math.min(acc + dt, TICK_MS * 6);
-  // Clock sync: ticks a few percent longer while the server says we run further ahead than needed.
-  const tickMs = room?.state === 'playing' ? clock.tickMs() : TICK_MS;
+  const tickMs = TICK_MS;
   // Offline: freeze the match instead of predicting goals and effects that never happen.
   const live = conn.status === 'open';
   if (!live) acc = Math.min(acc, tickMs);

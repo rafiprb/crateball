@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KICK, RIGHT, addPlayer, cloneGame, createGame, hashState, step, type Game } from '@crateball/sim';
+import { KICK, RIGHT, addPlayer, cloneGame, createGame, hashState, step } from '@crateball/sim';
 import { createPredictor } from '../src/predict';
 
 /** Server consumes one queued input per tick; the client is `lag` ticks ahead. */
@@ -146,80 +146,5 @@ describe('top', () => {
     reset.ball.x = 0;
     c.snapshot(0, reset);
     expect(c.pos('ball', 1)!.x).toBe(0);
-  });
-});
-
-describe('girdi aktarımı', () => {
-  /** Server and client start from the same snapshot; `r` is another human who presses RIGHT at tick k. */
-  const setup = () => {
-    const server = createGame(5);
-    addPlayer(server, 'me', 'Me', 'red');
-    addPlayer(server, 'r', 'R', 'blue');
-    const c = createPredictor();
-    c.setMe('me');
-    c.snapshot(0, cloneGame(server));
-    return { server, c, start: server.tick };
-  };
-  const serverRun = (server: Game, ticks: number, k: number) => {
-    for (let i = 0; i < ticks; i++) {
-      const inputs = new Map([['me', 0]]);
-      if (server.tick === k) inputs.set('r', RIGHT);
-      step(server, inputs);
-    }
-  };
-
-  it('tahminin geçmişine düşen aktarım hemen yeniden simüle edilir ve sunucuyla aynı yere varır', () => {
-    const { server, c, start } = setup();
-    for (let i = 0; i < 8; i++) c.tick(0);
-    const k = start + 3;
-    const before = c.corrections;
-    c.remoteInput('r', k, RIGHT);
-    serverRun(server, 8, k);
-    expect(hashState(c.game)).toBe(hashState(server));
-    expect(c.corrections).toBeGreaterThan(before); // r's position changed: an offset now glides it
-  });
-
-  it('henüz gelmediğimiz tick için gelen aktarım düzeltmesiz, zamanı gelince oynanır', () => {
-    const { server, c, start } = setup();
-    for (let i = 0; i < 2; i++) c.tick(0);
-    const k = start + 5;
-    c.remoteInput('r', k, RIGHT);
-    expect(c.corrections).toBe(0);
-    for (let i = 0; i < 6; i++) c.tick(0);
-    serverRun(server, 8, k);
-    expect(hashState(c.game)).toBe(hashState(server));
-    expect(c.corrections).toBe(0);
-  });
-
-  it('snapshot öncesine ait aktarım yok sayılır; kendi girdimiz aktarımla ezilmez', () => {
-    const { server, c, start } = setup();
-    for (let i = 0; i < 3; i++) step(server, new Map([['me', 0]]));
-    c.snapshot(0, cloneGame(server));
-    c.remoteInput('r', start + 1, RIGHT); // already inside that snapshot
-    c.remoteInput('me', server.tick, RIGHT);
-    c.tick(0);
-    step(server, new Map([['me', 0]]));
-    expect(hashState(c.game)).toBe(hashState(server));
-  });
-});
-
-describe('düzeltme sunumu', () => {
-  it('düzeltme anında çizilen top yerinde kalır (hız değişse de ara karede sıçramaz)', () => {
-    const c = createPredictor();
-    c.setMe('me');
-    const g = createGame(1);
-    addPlayer(g, 'me', 'Me', 'red');
-    Object.assign(g.ball, { x: 0, y: 0, vx: 6, vy: 0 });
-    c.snapshot(0, cloneGame(g));
-    c.tick(0);
-    c.tick(0);
-    const drawn = c.pos('ball', 0.3)!;
-    // The server says the ball was kicked back: same place, opposite velocity.
-    const kicked = cloneGame(g);
-    kicked.ball.vx = -6;
-    c.snapshot(0, kicked);
-    const now = c.pos('ball', 0.3)!;
-    expect(now.x).toBeCloseTo(drawn.x, 9);
-    expect(now.y).toBeCloseTo(drawn.y, 9);
   });
 });

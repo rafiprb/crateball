@@ -37,23 +37,6 @@ const QUEUE_KEEP = 4;
  * longer silences (a background tab) pause. At 6 (100 ms) ordinary Wi-Fi hiccups released the keys on the
  * server and the whole world snapped back on the client. */
 export const STAND_IN_TICKS = 18;
-/**
- * Clock sync (adaptive input buffer). A client's inputs wait in its queue by however far ahead it started
- * or drifted; nothing used to shrink that, so after one long Wi-Fi stall (silence beyond STAND_IN_TICKS
- * freezes `ack`) a client could keep 5+ inputs waiting for the rest of the match, predicting that much
- * further ahead and seeing every kick by someone else that much more wrong. Now after each tick we note
- * the client's "slack": inputs still waiting once this tick's one was taken (0 = it came just in time), or
- * minus the ticks in a row it was missing. If the smallest slack over LEAD_BLOCKS × LEAD_BLOCK ticks (2 s)
- * stays above LEAD_TARGET, the snapshots say `lead` = that surplus and the client ticks a few percent
- * slower until it is gone. The depth thus adapts to each client's measured arrival jitter: a steady link
- * ends at 1-2 waiting, a clumpy one (whose slack keeps dipping to 0) is left alone. It is never asked to
- * run faster: measured, a deeper buffer for a jittery link hurt its owner more (every remote correction
- * grows with it) than the occasional stand-in tick it avoids.
- */
-export const LEAD_BLOCK = 30;
-const LEAD_BLOCKS = 4;
-export const LEAD_TARGET = 1;
-const LEAD_MAX = 30;
 const TICK_MS = 1000 / TICK_HZ;
 const MAX_CATCHUP = 5;
 /** A room stats log line every 5 s of play. */
@@ -81,14 +64,6 @@ interface Member {
   gap: number;
   /** Last input applied; stands in when the queue runs dry. */
   last: number;
-  /** Clock sync: smallest slack in the current block, ticks counted in it, minima of recent blocks, and
-   * the resulting feedback. */
-  slackMin: number;
-  slackTicks: number;
-  slackMins: number[];
-  lead: number;
-  /** Input relay: the keys last relayed to the others (-1: none yet this match). */
-  relayed: number;
   /** Set while the socket is gone: the player keeps their slot (and host role) until it fires. */
   awayTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -246,40 +221,7 @@ export function createRooms(
   const broadcastSnap = (room: Room) => {
     const json = encodeGame(room.game);
     for (const m of room.members.values())
-      m.send(encodeSnap(room.game.tick, m.ack, m.queue.length, m.lead, json), true);
-  };
-
-  /** A fresh input timeline (match start, reconnect): nothing measured or relayed yet. */
-  const resetSlack = (m: Member) => {
-    m.slackMin = Infinity;
-    m.slackTicks = 0;
-    m.slackMins = [];
-    m.lead = 0;
-    m.relayed = -1;
-  };
-
-  /**
-   * Input relay: a change of keys goes to everyone else the moment it arrives, tagged with the tick the
-   * server will apply it at. Their predictions then learn of a kick a queue length plus up to a snapshot
-   * interval earlier, and a change still in their future costs them no correction at all. Only changes
-   * are sent (a few per second per player); the same keys are in the next snapshots anyway.
-   */
-  const relay = (room: Room, m: Member, k: number, bits: number) => {
-    if (bits === m.relayed || m.spectator) return;
-    m.relayed = bits;
-    const raw = encode({ t: 'ri', id: m.id, k, b: bits });
-    for (const o of room.members.values()) if (o !== m) o.send(raw, true);
-  };
-
-  const noteSlack = (m: Member, slack: number) => {
-    m.slackMin = Math.min(m.slackMin, slack);
-    if (++m.slackTicks < LEAD_BLOCK) return;
-    m.slackMins.push(m.slackMin);
-    if (m.slackMins.length > LEAD_BLOCKS) m.slackMins.shift();
-    const window = m.slackMins.length < LEAD_BLOCKS ? LEAD_TARGET : Math.min(...m.slackMins);
-    m.lead = Math.max(0, Math.min(LEAD_MAX, window - LEAD_TARGET));
-    m.slackMin = Infinity;
-    m.slackTicks = 0;
+      m.send(encodeSnap(room.game.tick, m.ack, m.queue.length, json), true);
   };
 
   const tickRoom = (room: Room) => {
@@ -300,7 +242,6 @@ export function createRooms(
         m.last = next[1];
         m.gap = 0;
         inputs.set(m.id, next[1]);
-        noteSlack(m, m.queue.length);
       } else if (m.ack > 0 && ++m.gap <= STAND_IN_TICKS) {
         // Starved by network jitter: play the last input AND count it as the client's next sequence
         // number. Server and client stay on the same timeline, so the only possible misprediction is a
@@ -309,7 +250,6 @@ export function createRooms(
         m.ack++;
         m.starved++;
         inputs.set(m.id, m.last);
-        noteSlack(m, -m.gap);
       } else if (m.ack > 0) {
         // Silent for longer than jitter explains (tab in the background, connection stalled): stop
         // counting, or every input after the client wakes up would arrive "late" and its own
@@ -325,7 +265,6 @@ export function createRooms(
     if (g.tick % ROOM_STATS_EVERY === 0) {
       const starved = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.starved]));
       const queued = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.queue.length]));
-      const lead = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.lead]));
       log.info(
         {
           room: room.code,
@@ -334,7 +273,6 @@ export function createRooms(
           score: g.score,
           starved,
           queued,
-          lead,
           stepMsMax: Math.round(room.stepMsMax * 100) / 100,
         },
         'oda istatistik',
@@ -414,11 +352,6 @@ export function createRooms(
       starved: 0,
       gap: 0,
       last: 0,
-      slackMin: Infinity,
-      slackTicks: 0,
-      slackMins: [],
-      lead: 0,
-      relayed: -1,
       awayTimer: null,
     });
     room.emptySince = null;
@@ -500,7 +433,6 @@ export function createRooms(
     // A reloaded page restarts its sequence numbers; a fresh count avoids treating them as late.
     m.ack = 0;
     m.queue = [];
-    resetSlack(m);
     log.info({ room: room.code, id }, 'oyuncu geri döndü');
     announce(room);
     // A reloaded page lost its chat log; a client that kept it skips lines it already has (by number).
@@ -588,17 +520,11 @@ export function createRooms(
       // Arrived after a stand-in already played its tick: still the freshest intent, while the
       // stand-in window lasts. After it the keys were released; a straggler must not latch them again.
       if (seq <= m.ack) {
-        if (m.gap <= STAND_IN_TICKS) {
-          m.last = bits;
-          // Stands in from the next tick on, unless a newer input is already waiting.
-          if (m.queue.length === 0) relay(room, m, room.game.tick, bits);
-        }
+        if (m.gap <= STAND_IN_TICKS) m.last = bits;
       } else if (seq > (m.queue.at(-1)?.[0] ?? m.ack)) {
         m.queue.push([seq, bits]);
         // Bounded on arrival too, not only at the next tick: a flood cannot grow it.
         if (m.queue.length > QUEUE_MAX * 2) m.queue.splice(0, m.queue.length - QUEUE_MAX);
-        // One input per tick: the last in the queue is taken in the step from tick + its index.
-        relay(room, m, room.game.tick + m.queue.length - 1, bits);
       }
     },
     move: moveTo,
@@ -674,7 +600,6 @@ export function createRooms(
         m.queue = [];
         m.last = 0;
         m.gap = 0;
-        resetSlack(m);
       }
       // Settings per match start: `pnpm crate-stats` counts which crate mixes people actually pick.
       const humans = room.game.players.filter((p) => !p.bot).length;

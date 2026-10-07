@@ -14,8 +14,7 @@ drop at random spots: a **gun** (3 hits and you're out), a **mine** (lose a hear
   match and can drag players between teams. Bots fill empty spots.
 - **Netcode:** the server runs the match at 60 Hz and sends 30 Hz snapshots. Every client predicts the
   whole world, ball included, then rolls back and replays on each snapshot, so your own kick shows up
-  immediately even at 100+ ms ping. Other players' key changes are relayed the moment they reach the
-  server, and each client's input buffer is kept as shallow as its own link allows (clock sync).
+  immediately even at 100+ ms ping.
 
 ## Controls
 
