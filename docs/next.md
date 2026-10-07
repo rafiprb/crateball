@@ -119,6 +119,7 @@ decide the MVP.
     goal mouths and the kickoff circle kept dry.
   - Ducks bumping into each other make no sound and no feathers; only the ball or a player hitting a
     duck quacks.
+  - Pitch lines look scratched into the sand (wobbly, broken, scuffed); no lines or markers in the water.
   - A player running hard into a duck also sheds feathers (a lower hard-hit threshold for players than
     for the ball, since players move slower than shots).
   - Cost estimate from the prototype: about +3.5 KB gzipped, 4 ducks add about 380 B per snapshot
