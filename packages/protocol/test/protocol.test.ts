@@ -105,7 +105,7 @@ describe('oyun mesajları', () => {
     expect(decodeClientMessage(raw({ ...ok, weights: { nuke: 10 } }))).toBeNull();
     // An older loot list keeps the standard shares of the listed items.
     expect(decodeClientMessage(raw({ ...ok, loot: ['teleport', 'gun'] }))).toMatchObject({
-      settings: { weights: { gun: 18, teleport: 6, mine: 0 } },
+      settings: { weights: { gun: 13, teleport: 12, mine: 0 } },
     });
     expect(decodeClientMessage(raw({ ...ok, loot: [] }))).toBeNull();
     expect(decodeClientMessage(raw({ ...ok, roles: false }))).toMatchObject({ settings: { roles: false } });

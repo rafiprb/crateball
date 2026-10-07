@@ -211,15 +211,15 @@ export function decodeSettings(v: unknown): Settings | null {
 /** The standard crate shares (sim CRATES.loot; a test keeps the two in step: protocol only takes types
  * from the sim). */
 export const DEFAULT_WEIGHTS: Readonly<Settings['weights']> = {
-  gun: 18,
-  mine: 22,
-  ice: 18,
+  gun: 13,
+  mine: 13,
+  ice: 13,
   dizzy: 10,
-  boost: 7,
-  shield: 7,
-  power: 6,
-  teleport: 6,
-  bazooka: 6,
+  boost: 10,
+  shield: 8,
+  power: 12,
+  teleport: 12,
+  bazooka: 9,
 };
 
 function decodeWeights(v: Record<string, unknown>): Settings['weights'] | null {
