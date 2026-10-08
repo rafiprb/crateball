@@ -99,9 +99,7 @@ const hideFull = () => {
 };
 const retryFull = () => {
   hideFull();
-  if (!lastAttempt) return;
-  if (lastAttempt.t === 'join') joinPending = true;
-  conn.send(lastAttempt);
+  if (lastAttempt) attempt(lastAttempt);
 };
 const showFull = () => {
   hideFull();
@@ -124,6 +122,9 @@ $<HTMLButtonElement>('#full-back').onclick = () => {
 /** A create or join from the menu (remembered for a retry when the servers are full). */
 const attempt = (m: ClientMessage) => {
   lastAttempt = m;
+  // Offline, a join is not queued on the socket: the reconnect sends whatever join is still wanted then
+  // (so Leave or Back meanwhile really cancels it).
+  if (m.t === 'join' && conn.status !== 'open') return;
   if (m.t === 'join') joinPending = true;
   conn.send(m);
 };
@@ -298,6 +299,8 @@ const conn = connect({
         setMaintenance(m.on);
         break;
       case 'moved':
+        // Only for the join we are still making (one cancelled meanwhile is not followed).
+        if (lastAttempt?.t !== 'join' || lastAttempt.code !== m.code) break;
         // That room lives in another server process: connect there (the URL now names it) and join. Out
         // of the current room first, as joining a room here would have done (no slot held for us there).
         if (room) {
