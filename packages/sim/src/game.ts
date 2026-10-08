@@ -38,6 +38,7 @@ import {
 import { botInput } from './bot';
 import { gunTarget } from './aim';
 import {
+  byId as scoredById,
   clearScoring,
   cloneScoring,
   cloneStats,
@@ -47,6 +48,7 @@ import {
   newStats,
   rejoined,
   scoreGoal,
+  type Scored,
   touchBall,
   updateScoring,
 } from './stats';
@@ -94,6 +96,11 @@ export function createGame(seed: number, settings: Settings = DEFAULT_SETTINGS):
 export function cloneGame(g: Game): Game {
   return {
     ...g,
+    settings: {
+      ...g.settings,
+      weights: { ...g.settings.weights },
+      ...(g.settings.arenas && { arenas: [...g.settings.arenas] }),
+    },
     score: [g.score[0], g.score[1]],
     players: g.players.map((p) => ({ ...p, stats: cloneStats(p.stats) })),
     scoring: cloneScoring(g.scoring),
@@ -898,7 +905,7 @@ function shieldBlocks(g: Game, p: Player): boolean {
 }
 
 /** `by`: the opponent whose bullet or rocket it was (credited in their stats); none for the arena. */
-function damage(g: Game, p: Player, amount: number, kx: number, ky: number, by?: Player): void {
+function damage(g: Game, p: Player, amount: number, kx: number, ky: number, by?: Scored): void {
   p.vx += kx;
   p.vy += ky;
   // The stats count only while the ball is live (not in the pause after a goal, say the winning one).
@@ -944,7 +951,8 @@ function updateBullets(g: Game): void {
       if (dist2(p, b) < (p.r + radius) ** 2) {
         const s = (b.rocket ? ITEMS.rocketKnock : ITEMS.bulletKnock) / speed;
         if (b.rocket) g.blasts.push({ x: b.x, y: b.y, kind: 'rocket', t: ITEMS.blastShow });
-        const owner = g.players.find((o) => o.id === b.owner);
+        // Also one who left while it was in the air: their line on the results screen gets it.
+        const owner = scoredById(g, b.owner);
         damage(g, p, b.rocket ? ITEMS.rocketDamage : 1, b.vx * s, b.vy * s, owner);
         return false;
       }

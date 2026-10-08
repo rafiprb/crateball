@@ -6,6 +6,7 @@ import {
   KICK,
   RIGHT,
   addPlayer,
+  cloneGame,
   createGame,
   STATS,
   kickDirection,
@@ -586,6 +587,64 @@ describe('skorlama kuralları', () => {
     openCrate(g, a, a.x, a.y, 'mine');
     expect(a.stats).toMatchObject({ goodCrates: 0, badCrates: 0, deaths: 0 });
     finishScoring(g);
+  });
+
+  it('uzun sekme zinciri: savunmacılar arasında 10 kez seken şut yine şutçunun golü, asist de durur', () => {
+    const { f, m, d, q, touch, goal } = pitch();
+    touch(1000, m, 200, 0);
+    touch(1000 + S, m, 210, 0, { kick: [6, 0], pass: true });
+    touch(1000 + S + 20, f, 300, 0, { kick: SHOT });
+    let t = 1000 + S + 25;
+    for (let i = 0; i < 10; i++, t += 2) touch(t, i % 2 ? q : d, 380 + i, 0, { inV: [5, 0] });
+    goal('red');
+    expect(f.goals).toBe(1);
+    expect(m.stats.assists).toBe(1);
+    expect(d.stats.ownGoals + q.stats.ownGoals).toBe(0);
+  });
+
+  it('top kapma: sahibi vurup tekrar ayağına aldıysa sayılır; havadaki pası kesmek sayılmaz', () => {
+    const { f, d, o, m, touch, wait } = pitch();
+    touch(1000, f, 100, 0);
+    touch(1000 + S, f, 110, 0, { kick: [2, 0] });
+    touch(1000 + S + 10, f, 130, 0); // traps the rebound
+    touch(1000 + S + 20, d, 135, 0);
+    wait(1000 + 3 * S);
+    expect(d.stats.tackles).toBe(1);
+    // A pass in the air for 40 ticks, cut out: no tackle.
+    touch(2000, o, 100, 0);
+    touch(2000 + S, o, 110, 0, { kick: [3, 0], pass: true });
+    touch(2000 + S + 40, m, 230, 0);
+    wait(2000 + 4 * S);
+    expect(m.stats.tackles).toBe(0);
+  });
+
+  it('ayrılan oyuncunun havadaki mermisi hasarını onun satırına yazar', () => {
+    const { g, f, d } = pitch();
+    Object.assign(d, { x: 100, y: 0 });
+    g.ball = { x: 0, y: 150, vx: 0, vy: 0 };
+    g.bullets.push({
+      id: g.nextId++,
+      owner: 'f',
+      team: 'red',
+      x: 70,
+      y: 0,
+      vx: 9,
+      vy: 0,
+      life: 60,
+      rocket: false,
+    });
+    removePlayer(g, 'f');
+    run(g, 3);
+    expect(d.hp).toBeLessThan(3);
+    expect(g.scoring.gone.find((p) => p.id === 'f')!.stats.damage).toBe(1);
+    expect(f.stats.damage).toBe(0); // the old object is not the ledger line
+  });
+
+  it('kopya oyun ayarları paylaşmaz', () => {
+    const { g } = pitch();
+    const c = cloneGame(g);
+    c.settings.weights.mine = 99;
+    expect(g.settings.weights.mine).not.toBe(99);
   });
 
   it('MVP: en çok puan; eşitlikte kazanan takım, sonra gol, sonra asist', () => {

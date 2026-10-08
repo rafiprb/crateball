@@ -41,10 +41,10 @@ export function newStats(): Stats {
 /** A copy that shares nothing with `s` (prediction steps a clone of the game). */
 export const cloneStats = (s: Stats): Stats => ({ ...s, passLog: { ...s.passLog } });
 
-export const newScoring = (): Scoring => ({ spells: [], shot: null, stops: [], tackle: null, gone: [] });
+export const newScoring = (): Scoring => ({ runs: [], shot: null, stops: [], tackle: null, gone: [] });
 
 export const cloneScoring = (s: Scoring): Scoring => ({
-  spells: s.spells.map((x) => ({ ...x })),
+  runs: s.runs.map((r) => ({ ...r, spells: r.spells.map((x) => ({ ...x })) })),
   shot: s.shot && { ...s.shot },
   stops: s.stops.map((x) => ({ ...x })),
   tackle: s.tackle && { ...s.tackle },
@@ -58,7 +58,7 @@ const side = (t: Team) => (t === 'red' ? -1 : 1);
 const rolesOn = (g: Game) => g.settings.roles !== false;
 const keeper = (g: Game, p: Scored) => p.role === 'gk' && rolesOn(g);
 /** A player by id, also one who left during this match (their numbers still count). */
-const byId = (g: Game, id: string): Scored | undefined =>
+export const byId = (g: Game, id: string): Scored | undefined =>
   g.players.find((p) => p.id === id) ?? g.scoring.gone.find((p) => p.id === id);
 
 /** Everyone on the results screen: the players, then those who left. */
@@ -102,7 +102,8 @@ export function touchBall(g: Game, p: Player, kick: { pass: boolean } | null, be
   if (kick || s.ballAt < 0 || t - s.ballAt > STATS.touchGap) s.touches++;
   s.ballAt = t;
 
-  let spell = sc.spells[sc.spells.length - 1];
+  const run = sc.runs[sc.runs.length - 1];
+  let spell = run?.spells[run.spells.length - 1];
   if (spell && spell.id === p.id) {
     spell.last = t;
     spell.x = b.x;
@@ -125,24 +126,30 @@ export function touchBall(g: Game, p: Player, kick: { pass: boolean } | null, be
       kickAt: -1,
       shot: false,
     };
-    sc.spells.push(spell);
-    if (sc.spells.length > STATS.spells) sc.spells.shift();
+    // The spell before ended: whether the side had the ball under control by then.
+    if (run && prev) run.loose = run.loose && !owned(prev, t);
+    if (run && mate) {
+      run.spells.push(spell);
+      if (run.spells.length > 2) run.spells.shift();
+    } else {
+      sc.runs.push({ team: p.team, kick: false, loose: true, spells: [spell] });
+      if (sc.runs.length > 2) sc.runs.shift();
+    }
     if (mate) completedPass(g, prev, p);
     else if (prev) {
       // Any touch by the other side ends a ball won but not yet kept.
       if (sc.tackle && sc.tackle.team !== p.team) sc.tackle = null;
-      // A tackle takes it off an opponent who owned it and was on it just now: at their feet, not a
-      // loose ball, and not one they just kicked (stopping a shot or cutting out a pass is no tackle).
-      if (
-        spell.clean &&
-        t - prev.last <= STATS.touchGap &&
-        (prev.kickAt < 0 || t - prev.kickAt > STATS.touchGap)
-      )
+      // A tackle takes it off an opponent who owned it and was on it just now: at their feet (their latest
+      // touch was not a kick, so the ball is not in flight from a shot or a pass) and not a loose ball.
+      if (spell.clean && prev.last > prev.kickAt && t - prev.last <= STATS.touchGap)
         sc.tackle = { by: p.id, team: p.team, at: t };
     }
   }
   // Kept even when a contact follows in the same step: it was a kick of theirs.
-  if (kick) spell.kickAt = t;
+  if (kick) {
+    spell.kickAt = t;
+    sc.runs[sc.runs.length - 1]!.kick = true;
+  }
   // The kickoff itself is never a shot.
   if (kick && !kick.pass && g.phase === 'play') countShot(g, p, spell);
 }
@@ -235,18 +242,15 @@ export function updateScoring(g: Game): void {
  */
 export function scoreGoal(g: Game, scorer: Team): void {
   const sc = g.scoring;
-  const { spells } = sc;
-  let i = spells.length - 1;
-  let j = i;
-  while (j >= 0 && spells[j]!.team !== scorer) j--;
-  if (j >= 0 && j < i) {
-    const after = spells.slice(j + 1);
-    const noKick = after.every((s) => s.kickAt < 0);
-    const quick = g.tick - spells[j]!.last < STATS.deflect;
-    const loose = after.every((s, k) => !owned(s, after[k + 1]?.first ?? g.tick));
-    if (noKick && (quick || loose)) i = j;
+  let run = sc.runs[sc.runs.length - 1];
+  const before = sc.runs[sc.runs.length - 2];
+  if (run && before && run.team !== scorer) {
+    const last = run.spells[run.spells.length - 1]!;
+    const loose = run.loose && !owned(last, g.tick);
+    const quick = g.tick - before.spells[before.spells.length - 1]!.last < STATS.deflect;
+    if (!run.kick && (quick || loose)) run = before;
   }
-  const spell = spells[i];
+  const spell = run?.spells[run.spells.length - 1];
   const who = spell ? byId(g, spell.id) : undefined;
   if (who && who.team === scorer) {
     who.goals++;
@@ -256,7 +260,7 @@ export function scoreGoal(g: Game, scorer: Team): void {
       who.stats.shots++;
       who.stats.onTarget++;
     } else if (sc.shot && sc.shot.by === who.id && !sc.shot.on) who.stats.onTarget++;
-    assist(g, i);
+    assist(g, run!.spells);
   } else if (who) who.stats.ownGoals++;
   const conceding: Team = scorer === 'red' ? 'blue' : 'red';
   for (const p of g.players) if (p.team === conceding && keeper(g, p)) p.stats.conceded++;
@@ -271,13 +275,12 @@ export function scoreGoal(g: Game, scorer: Team): void {
   clearScoring(g);
 }
 
-/** The scorer's spell (`spells[i]`) came straight from a teammate's spell with the ball owned, at most
- * STATS.assistGap later. */
-function assist(g: Game, i: number): void {
-  const { spells } = g.scoring;
-  const own = spells[i];
-  const prev = spells[i - 1];
-  if (!own || !prev || prev.team !== own.team || prev.id === own.id) return;
+/** The scorer's spell (the last of `spells`, their side's latest ones) came straight from a teammate's
+ * spell with the ball owned, at most STATS.assistGap later. */
+function assist(g: Game, spells: Spell[]): void {
+  const own = spells[spells.length - 1];
+  const prev = spells[spells.length - 2];
+  if (!own || !prev || prev.id === own.id) return;
   if (own.first - prev.last > STATS.assistGap || !owned(prev, own.first)) return;
   const by = byId(g, prev.id);
   if (by) by.stats.assists++;

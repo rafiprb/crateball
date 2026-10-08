@@ -80,8 +80,6 @@ export const STATS = {
   /** A ball that goes in this soon after an attacker's kick, off a defender who only stood in the way
    * (no kick of theirs), stays the attacker's goal (not an own goal). */
   deflect: sec(1),
-  /** Spells kept for chains (assists, deflections); a kickoff clears them. */
-  spells: 6,
   /** A keeper's save stands when no goal follows this soon. */
   saveHold: sec(2),
   /** An assist: the pass was touched by the scorer at most this long after the passer's last touch. */

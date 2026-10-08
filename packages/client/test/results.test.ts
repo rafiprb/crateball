@@ -90,6 +90,10 @@ describe('maç sonu ekranı', () => {
     expect(r.visible).toBe(true);
     expect(document.activeElement).not.toBe(chat);
     expect(document.activeElement?.textContent).toBe('Back to lobby');
+    // Tab cannot get back to it: everything behind the screen is inert until it closes.
+    expect(chat.hasAttribute('inert')).toBe(true);
+    r.hide();
+    expect(chat.hasAttribute('inert')).toBe(false);
   });
 
   it('süresi dolunca kendiliğinden kapanır', () => {

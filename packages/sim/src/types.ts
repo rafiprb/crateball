@@ -114,6 +114,17 @@ export interface Spell {
   shot: boolean;
 }
 
+/** A side's unbroken time on the ball: from the touch that took it off the other side to the latest. */
+export interface Run {
+  team: Team;
+  /** One of its players kicked the ball. */
+  kick: boolean;
+  /** No spell of it ended with the side owning the ball (a scramble so far). */
+  loose: boolean;
+  /** Its latest spells, oldest first, at most two (the scorer and the pass before). */
+  spells: Spell[];
+}
+
 /** Someone who left during the match: their line stays on the results screen until the next one. */
 export interface Departed {
   id: string;
@@ -127,8 +138,9 @@ export interface Departed {
 
 /** Who had the ball lately, and what is waiting for an outcome. Written by stats.ts only. */
 export interface Scoring {
-  /** The latest spells, oldest first (at most STATS.spells). Cleared at every kickoff. */
-  spells: Spell[];
+  /** The latest runs (a side's unbroken time on the ball, touch to touch between its players), oldest
+   * first, at most two: the side on the ball now and the one before. Cleared at every kickoff. */
+  runs: Run[];
   /** The latest counted shot: `done` once someone else touched the ball (its outcome known), `on` when
    * that made it a shot on target (a save or a block). */
   shot: { by: string; team: Team; done: boolean; on: boolean } | null;

@@ -61,10 +61,14 @@ export function createResults(parent: HTMLElement = document.body): Results {
   let closeAt = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
 
+  /** Everything behind the screen while it is up: out of reach of Tab, clicks and Enter. */
+  let behind: Element[] = [];
   const hide = () => {
     if (timer) clearInterval(timer);
     timer = null;
     root.hidden = true;
+    for (const el of behind) el.removeAttribute('inert');
+    behind = [];
   };
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !root.hidden) hide();
@@ -181,6 +185,9 @@ export function createResults(parent: HTMLElement = document.body): Results {
         ),
       );
       root.hidden = false;
+      for (const el of behind) el.removeAttribute('inert');
+      behind = [...parent.children].filter((el) => el !== root && !el.hasAttribute('inert'));
+      for (const el of behind) el.setAttribute('inert', '');
       // Whatever had the keyboard (the chat box, mid-message) lets go: Enter and Esc are the screen's now.
       if (document.activeElement instanceof HTMLElement && !root.contains(document.activeElement))
         document.activeElement.blur();
