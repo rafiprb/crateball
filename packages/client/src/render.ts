@@ -5,6 +5,7 @@ import {
   ITEMS,
   PLAYER,
   KICK,
+  MATCH,
   TICK_HZ,
   gunTarget,
   hasWeapon,
@@ -367,8 +368,28 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
   };
 
+  /** Kickoff: a ring in the kicking team's colour round the centre circle, running out with the time
+   * the kicking team has before the ball is live for everyone. */
+  const drawKickoffRing = (g: Game, alpha: number) => {
+    if (g.phase !== 'kickoff') return;
+    const left = Math.max(0, 1 - (g.phaseT + alpha) / MATCH.kickoffLimit);
+    const r = FIELD.centerRadius + 7;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(20,24,40,.35)';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = COLORS[g.kickoffTeam];
+    ctx.beginPath();
+    ctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + left * Math.PI * 2);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+  };
+
   const drawWorld = (g: Game, pr: Predictor, alpha: number, now: number, fx: Particles) => {
     drawArena(g, now);
+    drawKickoffRing(g, alpha);
     for (const c of g.crates) {
       // The logo's rounded box with a lighter lid plank; the shadow stays on the ground as it bobs.
       const r = CRATES.radius;
@@ -962,12 +983,23 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.fill();
       ctx.restore();
     }
+    // Under the centre circle: who kicks off, then (when their time ran out) that anyone may play it.
+    const below = cy / dpr + (FIELD.centerRadius * scale) / dpr + 30;
     if (g.phase === 'kickoff') {
       // Which arena this kickoff is played on.
       const look = ARENA_LOOK[g.arena.kind];
       text(look.name.toUpperCase(), mid, h / 2 - 150, 40, '#FFF4E0', 800);
       text(look.hint, mid, h / 2 - 118, 18, '#FFF4E0', 700);
-    }
+      if (banners)
+        text(`${g.kickoffTeam.toUpperCase()} KICKS OFF`, mid, below, 22, COLORS[g.kickoffTeam], 800);
+    } else if (
+      banners &&
+      g.phase === 'play' &&
+      g.phaseT >= MATCH.kickoffLimit &&
+      g.phaseT < MATCH.kickoffLimit + TICK_HZ &&
+      Math.hypot(g.ball.x, g.ball.y) < FIELD.centerRadius
+    )
+      text('BALL IS LIVE', mid, below, 22, '#FFE066', 800);
     if (!banners) {
       // trailer: no centre-screen words
     } else if (banner) text(banner, mid, h / 2, 72, color, 800);
@@ -981,7 +1013,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       g.score[0] + g.score[1] === 0 &&
       (timed ? g.clock === g.settings.minutes * 60 * TICK_HZ : g.clock === 0)
     )
-      text(`First to ${g.settings.scoreLimit}`, mid, h / 2 - 82, 24, '#FFF4E0', 800);
+      text(`First to ${g.settings.scoreLimit}`, mid, below + 30, 20, '#FFF4E0', 800);
   };
 
   const drawPing = (rtt: number | null, w: number) => {

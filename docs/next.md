@@ -140,9 +140,9 @@ decide the MVP.
 
 ## Gameplay and UI
 
-- **Kickoff countdown.** The kicking team has 5 s, then the ball is live for everyone; nothing shows
-  this. Draw a shrinking ring around the centre circle with "BLUE KICKS OFF", then "BALL IS LIVE".
-  Maybe shorten to 3 s.
+- **Kickoff length.** The countdown ring is in (2026-10-08): the kicking team's colour runs out round the
+  centre circle, "RED KICKS OFF" under it, then "BALL IS LIVE" for a second if nobody kicked. Open:
+  shorten the 5 s to 3 s (`MATCH.kickoffLimit`, sim change, protocol bump).
 - **Arena goal effects and balls** (prototype `arenas.html`): per-arena goal effects and sounds first;
   arena balls cosmetic only, with a "standard ball" option, tried in real matches before deciding
   (volcano ball is the least readable). Could later be cosmetics/DLC.
