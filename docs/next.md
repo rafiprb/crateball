@@ -4,14 +4,9 @@ Work agreed but not started (or not finished). Newest decisions first in each se
 
 ## In progress
 
-- **Netcode + security branch (`netcode`).** Input relay, adaptive client lead, smoother corrections, plus
-  the security audit fixes. Ships only after Codex (gpt-6.1-sol) says OK. Merge notes:
-  - The branch sits on `fead83c`, which main later reverted (`3b658ac`). Rebase it onto main (or revert
-    the revert first); a plain merge silently drops part of the protocol change.
-  - The deploy flow changes: run the one-time server install script before the first release with it.
 - **PR #2, match stats and results screen** (external contributor). Review sent back with the bugs found
-  (touches in a scramble, saves, Enter opening the lobby chat) and the scoring spec below. Goes in after
-  the netcode branch; `PROTOCOL_VERSION` becomes 13 by hand (git will not show it as a conflict).
+  (touches in a scramble, saves, Enter opening the lobby chat) and the scoring spec below. The netcode branch
+  has landed, so `PROTOCOL_VERSION` becomes 13 by hand (git will not show it as a conflict).
 
 ## Load test
 
