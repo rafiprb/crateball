@@ -8,11 +8,14 @@ import { DEFAULT_CLIENTS, runSim, type ClientReport } from './netsim';
 const args = process.argv.slice(2);
 const jsonAt = args.indexOf('--json');
 const out = jsonAt >= 0 ? args.splice(jsonAt, 2)[1] : undefined;
+const batchAt = args.indexOf('--batch');
+const inputBatch = batchAt >= 0 ? Number(args.splice(batchAt, 2)[1]) : 1;
 const seconds = Number(args[0] ?? 180);
 const seeds = Number(args[1] ?? 3);
 
 const runs: ClientReport[][] = [];
-for (let s = 1; s <= seeds; s++) runs.push(runSim({ seed: s * 7919, seconds, clients: DEFAULT_CLIENTS }));
+for (let s = 1; s <= seeds; s++)
+  runs.push(runSim({ seed: s * 7919, seconds, clients: DEFAULT_CLIENTS, inputBatch }));
 
 /** Element-wise mean of every numeric field over the seeds. */
 const avg = (rs: ClientReport[]): ClientReport => {

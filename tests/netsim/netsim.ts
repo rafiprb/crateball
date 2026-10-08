@@ -58,6 +58,8 @@ export interface SimOptions {
   clients: ClientSpec[];
   /** Ignore the first part of the run (match start, queues settling). */
   warmupSeconds?: number;
+  /** Inputs per uplink message (1: one per tick, as the client does; 2: every other tick, both at once). */
+  inputBatch?: number;
 }
 
 export const DEFAULT_CLIENTS: ClientSpec[] = [
@@ -249,6 +251,8 @@ export function runSim(o: SimOptions): ClientReport[] {
     pred: Predictor;
     /** Binary snapshots arrive in order (TCP): decoded on delivery against the last one. */
     snaps: SnapDecoder;
+    /** Inputs waiting to go out together (see `inputBatch`). */
+    outbox: string[];
     up: (now: number) => number;
     down: (now: number) => number;
     acc: number;
@@ -296,6 +300,7 @@ export function runSim(o: SimOptions): ClientReport[] {
       bytes: 0,
       relayBytes: 0,
       snaps: createSnapDecoder(),
+      outbox: [],
     };
   });
 
@@ -362,12 +367,18 @@ export function runSim(o: SimOptions): ClientReport[] {
         const bits = g && me ? botInput(g, me) : 0;
         const seq = c.pred.tick(bits);
         if (seq !== null) {
-          const raw = encode({ t: 'in', s: seq, b: bits });
-          const at = c.up(now);
-          q.push(at, () => {
-            const m = JSON.parse(raw) as { s: number; b: number };
-            rooms.input(c.id, m.s, m.b);
-          });
+          c.outbox.push(encode({ t: 'in', s: seq, b: bits }));
+          if (c.outbox.length >= (o.inputBatch ?? 1)) {
+            // One message on the wire: everything in it arrives together, in order.
+            const batch = c.outbox.splice(0);
+            const at = c.up(now);
+            q.push(at, () => {
+              for (const raw of batch) {
+                const m = JSON.parse(raw) as { s: number; b: number };
+                rooms.input(c.id, m.s, m.b);
+              }
+            });
+          }
         }
       }
       c.pred.decay(dt / 1000);

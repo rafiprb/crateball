@@ -74,9 +74,17 @@ the production CPU, and Caddy spending a core on TLS at 48 players):
 
 Load test after these (prod, from the office laptop): 48 players → busiest process 39% (was 77%), ping
 p95 45 ms; 72 players → each process ~50% of a core, ping p95 65 ms, no drops (the old build fell apart
-here). Caps set to 90 people / 24 rooms / 300 sockets. Next: the occasional slow tick (average 5-6 ms, worst
-20-37 ms against the 16.7 ms budget; GC or sharing 4 cores with Caddy and Alloy?), then measure past 100
-with `scripts/loadtest-mode.sh on`.
+here). Caps set to 90 people / 24 rooms / 300 sockets.
+
+Slow ticks (average 5 ms, worst 20-40 ms) were not GC (2-5% of the time) but the machine filling up: at
+120 players Caddy took 1.3-1.5 cores and network interrupts ~30%, because every WebSocket message costs
+TLS and a proxy copy (~12,000 messages/s at 120 players; bytes are small now). Caddy → game over a Unix
+socket cut interrupts (22% → 16.5% at 72 players, ping p95 70 → 52 ms); Caddy stays the biggest consumer.
+Batching two ticks of input per message was measured in netsim (`pnpm netsim 300 6 --batch 2`) and
+rejected: own-player correction p95 up to 2x on some links. Verdict: this machine carries ~90-100 players
+well; beyond that, add machines (the server picker below spans them) or a bigger one
+(`CRATEBALL_WORKERS`, caps). Maybe: a lighter TLS terminator than Caddy for /ws (HAProxy), measured
+first.
 
 **Several servers** (later, if one machine is not enough): the same split across machines, the room list
 in the coordinator or Redis, clients connecting straight to the room's server; also allows regions.
