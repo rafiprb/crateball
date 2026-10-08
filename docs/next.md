@@ -72,7 +72,11 @@ the production CPU, and Caddy spending a core on TLS at 48 players):
 3. **Several game processes** (3 in production): the coordinator hands each socket to the worker that
    holds its room; caps, /health and /rooms add the workers up.
 
-Still to do: the load test again on prod, then set the caps just under what it measures.
+Load test after these (prod, from the office laptop): 48 players → busiest process 39% (was 77%), ping
+p95 45 ms; 72 players → each process ~50% of a core, ping p95 65 ms, no drops (the old build fell apart
+here). Caps set to 90 people / 24 rooms / 300 sockets. Next: the occasional slow tick (average 5-6 ms, worst
+20-37 ms against the 16.7 ms budget; GC or sharing 4 cores with Caddy and Alloy?), then measure past 100
+with `scripts/loadtest-mode.sh on`.
 
 **Several servers** (later, if one machine is not enough): the same split across machines, the room list
 in the coordinator or Redis, clients connecting straight to the room's server; also allows regions.

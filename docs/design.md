@@ -205,8 +205,9 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   takılmamalı. Adres başına: 96 açık bağlantı, 120'lik patlama + saniyede 2 yeni bağlantı, dakikada 30 oda
   kurma, en fazla 20 oda. IP ile yasaklama yok; önek (prefix) bazlı kısıtlama yok.
 - Sunucu çapında (tüm süreçler, env ile: `CRATEBALL_MAX_ROOMS/PLAYERS/SOCKETS`): varsayılan 100 oda, 600 kişi
-  (oyuncu + izleyici), 1000 soket (lobi gezenler dahil); yük testinden sonra ölçülen kapasitenin biraz
-  altına çekilecek. Dolunca "Servers are full" ekranı, 15 sn'de bir yeniden dener. Adres başına sınırlar
+  (oyuncu + izleyici), 1000 soket (lobi gezenler dahil). Prod varsayılanı yük testinden (2026-10-08):
+  90 kişi, 24 oda, 300 soket (`config.ts` `DEFAULT_CAPS`). Yük testi modu (`scripts/loadtest-mode.sh`)
+  sınırları en fazla 30 dk kaldırır. Dolunca "Servers are full" ekranı, 15 sn'de bir yeniden dener. Adres başına sınırlar
   ve soket sayısı ana süreçte (tüm upgrade'leri o görür); mesaj, oda kurma ve kod deneme bütçeleri her
   oyun sürecinde ayrı tutulur.
 - Kabul (upgrade'den önce): prod'da tarayıcı Origin'i yalnızca `playcrateball.com` (masaüstü uygulaması da

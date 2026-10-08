@@ -28,6 +28,7 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 | `pnpm deploy` | (`.deploy.env` gerekir) Commit'lenmiş HEAD'i VPS'e gönderir, orada derler. Maç oynanıyorsa bekler; `pnpm deploy --force` beklemez (açık odalar silinir) |
 | `pnpm logs` / `pnpm watch` | VPS'teki oyun logunu canlı izler / sadece önemli olayları süzer (`scripts/watch.mjs`) |
 | `pnpm loadtest --url wss://playcrateball.com/ws --players 60 --seconds 180` | Yük testi: `load-` adlı başsız istemciler gizli odalarda oynar (`tests/load`). Bir makineden en fazla 96. Sonuç sunucunun `sunucu istatistik` satırında (Grafana) |
+| `sh scripts/loadtest-mode.sh on\|off\|status` | Yük testi modu: sunucu ve adres başına sınırlar kalkar (bir makineden 96'nın üstü). En fazla 30 dk, yeniden başlatma kapatır |
 | `sh scripts/maintenance.sh on\|off\|status` | Bakım modu: yeni oda/katılım/maç başlatma reddedilir, açık sayfalar bakım ekranı gösterir; süren maçlar biter. Yayın (yeniden başlatma) kapatır |
 
 ## Mimari kuralları (lint ile zorlanır)

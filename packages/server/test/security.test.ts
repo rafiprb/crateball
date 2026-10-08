@@ -42,6 +42,7 @@ async function boot(over: Partial<ServerConfig> = {}, now?: () => number) {
     version: 'test',
     extraOrigins: [],
     maintenanceFile: join(dir, 'maintenance'),
+    loadTestFile: join(dir, 'loadtest'),
     caps: { rooms: 100, players: 600, sockets: 1000 },
     workers: 0,
     ...over,

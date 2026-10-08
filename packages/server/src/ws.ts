@@ -172,6 +172,8 @@ export function createAdmission(
     maxSockets: () => number;
     now: () => number;
     logLimited: (write: () => void) => void;
+    /** Load test mode: no socket cap, no per-address limits (sockets are still counted). */
+    relaxed?: () => boolean;
   },
 ) {
   const connectsByIp = new Map<string, ReturnType<typeof bucket>>();
@@ -183,6 +185,7 @@ export function createAdmission(
         opts.logLimited(() => log.warn({ ip, origin }, 'yabancı Origin reddedildi'));
         return 403;
       }
+      if (opts.relaxed?.()) return null;
       if (opts.sockets() >= opts.maxSockets()) return 503;
       if ((connectionsByIp.get(ip) ?? 0) >= LIMITS.connectionsPerIp) {
         opts.logLimited(() => log.warn({ ip }, 'bir adresten çok fazla bağlantı'));
@@ -198,7 +201,7 @@ export function createAdmission(
     /** A socket of this address opened; false if it is one too many (two upgrades raced the check). */
     opened(ip: string): boolean {
       const open = (connectionsByIp.get(ip) ?? 0) + 1;
-      if (open > LIMITS.connectionsPerIp) return false;
+      if (open > LIMITS.connectionsPerIp && !opts.relaxed?.()) return false;
       connectionsByIp.set(ip, open);
       return true;
     },
@@ -256,6 +259,8 @@ export function attachWebSocket(
     ownsCode?: (code: string) => boolean;
     /** Several processes: this one's share of the per-address and server-wide budgets (see cluster.ts). */
     perIp?: (limit: number) => number;
+    /** Load test mode (flags.ts): caps and per-address limits lifted. */
+    relaxed?: () => boolean;
     now?: () => number;
   } = {},
 ): WebSocketServer {
@@ -272,6 +277,7 @@ export function attachWebSocket(
     maxSockets: () => opts.maxSockets ?? LIMITS.maxSockets,
     now,
     logLimited: (write) => logLimited(write),
+    relaxed: opts.relaxed,
   });
   const wss = new WebSocketServer({
     ...(server
@@ -437,7 +443,7 @@ export function attachWebSocket(
       const t = now();
       if (t - lastCreateAt < LIMITS.createGapMs) return false;
       const recent = (createsByIp.get(ip) ?? []).filter((x) => t - x < 60_000);
-      if (recent.length >= perIp(LIMITS.createsPerIpPerMin)) return false;
+      if (recent.length >= perIp(LIMITS.createsPerIpPerMin) && !opts.relaxed?.()) return false;
       recent.push(t);
       boundedSet(createsByIp, ip, recent, LIMITS.maxTrackedIps);
       lastCreateAt = t;

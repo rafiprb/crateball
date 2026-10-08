@@ -41,6 +41,7 @@ async function boot(over: Partial<ServerConfig> = {}, helloTimeoutMs?: number) {
     version: 'test',
     extraOrigins: [],
     maintenanceFile: join(dir, 'maintenance'),
+    loadTestFile: join(dir, 'loadtest'),
     caps: { rooms: 100, players: 600, sockets: 1000 },
     workers: 0,
     ...over,
@@ -93,7 +94,7 @@ describe('loadConfig', () => {
       CRATEBALL_MAX_PLAYERS: '60',
       CRATEBALL_MAX_SOCKETS: '',
     });
-    expect(cfg.caps).toEqual({ rooms: 12, players: 60, sockets: 1000 });
+    expect(cfg.caps).toEqual({ rooms: 12, players: 60, sockets: 300 });
     expect(() => loadConfig({ CRATEBALL_MAX_PLAYERS: '0' })).toThrow();
     expect(() => loadConfig({ CRATEBALL_MAX_ROOMS: 'çok' })).toThrow();
   });
@@ -1538,6 +1539,26 @@ describe('çoklu oyun süreci', () => {
       .toBe(200);
     expect(running!.workerPids!()[0]).not.toBe(pid);
   }, 45_000);
+
+  it('yük testi modu sınırları kaldırır, kapanınca geri gelir', async () => {
+    const { cfg, wsUrl } = await boot({ workers: 2, caps: { rooms: 1, players: 600, sockets: 1000 } });
+    const create = async (name: string) => {
+      const { c } = await greet(`${wsUrl}?room=AAAA`);
+      c.socket.send(encode({ t: 'create', name, roomName: 'R', public: false, settings }));
+      let m: ServerMessage;
+      do m = await c.next();
+      while (m.t !== 'joined' && m.t !== 'error');
+      return m.t === 'joined' ? 'joined' : m.code;
+    };
+    expect(await create('A')).toBe('joined');
+    expect(await create('B')).toBe('server_full');
+    writeFileSync(cfg.loadTestFile, '');
+    await new Promise((r) => setTimeout(r, 1300));
+    expect(await create('C')).toBe('joined');
+    rmSync(cfg.loadTestFile);
+    await new Promise((r) => setTimeout(r, 1300));
+    expect(await create('D')).toBe('server_full');
+  });
 
   it('oda sınırı tüm sunucu için sayılır', async () => {
     const { wsUrl } = await boot({ workers: 2, caps: { rooms: 1, players: 600, sockets: 1000 } });

@@ -10,6 +10,7 @@ import { CODE_RE } from '@crateball/protocol';
 import { codeOwner, share, type FromWorker, type Load, type ToWorker } from './cluster';
 import type { ServerConfig } from './config';
 import { createHttpHandler, type Route } from './http';
+import { watchLoadTest } from './flags';
 import { createLogBudget } from './log-budget';
 import { createMetrics, startServerStats, type Sample } from './metrics';
 import { LIMITS, clientIp, createAdmission } from './ws';
@@ -71,6 +72,7 @@ export async function startCoordinator(
   const entry = workerEntry();
   let closing = false;
   let total = 0;
+  const loadTest = watchLoadTest(cfg.loadTestFile);
   const admission = createAdmission(log, {
     production: cfg.mode === 'production',
     origins: cfg.extraOrigins,
@@ -78,6 +80,7 @@ export async function startCoordinator(
     maxSockets: () => cfg.caps.sockets,
     now: Date.now,
     logLimited: (write) => budget.line(write, 'warn'),
+    relaxed: loadTest.on,
   });
 
   const workers: Worker[] = Array.from({ length: n }, (_, k) => ({
@@ -294,6 +297,7 @@ export async function startCoordinator(
     close: async () => {
       closing = true;
       clearInterval(watch);
+      loadTest.stop();
       stopStats();
       // Stop listening now. Not waiting for the callback: sockets handed to workers stay on the server's
       // books (Node asks the workers about them), and the workers are about to exit.

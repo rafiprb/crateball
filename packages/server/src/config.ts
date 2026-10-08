@@ -17,6 +17,9 @@ export interface ServerConfig {
   extraOrigins: string[];
   /** While this file exists the server is under maintenance (scripts/maintenance.sh on|off). */
   maintenanceFile: string;
+  /** While this file exists (at most 30 min) caps and per-address limits are lifted for a load test
+   * (scripts/loadtest-mode.sh on|off). */
+  loadTestFile: string;
   /** Server-wide caps, set just under the capacity measured by the load test (docs/next.md). Beyond them
    * people get "servers are full". Env: CRATEBALL_MAX_ROOMS, CRATEBALL_MAX_PLAYERS, CRATEBALL_MAX_SOCKETS. */
   caps: { rooms: number; players: number; sockets: number };
@@ -25,8 +28,10 @@ export interface ServerConfig {
   workers: number;
 }
 
-/** Measured with the load test (2026-10-08, one game process on the production server). */
-export const DEFAULT_CAPS = { rooms: 100, players: 600, sockets: 1000 };
+/** From the load test (2026-10-08, production server, 3 game processes): 72 players played well (ping p95
+ * 65 ms, each process at half a core), with occasional slow ticks. 90 people in rooms, 24 rooms (8 per
+ * process); sockets also count people in the menu. */
+export const DEFAULT_CAPS = { rooms: 24, players: 90, sockets: 300 };
 
 /** Production server: 4 cores, one for the coordinator and Caddy, three for rooms. */
 export const DEFAULT_WORKERS = 3;
@@ -68,6 +73,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       .map((o) => o.trim())
       .filter(Boolean),
     maintenanceFile: env.MAINTENANCE_FILE ?? join(tmpdir(), 'crateball-maintenance'),
+    loadTestFile: env.LOADTEST_FILE ?? join(tmpdir(), 'crateball-loadtest'),
     caps: {
       rooms: capFrom(env, 'CRATEBALL_MAX_ROOMS', DEFAULT_CAPS.rooms),
       players: capFrom(env, 'CRATEBALL_MAX_PLAYERS', DEFAULT_CAPS.players),

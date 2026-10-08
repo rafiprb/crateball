@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { Writable } from 'node:stream';
 import { LOAD_MS, codeOwner, share, type FromWorker, type ToWorker } from './cluster';
+import { watchLoadTest } from './flags';
 import { createLogBudget } from './log-budget';
 import { createLogger } from './logger';
 import { SERVER_STATS_MS, createMetrics, createSampler } from './metrics';
@@ -29,12 +30,14 @@ export async function runWorker(): Promise<void> {
   const budget = createLogBudget(log, LIMITS.logBudgets);
   const metrics = createMetrics();
   const mine = (code: string) => codeOwner(code, n) === k;
+  const loadTest = watchLoadTest(cfg.loadTestFile);
   // This worker's shares: of the caps (they add up to the server's) and of the per-address budgets.
   const rooms = createRooms(log, {
     budget,
     metrics,
     caps: { rooms: share(cfg.caps.rooms, k, n), members: share(cfg.caps.players, k, n) },
     roomsPerOwner: Math.max(1, share(ROOMS_PER_OWNER, k, n)),
+    relaxed: loadTest.on,
     codeOk: mine,
   });
   const wss = attachWebSocket(null, log, rooms, {
@@ -49,6 +52,7 @@ export async function runWorker(): Promise<void> {
     tokens: createTokens(Buffer.from(init.secret, 'base64')),
     ownsCode: mine,
     perIp: (limit) => Math.max(1, share(limit, k, n)),
+    relaxed: loadTest.on,
   });
 
   /** Handovers holding a socket here, and ones the coordinator gave up before they arrived. */

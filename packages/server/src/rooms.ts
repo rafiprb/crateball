@@ -291,6 +291,8 @@ export function createRooms(
     caps?: { rooms: number; members: number };
     /** Rooms one address may hold open at once (a worker gets its share). */
     roomsPerOwner?: number;
+    /** Load test mode (flags.ts): no caps, no rooms-per-address limit. */
+    relaxed?: () => boolean;
     /** Several processes: the codes this one may give out (see cluster.ts). */
     codeOk?: (code: string) => boolean;
   } = {},
@@ -310,8 +312,9 @@ export function createRooms(
 
   const caps = opts.caps ?? { rooms: MAX_ROOMS, members: MAX_MEMBERS_TOTAL };
   const roomsPerOwner = opts.roomsPerOwner ?? ROOMS_PER_OWNER;
-  const roomsFull = () => rooms.size >= caps.rooms;
-  const membersFull = () => byClient.size >= caps.members;
+  const relaxed = opts.relaxed ?? (() => false);
+  const roomsFull = () => rooms.size >= caps.rooms && !relaxed();
+  const membersFull = () => byClient.size >= caps.members && !relaxed();
   /** Takes one from a refilling budget (`refillMs` per token); false if empty. */
   const refill = (b: { tokens: number; at: number }, burst: number, refillMs: number) => {
     const t = now();
@@ -747,7 +750,7 @@ export function createRooms(
       if (roomsFull() || (!byClient.has(id) && membersFull())) return 'server_full';
       let mine = 0;
       for (const r of rooms.values()) if (r.owner === owner && r !== byClient.get(id)) mine++;
-      if (mine >= roomsPerOwner) return 'rate_limited';
+      if (mine >= roomsPerOwner && !relaxed()) return 'rate_limited';
       leave(id);
       const code = newCode();
       const room: Room = {

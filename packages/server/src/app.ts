@@ -8,6 +8,7 @@ import { createLogBudget } from './log-budget';
 import { LIMITS, attachWebSocket } from './ws';
 import { createMetrics, startServerStats } from './metrics';
 import { startCoordinator } from './coordinator';
+import { watchLoadTest } from './flags';
 
 export { loadConfig, type ServerConfig } from './config';
 export { createLogger } from './logger';
@@ -34,7 +35,9 @@ export async function startServer(
   // One budget for every log line clients can cause, in the rooms and on the sockets.
   const budget = createLogBudget(log, LIMITS.logBudgets, opts.now);
   const metrics = createMetrics();
+  const loadTest = watchLoadTest(cfg.loadTestFile);
   const rooms = createRooms(log, {
+    relaxed: loadTest.on,
     budget,
     now: opts.now,
     metrics,
@@ -63,6 +66,7 @@ export async function startServer(
     metrics,
     maintenanceFile: cfg.maintenanceFile,
     maxSockets: cfg.caps.sockets,
+    relaxed: loadTest.on,
   });
   const stopStats = startServerStats(log, metrics, () => ({ ...rooms.stats(), sockets: wss.clients.size }));
   try {
@@ -88,6 +92,7 @@ export async function startServer(
     close: () =>
       new Promise<void>((resolve) => {
         stopStats();
+        loadTest.stop();
         rooms.stop();
         for (const c of wss.clients) c.terminate();
         wss.close();
