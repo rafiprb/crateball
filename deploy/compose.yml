@@ -13,6 +13,12 @@ services:
       APP_VERSION: ${APP_VERSION:-unknown}
       # Empty on the server; only the local stack smoke test allows its https://localhost Origin.
       CRATEBALL_ORIGINS: ${CRATEBALL_ORIGINS:-}
+      # Server caps (empty = the defaults in packages/server/src/config.ts, set from the load test). To
+      # change them without a release: put CRATEBALL_MAX_PLAYERS=… in /etc/crateball/.env (root) and
+      # recreate the game container.
+      CRATEBALL_MAX_ROOMS: ${CRATEBALL_MAX_ROOMS:-}
+      CRATEBALL_MAX_PLAYERS: ${CRATEBALL_MAX_PLAYERS:-}
+      CRATEBALL_MAX_SOCKETS: ${CRATEBALL_MAX_SOCKETS:-}
     expose: ['8080']
     read_only: true
     tmpfs: ['/tmp:size=16m']

@@ -17,6 +17,20 @@ export interface ServerConfig {
   extraOrigins: string[];
   /** While this file exists the server is under maintenance (scripts/maintenance.sh on|off). */
   maintenanceFile: string;
+  /** Server-wide caps, set just under the capacity measured by the load test (docs/next.md). Beyond them
+   * people get "servers are full". Env: CRATEBALL_MAX_ROOMS, CRATEBALL_MAX_PLAYERS, CRATEBALL_MAX_SOCKETS. */
+  caps: { rooms: number; players: number; sockets: number };
+}
+
+/** Measured with the load test (2026-10-08, one game process on the production server). */
+export const DEFAULT_CAPS = { rooms: 100, players: 600, sockets: 1000 };
+
+function capFrom(env: Record<string, string | undefined>, name: string, def: number): number {
+  const v = env[name];
+  if (v === undefined || v === '') return def;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`Geçersiz ${name}: ${v}`);
+  return n;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): ServerConfig {
@@ -40,5 +54,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       .map((o) => o.trim())
       .filter(Boolean),
     maintenanceFile: env.MAINTENANCE_FILE ?? join(tmpdir(), 'crateball-maintenance'),
+    caps: {
+      rooms: capFrom(env, 'CRATEBALL_MAX_ROOMS', DEFAULT_CAPS.rooms),
+      players: capFrom(env, 'CRATEBALL_MAX_PLAYERS', DEFAULT_CAPS.players),
+      sockets: capFrom(env, 'CRATEBALL_MAX_SOCKETS', DEFAULT_CAPS.sockets),
+    },
   };
 }

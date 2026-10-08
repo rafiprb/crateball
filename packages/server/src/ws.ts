@@ -173,6 +173,8 @@ export function attachWebSocket(
     metrics?: Metrics;
     /** While this file exists: no new rooms, no joins into other rooms (see `maintenanceOpen`). */
     maintenanceFile?: string;
+    /** Open sockets server-wide (default LIMITS.maxSockets). */
+    maxSockets?: number;
     now?: () => number;
   } = {},
 ): WebSocketServer {
@@ -195,7 +197,7 @@ export function attachWebSocket(
         logLimited(() => log.warn({ ip, origin: info.origin }, 'yabancı Origin reddedildi'));
         return done(false, 403);
       }
-      if (wss.clients.size >= LIMITS.maxSockets) return done(false, 503);
+      if (wss.clients.size >= (opts.maxSockets ?? LIMITS.maxSockets)) return done(false, 503);
       // Refused here, before any WebSocket exists: a socket refused after the upgrade would still parse
       // frames while closing (and an invalid one with no error listener would crash the process).
       if ((connectionsByIp.get(ip) ?? 0) >= LIMITS.connectionsPerIp) {
@@ -634,8 +636,6 @@ export function attachWebSocket(
     });
   });
 
-  // Tokens of players who are gone for good (and not on a socket either) are forgotten; old admission
-  // records expire; dropped log lines are summarised.
   // Maintenance: checked once a second; everyone connected hears of a change at once.
   let maintenance = opts.maintenanceFile ? existsSync(opts.maintenanceFile) : false;
   const maintenanceWatch = setInterval(() => {
@@ -648,6 +648,8 @@ export function attachWebSocket(
   }, 1000);
   maintenanceWatch.unref();
 
+  // Tokens of players who are gone for good (and not on a socket either) are forgotten; old admission
+  // records expire; dropped log lines are summarised.
   const prune = setInterval(() => {
     const t = now();
     for (const [tk, { id, at }] of sessions) if (t - at > BAN_MS && !keep(tk, id)) sessions.delete(tk);

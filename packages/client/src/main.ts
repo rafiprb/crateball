@@ -1,5 +1,5 @@
 import './style.css';
-import { CODE_RE, PROTOCOL_VERSION, type RoomInfo } from '@crateball/protocol';
+import { CODE_RE, PROTOCOL_VERSION, type ClientMessage, type RoomInfo } from '@crateball/protocol';
 import { DEFAULT_SETTINGS, TICK_HZ, type BlastKind } from '@crateball/sim';
 import { createChat } from './chat';
 import { createTickClock } from './clock';
@@ -76,6 +76,48 @@ const showMaintenance = () => {
 const setMaintenance = (on: boolean) => {
   maintenance = on;
   showMaintenance();
+};
+
+/** Servers full: a screen that retries what was refused (create or join) every FULL_RETRY_S seconds. */
+const FULL_RETRY_S = 15;
+const fullEl = $<HTMLDivElement>('#full');
+const fullWait = $<HTMLSpanElement>('#full-wait');
+/** The last create or join sent from the menu: what a retry repeats. */
+let lastAttempt: ClientMessage | null = null;
+let fullTimer: ReturnType<typeof setInterval> | null = null;
+const hideFull = () => {
+  if (fullTimer) clearInterval(fullTimer);
+  fullTimer = null;
+  fullEl.hidden = true;
+};
+const retryFull = () => {
+  hideFull();
+  if (!lastAttempt) return;
+  if (lastAttempt.t === 'join') joinPending = true;
+  conn.send(lastAttempt);
+};
+const showFull = () => {
+  hideFull();
+  let left = FULL_RETRY_S;
+  fullWait.textContent = String(left);
+  fullEl.hidden = false;
+  fullTimer = setInterval(() => {
+    left--;
+    fullWait.textContent = String(left);
+    if (left <= 0) retryFull();
+  }, 1000);
+};
+$<HTMLButtonElement>('#full-retry').onclick = retryFull;
+$<HTMLButtonElement>('#full-back').onclick = () => {
+  hideFull();
+  lastAttempt = null;
+  toMenu();
+};
+/** A create or join from the menu (remembered for a retry when the servers are full). */
+const attempt = (m: ClientMessage) => {
+  lastAttempt = m;
+  if (m.t === 'join') joinPending = true;
+  conn.send(m);
 };
 
 const showError = (text: string) => {
@@ -227,6 +269,8 @@ const conn = connect({
     switch (m.t) {
       case 'joined':
         joinPending = false;
+        lastAttempt = null;
+        hideFull();
         code = m.code;
         rememberRoom(m.code);
         pred.setMe(m.playerId);
@@ -264,6 +308,11 @@ const conn = connect({
         if (m.code === 'maintenance') {
           setMaintenance(true);
           if (joinPending) toMenu();
+          break;
+        }
+        if (m.code === 'server_full' && lastAttempt) {
+          joinPending = false;
+          showFull();
           break;
         }
         showError(m.message);
@@ -308,12 +357,9 @@ const ui = createUi(
   $<HTMLDivElement>('#ui'),
   {
     create: (roomName, isPublic) =>
-      conn.send({ t: 'create', name: ui.name, roomName, public: isPublic, settings: DEFAULT_SETTINGS }),
+      attempt({ t: 'create', name: ui.name, roomName, public: isPublic, settings: DEFAULT_SETTINGS }),
     meta: (roomName, isPublic) => conn.send({ t: 'meta', name: roomName, public: isPublic }),
-    join: (c) => {
-      joinPending = true;
-      conn.send({ t: 'join', code: c, name: ui.name });
-    },
+    join: (c) => attempt({ t: 'join', code: c, name: ui.name }),
     leave: () => {
       conn.send({ t: 'leave' });
       toMenu();

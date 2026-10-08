@@ -71,7 +71,7 @@ export const EMPTY_ROOM_TTL_MS = 2 * 60_000;
 export const EMPTY_UNUSED_ROOM_TTL_MS = 30_000;
 /** Rooms one address may hold open at once (several friends behind one router still fit). */
 export const ROOMS_PER_OWNER = 20;
-/** Everyone in a room (players and spectators), server-wide. */
+/** Everyone in a room (players and spectators), server-wide: the default (CRATEBALL_MAX_PLAYERS). */
 export const MAX_MEMBERS_TOTAL = 600;
 /** Kicks a room remembers (by session key), and for how long. */
 export const MAX_BANS = 64;
@@ -208,7 +208,7 @@ const MAX_MEMBERS = 12;
 const CHAT_HISTORY = 30;
 const CHAT_BURST = 5;
 const CHAT_REFILL_MS = 1500;
-/** Hard cap on rooms held in memory (anyone can create one). */
+/** Hard cap on rooms held in memory (anyone can create one): the default (CRATEBALL_MAX_ROOMS). */
 export const MAX_ROOMS = 100;
 /** How long a dropped player keeps their slot (and host role). */
 export const RECONNECT_GRACE_MS = 20_000;
@@ -272,6 +272,10 @@ export function createRooms(
     budget?: LogBudget;
     /** Server-wide counters for the `sunucu istatistik` line. */
     metrics?: Metrics;
+    /** Server-wide caps: rooms, and people in rooms (players and spectators). */
+    caps?: { rooms: number; members: number };
+    /** Rooms and people held by the other worker processes: the caps count the whole server. */
+    elsewhere?: () => { rooms: number; members: number };
   } = {},
 ): Rooms {
   const seed = opts.seed ?? (() => Date.now() >>> 0);
@@ -287,7 +291,10 @@ export function createRooms(
   let last = 0;
   let acc = 0;
 
-  const memberCount = () => byClient.size;
+  const caps = opts.caps ?? { rooms: MAX_ROOMS, members: MAX_MEMBERS_TOTAL };
+  const elsewhere = opts.elsewhere ?? (() => ({ rooms: 0, members: 0 }));
+  const roomsFull = () => rooms.size + elsewhere().rooms >= caps.rooms;
+  const membersFull = () => byClient.size + elsewhere().members >= caps.members;
   /** Takes one from a refilling budget (`refillMs` per token); false if empty. */
   const refill = (b: { tokens: number; at: number }, burst: number, refillMs: number) => {
     const t = now();
@@ -704,8 +711,7 @@ export function createRooms(
     },
     isAway: (id) => !!byClient.get(id)?.members.get(id)?.awayTimer,
     create(id, name, roomName, isPublic, settings, send, key = id, owner = id) {
-      if (rooms.size >= MAX_ROOMS || (!byClient.has(id) && memberCount() >= MAX_MEMBERS_TOTAL))
-        return 'server_full';
+      if (roomsFull() || (!byClient.has(id) && membersFull())) return 'server_full';
       let mine = 0;
       for (const r of rooms.values()) if (r.owner === owner && r !== byClient.get(id)) mine++;
       if (mine >= ROOMS_PER_OWNER) return 'rate_limited';
@@ -750,7 +756,7 @@ export function createRooms(
       }
       if ((room.banned.get(key) ?? 0) > now()) return 'kicked';
       if (room.members.size >= MAX_MEMBERS) return 'room_full';
-      if (!byClient.has(id) && memberCount() >= MAX_MEMBERS_TOTAL) return 'server_full';
+      if (!byClient.has(id) && membersFull()) return 'server_full';
       if (!refill(room.joins, JOIN_BURST, JOIN_REFILL_MS)) return 'rate_limited';
       // Only now leave the old room: a wrong code must not throw you out of the one you are in.
       leave(id);

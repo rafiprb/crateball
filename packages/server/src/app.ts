@@ -29,7 +29,12 @@ export async function startServer(
   // One budget for every log line clients can cause, in the rooms and on the sockets.
   const budget = createLogBudget(log, LIMITS.logBudgets, opts.now);
   const metrics = createMetrics();
-  const rooms = createRooms(log, { budget, now: opts.now, metrics });
+  const rooms = createRooms(log, {
+    budget,
+    now: opts.now,
+    metrics,
+    caps: { rooms: cfg.caps.rooms, members: cfg.caps.players },
+  });
   const handler = createHttpHandler(
     cfg,
     devLog,
@@ -52,6 +57,7 @@ export async function startServer(
     budget,
     metrics,
     maintenanceFile: cfg.maintenanceFile,
+    maxSockets: cfg.caps.sockets,
   });
   const stopStats = startServerStats(log, metrics, () => ({ ...rooms.stats(), sockets: wss.clients.size }));
   try {

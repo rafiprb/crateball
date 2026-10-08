@@ -31,6 +31,7 @@ async function boot(over: Partial<ServerConfig> = {}, helloTimeoutMs?: number) {
     version: 'test',
     extraOrigins: [],
     maintenanceFile: join(dir, 'maintenance'),
+    caps: { rooms: 100, players: 600, sockets: 1000 },
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: silent }), { helloTimeoutMs });
@@ -71,6 +72,17 @@ describe('loadConfig', () => {
     expect(cfg.port).toBe(8080);
     expect(cfg.logFile).toBeNull();
   });
+  it('sunucu sınırları env ile ayarlanır; boş değer varsayılan, geçersiz değer hata', () => {
+    const cfg = loadConfig({
+      CRATEBALL_MAX_ROOMS: '12',
+      CRATEBALL_MAX_PLAYERS: '60',
+      CRATEBALL_MAX_SOCKETS: '',
+    });
+    expect(cfg.caps).toEqual({ rooms: 12, players: 60, sockets: 1000 });
+    expect(() => loadConfig({ CRATEBALL_MAX_PLAYERS: '0' })).toThrow();
+    expect(() => loadConfig({ CRATEBALL_MAX_ROOMS: 'çok' })).toThrow();
+  });
+
   it('geçersiz PORT hata verir', () => {
     expect(() => loadConfig({ PORT: 'abc' })).toThrow('Geçersiz PORT');
   });

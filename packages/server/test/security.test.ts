@@ -36,6 +36,7 @@ async function boot(over: Partial<ServerConfig> = {}, now?: () => number) {
     version: 'test',
     extraOrigins: [],
     maintenanceFile: join(dir, 'maintenance'),
+    caps: { rooms: 100, players: 600, sockets: 1000 },
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: out }), { now });
@@ -178,8 +179,7 @@ describe('reddedilen bağlantı süreci çökertemez (#2)', () => {
 
 describe('kabul sınırları (#4, #9)', () => {
   it('sunucu çapında soket sınırı dolunca yeni bağlantı kurulamaz', async () => {
-    LIMITS.maxSockets = 2;
-    const { url } = await boot();
+    const { url } = await boot({ caps: { rooms: 100, players: 600, sockets: 2 } });
     const a = client(url);
     const b = client(url);
     await Promise.all([a.opened, b.opened]);

@@ -33,7 +33,8 @@ canvas#game {
 #banner[hidden] {
   display: none;
 }
-#maintenance {
+/* Full-page notices: maintenance, servers full. */
+.screen {
   position: fixed;
   inset: 0;
   z-index: 90;
@@ -47,31 +48,63 @@ canvas#game {
   background: #0d1330;
   color: #fff;
 }
-#maintenance[hidden] {
+.screen[hidden] {
   display: none;
 }
-#maintenance svg {
+.screen svg {
   width: 112px;
   height: 112px;
   margin-bottom: 12px;
   animation: splash-bob 1.1s ease-in-out infinite alternate;
 }
-#maintenance h1 {
+.screen h1 {
   margin: 0;
   font-family: 'Baloo 2', system-ui, sans-serif;
   font-size: 34px;
   color: #ff9a3d;
   line-height: 1.15;
 }
-#maintenance p {
+.screen p {
   margin: 0;
   max-width: 420px;
   font-size: 17px;
   line-height: 1.45;
 }
-#maintenance .small {
+.screen .small {
   opacity: 0.6;
   font-size: 14px;
+}
+.screen .row {
+  margin-top: 14px;
+}
+.screen .row button {
+  flex: none;
+  white-space: nowrap;
+}
+.screen button {
+  font:
+    700 18px 'Baloo 2',
+    system-ui,
+    sans-serif;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 18px;
+  background: #2c3566;
+  color: #fff4e0;
+  box-shadow: 0 3px 0 #1a2044;
+  cursor: pointer;
+}
+.screen button.primary {
+  background: linear-gradient(#ffb760, #ff9a3d);
+  color: #3a1a06;
+  box-shadow: 0 4px 0 #c8641f;
+}
+.screen button:hover {
+  filter: brightness(1.15);
+}
+/* Maintenance wins over everything (it also covers the full screen). */
+#maintenance {
+  z-index: 91;
 }
 #banner button {
   font: inherit;
