@@ -13,6 +13,10 @@ DEPLOY_PUB=$(cat || true)
 say() { printf '\n== %s\n' "$*"; }
 
 if [ "$PHASE" = "finish" ]; then
+  if [ "$SSH_PORT" = "22" ]; then
+    echo "SSH portu 22: kapatılacak bir şey yok"
+    exit 0
+  fi
   say "port 22 kapanıyor (SSH artık yalnızca $SSH_PORT)"
   ufw delete allow 22/tcp >/dev/null 2>&1 || true
   ufw status
@@ -60,8 +64,8 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 Port 22
-Port $SSH_PORT
 EOF
+[ "$SSH_PORT" = "22" ] || echo "Port $SSH_PORT" >> /etc/ssh/sshd_config.d/00-crateball.conf
 sshd -t
 # Ubuntu starts sshd from ssh.socket; its generator reads the ports from sshd_config.
 systemctl daemon-reload

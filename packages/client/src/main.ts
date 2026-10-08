@@ -348,7 +348,8 @@ const conn = connect({
           if (room) toMenu();
           showError('Busy right now, trying again…');
           setTimeout(() => {
-            if (!room && lastAttempt === again) attempt(again);
+            // Still the join we were making (not cancelled or replaced), whatever room is shown meanwhile.
+            if (lastAttempt === again) attempt(again);
           }, JOIN_RETRY_MS);
           break;
         }
@@ -448,6 +449,7 @@ leaveBtn.type = 'button';
 leaveBtn.hidden = true;
 leaveBtn.textContent = 'Leave';
 twoClick(leaveBtn, 'Leave', 'Click again to leave', () => {
+  lastAttempt = null; // the player's own choice: no join is on its way any more
   leaveBtn.classList.remove('armed');
   leaveBtn.textContent = 'Leave';
   conn.send({ t: 'leave' });
