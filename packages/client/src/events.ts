@@ -148,7 +148,9 @@ export function createEventTracker(me: () => string | null = () => null) {
       // A new quack, or a hit corrected to a hard one after it played soft: the feathers still come.
       const bump = !!seen && d.bumps > seen.bumps;
       const hard = !!seen && d.hard > seen.hard;
-      if (!fresh && (bump || hard)) out.push({ type: 'quack', x: d.x, y: d.y, hard, duck: d.id });
+      // Only a duck's first sighting is a silent baseline: a known duck's new count always plays, also
+      // when a correction moved the tick backwards.
+      if (bump || hard) out.push({ type: 'quack', x: d.x, y: d.y, hard, duck: d.id });
       quacksSeen.set(key, {
         bumps: Math.max(d.bumps, seen?.bumps ?? 0),
         hard: Math.max(d.hard, seen?.hard ?? 0),

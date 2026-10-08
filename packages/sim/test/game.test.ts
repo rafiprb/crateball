@@ -969,6 +969,21 @@ describe('sahalar', () => {
     }
   });
 
+  it('kendi haline bırakılan top buzda bile durur (yuvarlama sonsuz sürünme yaratmaz)', () => {
+    for (const kind of ['classic', 'ice', 'rain'] as const) {
+      const g = onArena(kind, 3);
+      g.crates = [];
+      g.nextCrate = 1e9;
+      for (const p of g.players) p.x = -300;
+      g.ball = { x: 0, y: 50, vx: 1, vy: 0.3 };
+      run(g, 60 * 60);
+      const at = { ...g.ball };
+      run(g, 60 * 600);
+      expect(Math.hypot(g.ball.x - at.x, g.ball.y - at.y)).toBe(0);
+      expect(g.ball.vx).toBe(0);
+    }
+  });
+
   it('sahalarla birlikte de deterministik', () => {
     const play = () => {
       const g = arenaGame(9);

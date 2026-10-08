@@ -11,6 +11,7 @@ import {
   MATCH,
   PASS,
   PLAYER,
+  REST_SPEED,
   ROLES,
   TICK_HZ,
   type ItemKind,
@@ -535,6 +536,9 @@ function blink(g: Game, p: Player): void {
   g.blasts.push({ x: p.x, y: p.y, kind: 'warp', t: ITEMS.blastShow });
 }
 
+/** A velocity component this slow is at rest (see REST_SPEED). */
+const rest = (v: number) => (Math.abs(v) < REST_SPEED ? 0 : v);
+
 function integrate(g: Game): void {
   for (const p of g.players) {
     if (p.dead > 0) continue;
@@ -543,8 +547,8 @@ function integrate(g: Game): void {
     let pd = playerDamping(g);
     // Keeper in the box: speed bleeds off faster (with the matching extra acceleration: sharper turns).
     if (p.role === 'gk' && p.buff) pd = 1 - (1 - pd) * ROLES.gk.agility;
-    p.vx *= pd;
-    p.vy *= pd;
+    p.vx = rest(p.vx * pd);
+    p.vy = rest(p.vy * pd);
   }
   // The ball moves in sub-steps no longer than its radius, checking the walls after each one, so a
   // very fast ball cannot skip over the goal line beside the goal and land inside the net.
@@ -564,8 +568,8 @@ function integrate(g: Game): void {
     if (g.arena.ducks.length) ballHitsDucks(g);
   }
   const bd = ballDamping(g, BALL.damping);
-  b.vx *= bd;
-  b.vy *= bd;
+  b.vx = rest(b.vx * bd);
+  b.vy = rest(b.vy * bd);
 }
 
 /** Elastic-ish circle contact (bounce = product of both coefficients). */
@@ -716,8 +720,8 @@ function updateDucks(g: Game): void {
   for (const d of ducks) {
     d.x += d.vx;
     d.y += d.vy;
-    d.vx *= b.duckDamping;
-    d.vy *= b.duckDamping;
+    d.vx = rest(d.vx * b.duckDamping);
+    d.vy = rest(d.vy * b.duckDamping);
   }
   const alive = g.players.filter((p) => p.dead === 0);
   ballHitsDucks(g);

@@ -6,6 +6,12 @@ export const TICK_HZ = 60;
  * slowest accumulators (the wind's turn rate moves in steps of 0.0004).
  */
 export const STATE_SCALE = 100_000;
+/**
+ * Below this (px per tick, per axis) a moving body is at rest. Rounding the state gives damping fixed points
+ * (on ice 0.00125 × 0.996 rounds back to 0.00125): without this a ball would creep on forever. 0.12 px/s,
+ * far below anything visible.
+ */
+export const REST_SPEED = 0.002;
 export const sec = (s: number) => Math.round(s * TICK_HZ);
 
 export const FIELD = {
