@@ -4,9 +4,7 @@ Work agreed but not started (or not finished). Newest decisions first in each se
 
 ## In progress
 
-- **PR #2, match stats and results screen** (external contributor). We build the scoring on top of it
-  (decided 2026-10-08): branch `scoring`, the contributor's commit kept, protocol 17. Still to do: tell the
-  contributor (comment drafted, Rafi approves before it is posted; ask them to confirm the licence terms).
+Nothing right now.
 
 ## Load test
 
@@ -102,7 +100,7 @@ and any difference shows up as constant corrections.
 
 ## Scoring (MVP)
 
-Built on the `scoring` branch; the rules as built are in docs/design.md ("Maç sonu ekranı"). Decided on
+Live since 2026-10-09 (protocol 17, PR #2's results screen kept); the rules as built are in docs/design.md ("Maç sonu ekranı"). Decided on
 2026-10-08: a rebound off the post keeps the assist chain; any opponent contact breaks it. Weights looked
 at over 60 bot matches; tune them again on recorded human matches (see above), especially assists and
 defence, which bots barely produce.
