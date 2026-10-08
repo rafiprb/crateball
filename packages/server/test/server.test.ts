@@ -1491,28 +1491,6 @@ describe('çoklu oyun süreci', () => {
     for (const { c } of live) c.socket.close();
   });
 
-  it('başka süreçte odaya giren oyuncunun eski odada yeniden bağlanma için tutulan yeri bırakılır', async () => {
-    const { wsUrl, base } = await boot({ workers: 2 });
-    const { codeOwner } = await import('../src/cluster');
-    const host = await greet(`${wsUrl}?room=AAAA`);
-    host.c.socket.send(encode({ t: 'create', name: 'H', roomName: 'R', public: false, settings }));
-    const code = (await until(host.c, 'joined')).code;
-    const guest = await greet(`${wsUrl}?room=${code}`);
-    guest.c.socket.send(encode({ t: 'join', code, name: 'G' }));
-    await until(guest.c, 'joined');
-    // The guest opens a room on the other worker while its old socket is still closing (either order
-    // must free the old slot).
-    guest.c.socket.close();
-    const other = codeOwner(code, 2) === 0 ? 'BBBB' : 'AAAA';
-    const g2 = await greet(`${wsUrl}?room=${other}`, guest.welcome.token);
-    g2.c.socket.send(encode({ t: 'create', name: 'G', roomName: 'R2', public: false, settings }));
-    await until(g2.c, 'joined');
-    await new Promise((r) => setTimeout(r, 1200));
-    const health = (await (await fetch(`${base}/health`)).json()) as { players: number };
-    expect(health.players).toBe(2); // host + guest in the new room; no ghost in the old one
-    for (const c of [host.c, g2.c]) c.socket.close();
-  });
-
   it('adres başına oda sınırı süreçlere bölünür: toplam tek süreçteki kadar', async () => {
     const { ROOMS_PER_OWNER } = await import('../src/rooms');
     const { wsUrl } = await boot({ workers: 2 });

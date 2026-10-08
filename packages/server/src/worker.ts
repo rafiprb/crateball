@@ -49,18 +49,30 @@ export async function runWorker(): Promise<void> {
     tokens: createTokens(Buffer.from(init.secret, 'base64')),
     ownsCode: mine,
     perIp: (limit) => Math.max(1, share(limit, k, n)),
-    onEntered: (key) => send({ t: 'entered', key }),
   });
 
+  /** Handovers holding a socket here, and ones the coordinator gave up before they arrived. */
+  const live = new Set<number>();
+  const cancelled = new Set<number>();
   process.on('message', (m: ToWorker, handle?: unknown) => {
-    if (m.t === 'release') rooms.releaseKey(m.key);
-    else if (m.t === 'upgrade') {
+    if (m.t === 'cancel') {
+      // Messages from the coordinator arrive in order: if the handover had come, it was acknowledged
+      // before this (that answer is on its way). Otherwise it is given up now, and refused if it comes.
+      if (live.has(m.id)) return;
+      cancelled.add(m.id);
+      send({ t: 'closed', id: m.id });
+    } else if (m.t === 'upgrade') {
       const socket = handle as Socket | undefined;
+      if (cancelled.delete(m.id)) return void socket?.destroy(); // already given up
       // The socket died on its way over (the message arrives without it): still counted, so report it.
       if (!socket) return send({ t: 'closed', id: m.id });
+      live.add(m.id);
       send({ t: 'accepted', id: m.id });
       // Counted by the coordinator from the handover: whatever happens next, it hears when this one ends.
-      socket.once('close', () => send({ t: 'closed', id: m.id }));
+      socket.once('close', () => {
+        live.delete(m.id);
+        send({ t: 'closed', id: m.id });
+      });
       const req = { method: 'GET', url: m.url, headers: m.headers, socket } as unknown as IncomingMessage;
       wss.handleUpgrade(req, socket, Buffer.from(m.head, 'base64'), (ws) => wss.emit('connection', ws, req));
     }

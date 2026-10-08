@@ -256,8 +256,6 @@ export function attachWebSocket(
     ownsCode?: (code: string) => boolean;
     /** Several processes: this one's share of the per-address and server-wide budgets (see cluster.ts). */
     perIp?: (limit: number) => number;
-    /** A session (by its key) is now in a room here. */
-    onEntered?: (key: string) => void;
     now?: () => number;
   } = {},
 ): WebSocketServer {
@@ -637,10 +635,8 @@ export function attachWebSocket(
             // Local development (tests, several tabs) shares one address: no per-address room cap there.
             LOOPBACK.has(ip) ? clientId : ip,
           );
-          if (typeof r !== 'string') {
-            send({ t: 'joined', code: r.code, playerId: clientId });
-            opts.onEntered?.(key);
-          } else fail(r);
+          if (typeof r !== 'string') send({ t: 'joined', code: r.code, playerId: clientId });
+          else fail(r);
           break;
         }
         case 'join': {
@@ -660,10 +656,8 @@ export function attachWebSocket(
             break;
           }
           const r = rooms.join(msg.code, clientId, msg.name, sendRaw, key);
-          if (typeof r !== 'string') {
-            send({ t: 'joined', code: r.code, playerId: clientId });
-            opts.onEntered?.(key);
-          } else {
+          if (typeof r !== 'string') send({ t: 'joined', code: r.code, playerId: clientId });
+          else {
             if (r === 'room_not_found') joinFailed();
             fail(r);
           }

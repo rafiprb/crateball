@@ -68,6 +68,9 @@ let queueAvg = 0;
 let joinPending = false;
 /** The server said this room is in another of its processes: reconnecting there to join it. */
 let moveTo: string | null = null;
+/** A room we are on our way into, if any: sent elsewhere, or a join refused for now and to be retried. */
+const pendingJoin = (): string | null =>
+  moveTo ?? (lastAttempt?.t === 'join' && !room ? lastAttempt.code : null);
 
 /** Server under maintenance: a full screen over everything except a match still being played. */
 let maintenance = false;
@@ -204,8 +207,8 @@ const conn = connect({
   sessionToken,
   onToken: keepToken,
   url: () => {
-    const room = moveTo ?? code ?? (pathCode && CODE_RE.test(pathCode) ? pathCode : null);
-    return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws${room ? `?room=${room}` : ''}`;
+    const target = pendingJoin() ?? code ?? (pathCode && CODE_RE.test(pathCode) ? pathCode : null);
+    return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws${target ? `?room=${target}` : ''}`;
   },
   createSocket: laggySocket ? (url) => laggySocket(url, lag, jitter) : undefined,
   onStatus: (s) => {
@@ -225,12 +228,11 @@ const conn = connect({
         banner.hidden = true;
     }
     if (s === 'open') {
-      // Joins go through `attempt`: a refusal because the servers are full then retries them.
-      if (moveTo) {
-        // Connected to the process that holds the room we were sent to: join it (kept until joined, so a
-        // drop on the way reconnects there again).
-        attempt({ t: 'join', code: moveTo, name: ui.name });
-      } else if (code) attempt({ t: 'join', code, name: ui.name });
+      // Joins go through `attempt`: a refusal because the servers are full then retries them. A join on
+      // its way (sent elsewhere, refused for now, waiting for a retry) comes first: it is where we go.
+      const target = pendingJoin();
+      if (target) attempt({ t: 'join', code: target, name: ui.name });
+      else if (code) attempt({ t: 'join', code, name: ui.name });
       else if (params.has('autoplay'))
         conn.send({
           t: 'create',
@@ -296,7 +298,12 @@ const conn = connect({
         setMaintenance(m.on);
         break;
       case 'moved':
-        // That room lives in another server process: connect there (the URL now names it) and join.
+        // That room lives in another server process: connect there (the URL now names it) and join. Out
+        // of the current room first, as joining a room here would have done (no slot held for us there).
+        if (room) {
+          conn.send({ t: 'leave' });
+          toMenu();
+        }
         moveTo = m.code;
         conn.reconnect();
         break;
@@ -348,7 +355,7 @@ const conn = connect({
         showError(m.message);
         // A refused rejoin after a long drop also lands here: drop the stale match instead of playing alone.
         if (m.code === 'room_not_found' || m.code === 'kicked' || (joinPending && m.code === 'room_full')) {
-          moveTo = null;
+          lastAttempt = null; // for good: nothing to retry
           toMenu();
         }
         break;

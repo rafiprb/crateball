@@ -21,7 +21,7 @@ interface Worker {
   load: Load;
   stats: Sample | null;
   /** Sockets handed to it and not reported closed yet, by handover id (given back if it dies). `timer`:
-   * not acknowledged yet (the handle may have been lost on the way). */
+   * waiting for the acknowledgement (then a cancel is sent). */
   handoffs: Map<number, { ip: string; timer: ReturnType<typeof setTimeout> | null }>;
   /** When it last said anything (it reports its load twice a second). */
   heardAt: number;
@@ -29,7 +29,7 @@ interface Worker {
 
 /** A worker that has not said it is ready after this long is started again. */
 const READY_MS = 30_000;
-/** A handover not acknowledged after this long is given up (its handle was lost). */
+/** A handover not acknowledged after this long is cancelled (its handle may have been lost). */
 const ACCEPT_MS = 5000;
 /** A worker silent this long is taken out of routing (/health 503); this long, it is killed. */
 const STALE_MS = 5000;
@@ -137,11 +137,6 @@ export async function startCoordinator(
           clearTimeout(deadline);
           if (workers.every((o) => o.ready)) started();
           break;
-        case 'entered':
-          // In a room here now: a slot it still holds for a reconnect in another worker goes.
-          for (const o of workers)
-            if (o !== w && o.ready && o.proc?.connected) o.proc.send({ t: 'release', key: m.key });
-          break;
         case 'load':
           w.load = {
             rooms: m.rooms,
@@ -244,7 +239,13 @@ export async function startCoordinator(
     if (!admission.opened(ip)) return refuse(socket, 429);
     total++;
     const id = ++nextId;
-    const timer = setTimeout(() => release(w, id), ACCEPT_MS);
+    // Not acknowledged in time: ask (the answer, `accepted` or `closed`, settles it; a hung worker is
+    // killed by the watch, which gives back everything it held).
+    const timer = setTimeout(() => {
+      const h = w.handoffs.get(id);
+      if (h) h.timer = null;
+      if (w.proc?.connected) w.proc.send({ t: 'cancel', id });
+    }, ACCEPT_MS);
     timer.unref();
     w.handoffs.set(id, { ip, timer });
     const msg: ToWorker = {
