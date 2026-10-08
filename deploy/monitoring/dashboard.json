@@ -469,13 +469,327 @@
       }
     },
     {
+      "id": 22,
+      "type": "row",
+      "title": "Oyun süreci (yük)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "title": "Oyun süreci CPU (100 = bir çekirdek)",
+      "type": "timeseries",
+      "description": "Oyun tek bir Node sürecinde koşar ve bir çekirdeğe sığmak zorundadır. 100'e yaklaşınca tickler gecikir, makinenin geri kalanı boş olsa bile.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"cpuPct\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "CPU",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 24,
+      "title": "Tick süresi (tüm odalar)",
+      "type": "timeseries",
+      "description": "Bir tickte tüm odaların toplam süresi. Bütçe 16.7 ms (60 Hz); kırmızı çizginin üstü takılma demektir.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"tickMsMax\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "en yavaş",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"tickMsAvg\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "ortalama",
+          "queryType": "range"
+        },
+        {
+          "refId": "C",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"loopDelayP99Ms\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "event loop p99",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 16.7
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 25,
+      "title": "Oyuncu, oda, bağlantı (sunucu)",
+      "type": "timeseries",
+      "description": "Sunucunun kendi sayımı (yük testi istemcileri de dahil).",
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"players\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "oyuncu",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"rooms\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "oda",
+          "queryType": "range"
+        },
+        {
+          "refId": "C",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"playing\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "maçtaki oda",
+          "queryType": "range"
+        },
+        {
+          "refId": "D",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"sockets\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "bağlantı",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 26,
+      "title": "Oyun trafiği",
+      "type": "timeseries",
+      "description": "Oyun sürecinin gönderdiği ve aldığı WebSocket verisi (TLS hariç).",
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"kbOutPerSec\" | unwrap v [1m])) * 8 / 1024",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "giden",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"kbInPerSec\" | unwrap v [1m])) * 8 / 1024",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "gelen",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Mbits"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 27,
+      "title": "Çekirdekler",
+      "type": "timeseries",
+      "description": "Ortalama düşükken tek bir çekirdek dolu olabilir. Oyun süreci ve Caddy ayrı çekirdeklerde çalışır.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prom}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * max(1 - rate(node_cpu_seconds_total{instance=\"crateball-prod\", mode=\"idle\"}[2m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "legendFormat": "en yüklü çekirdek"
+        },
+        {
+          "refId": "B",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{instance=\"crateball-prod\", mode=\"idle\"}[2m])))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "legendFormat": "ortalama"
+        },
+        {
+          "refId": "C",
+          "expr": "100 * avg(rate(node_cpu_seconds_total{instance=\"crateball-prod\", mode=\"softirq\"}[2m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "legendFormat": "ağ kesmeleri (softirq)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
       "id": 16,
       "type": "row",
       "title": "Sunucu",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 41,
+        "y": 58,
         "w": 24,
         "h": 1
       },
@@ -491,7 +805,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 59,
         "w": 8,
         "h": 8
       },
@@ -532,7 +846,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 42,
+        "y": 59,
         "w": 8,
         "h": 8
       },
@@ -573,7 +887,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 42,
+        "y": 59,
         "w": 8,
         "h": 8
       },
@@ -605,7 +919,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 67,
         "w": 12,
         "h": 8
       },
@@ -646,7 +960,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 50,
+        "y": 67,
         "w": 12,
         "h": 8
       },
