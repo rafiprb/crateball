@@ -503,3 +503,61 @@ describe('oturum sınırı ve HTTP hataları (#2, #3)', () => {
     expect(lines.filter((l) => l.includes('http hatası')).length).toBe(0);
   });
 });
+
+describe('anahtar başına tek canlı bağlantı', () => {
+  it('lobide aynı anahtarla ikinci bağlantı ilkinin yerini alır; korunan anahtar yeniden bağlanan oyuncuyu izler', async () => {
+    LIMITS.maxSessions = 10;
+    const { url } = await boot();
+    const host = client(url);
+    await host.opened;
+    host.hello();
+    await host.until('welcome');
+    host.socket.send(encode({ t: 'create', name: 'Host', roomName: 'R', public: false, settings }));
+    const { code } = await host.until('joined');
+    // Two lobby connections with one token (the reported sequence): the newer one closes, then whoever
+    // still holds the token joins the room.
+    const a = client(url);
+    await a.opened;
+    a.hello();
+    const aw = await a.until('welcome');
+    const b = client(url);
+    await b.opened;
+    b.hello(aw.token);
+    const bw = await b.until('welcome');
+    expect(bw.clientId).toBe(aw.clientId); // the same player, not a second identity on one token
+    expect(await a.closed).toBe(4011);
+    b.socket.close();
+    await b.closed;
+    const holder = a.socket.readyState === WebSocket.OPEN ? a : client(url);
+    let holderId = aw.clientId;
+    if (holder !== a) {
+      await holder.opened;
+      holder.hello(aw.token);
+      const hw = await holder.until('welcome');
+      expect(hw.token).toBe(aw.token);
+      holderId = hw.clientId;
+    }
+    holder.socket.send(encode({ t: 'join', code, name: 'G' }));
+    await holder.until('joined');
+    // Session churn far past the cap while the holder is in the room…
+    for (let i = 0; i < 30; i++) {
+      const f = client(url, { 'x-forwarded-for': `203.0.113.${i % 20}` });
+      await f.opened;
+      f.hello();
+      await f.until('welcome');
+      f.socket.close();
+      await f.closed;
+    }
+    // …then a kick, and the same tab comes back with its token: still the same identity, still kicked.
+    host.socket.send(encode({ t: 'kick', id: holderId }));
+    await holder.until('error');
+    holder.socket.close();
+    await holder.closed;
+    const back = client(url);
+    await back.opened;
+    back.hello(aw.token);
+    expect((await back.until('welcome')).token).toBe(aw.token);
+    back.socket.send(encode({ t: 'join', code, name: 'G' }));
+    expect((await back.until('error')).code).toBe('kicked');
+  });
+});

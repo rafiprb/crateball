@@ -205,7 +205,9 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   bırakmaz; aşanlar türüne göre sayılıp dakikada bir özetlenir. Bozuk mesaj bağlantı başına ilk ve her
   100'üncü; bozuk HTTP istek hedefi 400 alır; istatistik/rapor yalnızca odadakilerden.
 - Kimlik: yeniden bağlanma anahtarını sunucu verir (`welcome.token`); istemcinin uydurduğu anahtar yok
-  sayılır. Odada/bağlı olanların ve süren bir atma kaydındakilerin anahtarı hiç unutulmaz; yalnızca geri
+  sayılır. Bir anahtarın tek canlı bağlantısı olur (lobide de: aynı anahtarla gelen yeni bağlantı eskisinin yerini
+  aynı oyuncu olarak alır, eskisi 4011 ile kapanır). Odada/bağlı olanların ve süren bir atma kaydındakilerin
+  anahtarı hiç unutulmaz; yalnızca geri
   kalan geçmiş en fazla 50.000 ile sınırlı. Atma kaydı oda başına en fazla 64, 30 dk sürer. Yeni anonim kimlik her zaman alınabildiği için
   oda çapında katılma (12'lik patlama, 5 sn'de bir) ve sohbet (15'lik patlama, saniyede 2) bütçesi var.
 - Özel oda: 4 harfli kod kriptografik rastgele; yanlış kod denemesi adres başına dakikada 60, sunucu

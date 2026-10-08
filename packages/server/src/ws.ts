@@ -453,7 +453,19 @@ export function attachWebSocket(
         token = known ? msg.sessionToken! : randomBytes(24).toString('base64url');
         // Same browser tab back within the grace period: continue as the same player.
         const previous = known ? sessions.get(token)?.id : undefined;
-        if (previous && rooms.isMember(previous)) {
+        // One live socket per token, in a room or not: otherwise two sockets would share the token while
+        // the session record names only one of them (and protecting the token from eviction, a ban by it,
+        // could follow the wrong one).
+        const lobbyHolder = previous && !rooms.isMember(previous) ? owners.get(previous) : undefined;
+        if (previous && lobbyHolder && lobbyHolder !== socket) {
+          owners.delete(clientId);
+          clientId = previous;
+          owners.set(clientId, socket);
+          clog = log.child({ clientId });
+          logLimited(() => clog.info('oyuncu yeni bağlantıyla devraldı'), 'life');
+          lobbyHolder.close(CLOSE_TAKEN_OVER, 'taken over');
+          setTimeout(() => lobbyHolder.terminate(), 1000).unref();
+        } else if (previous && rooms.isMember(previous)) {
           // The same tab is back. If its old socket still looks connected (a laptop that slept, a
           // network switch: TCP has not noticed yet), the token proves who it is: take the slot over
           // and close the old socket, which tells a duplicated tab it was replaced.
