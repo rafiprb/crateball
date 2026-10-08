@@ -12,6 +12,7 @@ import {
 } from '@crateball/protocol';
 import { LOG_BUDGETS, createLogBudget, type LogBudget, type LogKind } from './log-budget';
 import { BAN_MS, type Rooms } from './rooms';
+import type { Metrics } from './metrics';
 
 export const HELLO_TIMEOUT_MS = 5000;
 export const CLOSE_HELLO_TIMEOUT = 4000;
@@ -163,6 +164,8 @@ export function attachWebSocket(
     origins?: string[];
     /** Shared with the rooms (see log-budget.ts); one is made if not given. */
     budget?: LogBudget;
+    /** Server-wide counters for the `sunucu istatistik` line. */
+    metrics?: Metrics;
     now?: () => number;
   } = {},
 ): WebSocketServer {
@@ -329,6 +332,10 @@ export function attachWebSocket(
         return;
       }
       if (droppable && socket.bufferedAmount > LIMITS.softBufferBytes) return;
+      if (opts.metrics) {
+        opts.metrics.bytesOut += raw.length;
+        opts.metrics.msgsOut++;
+      }
       socket.send(raw);
     };
     const fail = (code: ErrorCode | null) => {
@@ -403,6 +410,10 @@ export function attachWebSocket(
         : Array.isArray(data)
           ? Buffer.concat(data)
           : Buffer.from(data);
+      if (opts.metrics) {
+        opts.metrics.bytesIn += buf.length;
+        opts.metrics.msgsIn++;
+      }
       let ipBytes = bytesByIp.get(ip);
       if (!ipBytes) {
         ipBytes = bucket(LIMITS.ipBytesBurst, LIMITS.ipBytesPerSec, now);

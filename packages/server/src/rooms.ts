@@ -29,6 +29,7 @@ import {
   type Settings,
   type Team,
 } from '@crateball/sim';
+import type { Metrics } from './metrics';
 
 /** A snapshot every N ticks (60 Hz sim → 30 Hz snapshots). */
 export const SNAP_EVERY = 2;
@@ -269,6 +270,8 @@ export function createRooms(
     secret?: () => number;
     /** Shared budget for log lines clients cause (default: unlimited). */
     budget?: LogBudget;
+    /** Server-wide counters for the `sunucu istatistik` line. */
+    metrics?: Metrics;
   } = {},
 ): Rooms {
   const seed = opts.seed ?? (() => Date.now() >>> 0);
@@ -489,7 +492,15 @@ export function createRooms(
   };
 
   const tickAll = () => {
+    const t0 = performance.now();
     for (const r of rooms.values()) tickRoom(r);
+    const m = opts.metrics;
+    if (m) {
+      const ms = performance.now() - t0;
+      m.tickMsMax = Math.max(m.tickMsMax, ms);
+      m.tickMsSum += ms;
+      m.ticks++;
+    }
   };
 
   const sweep = () => {

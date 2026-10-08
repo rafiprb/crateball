@@ -16,6 +16,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "netsim": "pnpm --filter @crateball/server exec tsx ../../tests/netsim/run.ts",
+    "loadtest": "pnpm --filter @crateball/server exec tsx ../../tests/load/run.ts",
     "verify": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test && pnpm e2e",
     "docker:prod": "sh scripts/docker-smoke.sh",
     "docker:stack": "sh scripts/docker-smoke.sh stack",

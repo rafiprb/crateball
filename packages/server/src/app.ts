@@ -6,6 +6,7 @@ import { createHttpHandler, type Route } from './http';
 import { createRooms } from './rooms';
 import { createLogBudget } from './log-budget';
 import { LIMITS, attachWebSocket } from './ws';
+import { createMetrics, startServerStats } from './metrics';
 
 export { loadConfig, type ServerConfig } from './config';
 export { createLogger } from './logger';
@@ -27,7 +28,8 @@ export async function startServer(
   }
   // One budget for every log line clients can cause, in the rooms and on the sockets.
   const budget = createLogBudget(log, LIMITS.logBudgets, opts.now);
-  const rooms = createRooms(log, { budget, now: opts.now });
+  const metrics = createMetrics();
+  const rooms = createRooms(log, { budget, now: opts.now, metrics });
   const handler = createHttpHandler(
     cfg,
     devLog,
@@ -48,7 +50,9 @@ export async function startServer(
     production: cfg.mode === 'production',
     origins: cfg.extraOrigins,
     budget,
+    metrics,
   });
+  const stopStats = startServerStats(log, metrics, () => ({ ...rooms.stats(), sockets: wss.clients.size }));
   try {
     await new Promise<void>((resolve, reject) => {
       // ws, http sunucusunun 'error' olayını yeniden yayar; ikisini de dinle ki yakalanmamış hata olmasın.
@@ -71,6 +75,7 @@ export async function startServer(
     port,
     close: () =>
       new Promise<void>((resolve) => {
+        stopStats();
         rooms.stop();
         for (const c of wss.clients) c.terminate();
         wss.close();

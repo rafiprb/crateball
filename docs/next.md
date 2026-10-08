@@ -12,7 +12,13 @@ Work agreed but not started (or not finished). Newest decisions first in each se
 
 Measure before deciding anything about capacity (no scaling work without numbers and an explicit OK).
 
-- Headless bot clients that join real rooms and play, named `load-…` so dashboards can tell them apart.
+- **Tool:** `pnpm loadtest --url wss://playcrateball.com/ws --players 60 --seconds 300` (tests/load/run.ts).
+  Clients named `load-…` in private rooms called `load`; they chase the ball and kick. One machine runs
+  at most 96 (the per-address connection limit). The server writes a `sunucu istatistik` line every 5 s
+  (tick time, event loop delay, CPU, memory, traffic); read it in Grafana Logs.
+- **Local baseline (laptop, no TLS, 2026-10-08):** 90 players / 15 rooms: server CPU 31% of one core,
+  tick 2.3 ms average (7 ms max) of the 16.7 ms budget, ~900 kbit/s per player (82 Mbit/s out), no
+  snapshot gaps. Prod numbers still to measure.
 - Steps of 20, 50, 100, 200 players; run against prod at a quiet hour.
 - Generate load from more than one place: the laptop's own downlink fills first (about 1 Mbit/s per
   client today). Clients on the server itself measure CPU without the network; combine both.
