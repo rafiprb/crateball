@@ -45,6 +45,7 @@ async function boot(over: Partial<ServerConfig> = {}, now?: () => number) {
     loadTestFile: join(dir, 'loadtest'),
     caps: { rooms: 100, players: 600, sockets: 1000 },
     workers: 0,
+    socketPath: null,
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: out }), { now });

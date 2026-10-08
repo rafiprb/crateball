@@ -10,6 +10,7 @@ import { CODE_RE } from '@crateball/protocol';
 import { codeOwner, share, type FromWorker, type Load, type ToWorker } from './cluster';
 import type { ServerConfig } from './config';
 import { createHttpHandler, type Route } from './http';
+import { listenUnix } from './unix';
 import { watchLoadTest } from './flags';
 import { createLogBudget } from './log-budget';
 import { createMetrics, startServerStats, type Sample } from './metrics';
@@ -289,8 +290,12 @@ export async function startCoordinator(
       resolve();
     });
   });
+  const unix = cfg.socketPath ? await listenUnix(server, cfg.socketPath) : null;
   const { port } = server.address() as AddressInfo;
-  log.info({ port, mode: cfg.mode, version: cfg.version, workers: n }, 'sunucu hazır');
+  log.info(
+    { port, socket: cfg.socketPath, mode: cfg.mode, version: cfg.version, workers: n },
+    'sunucu hazır',
+  );
   return {
     port,
     workerPids: () => workers.map((w) => w.proc?.pid),
@@ -302,6 +307,7 @@ export async function startCoordinator(
       // Stop listening now. Not waiting for the callback: sockets handed to workers stay on the server's
       // books (Node asks the workers about them), and the workers are about to exit.
       server.close();
+      unix?.close();
       server.closeAllConnections();
       await Promise.all(
         workers.map(

@@ -12,6 +12,8 @@ FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b533
 WORKDIR /app
 ENV NODE_ENV=production PORT=8080
 COPY --from=build /app/dist ./dist
+# The game's Unix socket for Caddy (a volume the two share is mounted here and takes this owner on creation).
+RUN mkdir -p /run/crateball && chown node:node /run/crateball
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s CMD wget -qO- http://localhost:8080/health || exit 1

@@ -195,6 +195,10 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   cevabı alır, istemci `?room=` ile yeniden bağlanır. Yeniden bağlanma anahtarları tüm süreçlerin bildiği
   bir sırla MAC'lidir. Süreçler sayılarını saniyede iki kez bildirir; sınırlar, `/health` ve `/rooms`
   toplamdan. Düşen süreç 1 sn sonra yeniden başlar (odaları gider). Dev ve testlerde 0: tek süreç.
+- Caddy oyuna Unix soketinden bağlanır (`/run/crateball/game.sock`, iki konteynerin paylaştığı volume):
+  yük testinde yük bayttan değil mesaj sayısından geliyordu (120 oyuncuda saniyede ~12.000 mesaj); her mesajın
+  konteyner ağından (veth, NAT) ikinci kez geçmesi kesme ve Caddy yükü demekti. TCP 8080 sağlık kontrolü ve
+  Caddy'nin yedeği olarak kalır (soket yoksa, örneğin geri dönülen eski imajda, Caddy TCP'ye düşer).
 - Telemetri: istemci 2 sn'lik özet + R ile işaretli rapor; sunucu oda başına girdisiz tick ve tick süresi;
   5 sn'de bir `sunucu istatistik` (tick süresi, event loop gecikmesi, en yüklü sürecin ve toplam CPU,
   bellek, trafik).

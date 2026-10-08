@@ -21,6 +21,11 @@ services:
       CRATEBALL_MAX_SOCKETS: ${CRATEBALL_MAX_SOCKETS:-}
       # Game processes (empty = 3 in production; see packages/server/src/cluster.ts).
       CRATEBALL_WORKERS: ${CRATEBALL_WORKERS:-}
+      # Caddy reaches the game through this socket (no container network per message); TCP 8080 stays
+      # for health checks and as Caddy's fallback.
+      CRATEBALL_SOCKET: /run/crateball/game.sock
+    volumes:
+      - game_sock:/run/crateball
     expose: ['8080']
     read_only: true
     tmpfs: ['/tmp:size=16m']
@@ -48,6 +53,7 @@ services:
       CRATEBALL_SITE: ${CRATEBALL_SITE:-playcrateball.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - game_sock:/run/crateball
       - caddy_data:/data
       - caddy_config:/config
     read_only: true
@@ -64,3 +70,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  game_sock:

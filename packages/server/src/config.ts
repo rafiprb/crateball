@@ -23,6 +23,9 @@ export interface ServerConfig {
   /** Server-wide caps, set just under the capacity measured by the load test (docs/next.md). Beyond them
    * people get "servers are full". Env: CRATEBALL_MAX_ROOMS, CRATEBALL_MAX_PLAYERS, CRATEBALL_MAX_SOCKETS. */
   caps: { rooms: number; players: number; sockets: number };
+  /** Also listen on this Unix socket (CRATEBALL_SOCKET; production: Caddy reaches the game through it,
+   * skipping the container network for every message). Null: TCP only. */
+  socketPath: string | null;
   /** Game processes (CRATEBALL_WORKERS). 0: everything in this one process (development, tests). More:
    * this process only takes connections and hands each to the process that holds its room. */
   workers: number;
@@ -79,6 +82,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       players: capFrom(env, 'CRATEBALL_MAX_PLAYERS', DEFAULT_CAPS.players),
       sockets: capFrom(env, 'CRATEBALL_MAX_SOCKETS', DEFAULT_CAPS.sockets),
     },
+    socketPath: env.CRATEBALL_SOCKET || null,
     workers:
       env.CRATEBALL_WORKERS === undefined || env.CRATEBALL_WORKERS === ''
         ? mode === 'production'

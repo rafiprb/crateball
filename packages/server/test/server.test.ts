@@ -44,6 +44,7 @@ async function boot(over: Partial<ServerConfig> = {}, helloTimeoutMs?: number) {
     loadTestFile: join(dir, 'loadtest'),
     caps: { rooms: 100, players: 600, sockets: 1000 },
     workers: 0,
+    socketPath: null,
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: silent }), {
@@ -1572,4 +1573,38 @@ describe('çoklu oyun süreci', () => {
     expect((await until(b.c, 'error')).code).toBe('server_full');
     for (const c of [a.c, b.c]) c.socket.close();
   });
+});
+
+describe('Unix soketi (Caddy → oyun)', () => {
+  for (const workers of [0, 2]) {
+    it(`TCP ile aynı: /health ve oyun soketi (${workers ? 'çoklu süreç' : 'tek süreç'})`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'gs-'));
+      const socketPath = join(dir, 'game.sock');
+      await boot({ workers, socketPath });
+      const { request } = await import('node:http');
+      const health = await new Promise<string>((resolve, reject) => {
+        const req = request({ socketPath, path: '/health' }, (res) => {
+          let body = '';
+          res.on('data', (d: Buffer) => (body += d.toString()));
+          res.on('end', () => resolve(body));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+      expect(JSON.parse(health)).toMatchObject({ ok: true });
+      const socket = new WebSocket('ws+unix://' + socketPath + ':/ws?room=AAAA', {
+        headers: { 'x-forwarded-for': '203.0.113.9' },
+      });
+      const welcome = await new Promise<ServerMessage>((resolve, reject) => {
+        socket.on('open', () => socket.send(encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION })));
+        socket.on('message', (d, bin) => {
+          const m = bin ? null : decodeServerData(d.toString(), createSnapDecoder());
+          if (m) resolve(m);
+        });
+        socket.on('error', reject);
+      });
+      expect(welcome.t).toBe('welcome');
+      socket.close();
+    });
+  }
 });

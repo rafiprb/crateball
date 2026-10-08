@@ -16,7 +16,13 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		-Server
 	}
-	reverse_proxy game:8080
+	# The game's Unix socket first (every message skips the container network); its TCP port if the
+	# socket is not there (an image from before it, after a rollback).
+	reverse_proxy unix//run/crateball/game.sock game:8080 {
+		lb_policy first
+		lb_try_duration 2s
+		fail_duration 10s
+	}
 }
 
 www.{$CRATEBALL_SITE:playcrateball.com} {

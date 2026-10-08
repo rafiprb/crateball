@@ -9,6 +9,7 @@ import { LIMITS, attachWebSocket } from './ws';
 import { createMetrics, startServerStats } from './metrics';
 import { startCoordinator } from './coordinator';
 import { watchLoadTest } from './flags';
+import { listenUnix } from './unix';
 
 export { loadConfig, type ServerConfig } from './config';
 export { createLogger } from './logger';
@@ -85,8 +86,9 @@ export async function startServer(
     server.close();
     throw err;
   }
+  const unix = cfg.socketPath ? await listenUnix(server, cfg.socketPath) : null;
   const { port } = server.address() as AddressInfo;
-  log.info({ port, mode: cfg.mode, version: cfg.version }, 'sunucu hazır');
+  log.info({ port, socket: cfg.socketPath, mode: cfg.mode, version: cfg.version }, 'sunucu hazır');
   return {
     port,
     close: () =>
@@ -96,6 +98,7 @@ export async function startServer(
         rooms.stop();
         for (const c of wss.clients) c.terminate();
         wss.close();
+        unix?.close();
         server.close(() => resolve());
       }),
   };
