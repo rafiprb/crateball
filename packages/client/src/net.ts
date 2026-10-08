@@ -41,6 +41,8 @@ export interface ConnectionOptions {
   onMessage?: (m: ServerMessage) => void;
   /** The server's release, from the welcome handshake. */
   onServerVersion?: (version: string) => void;
+  /** Maintenance on or off, from every welcome (a `maintenance` message arrives via onMessage). */
+  onMaintenance?: (on: boolean) => void;
 }
 
 export interface Connection {
@@ -95,6 +97,7 @@ export function connect(o: ConnectionOptions): Connection {
           o.onToken?.(m.token);
         }
         if (m.version) o.onServerVersion?.(m.version);
+        o.onMaintenance?.(m.maintenance === true);
         attempts = 0;
         setStatus('open');
         for (const q of queued.splice(0)) s.send(encode(q));

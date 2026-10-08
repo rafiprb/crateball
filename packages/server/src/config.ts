@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type Mode = 'development' | 'production';
@@ -13,6 +15,8 @@ export interface ServerConfig {
   /** Extra browser Origins allowed to open game sockets in production (CRATEBALL_ORIGINS, comma
    * separated): only for running the prod image locally (docker smoke test). */
   extraOrigins: string[];
+  /** While this file exists the server is under maintenance (scripts/maintenance.sh on|off). */
+  maintenanceFile: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): ServerConfig {
@@ -35,5 +39,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       .split(',')
       .map((o) => o.trim())
       .filter(Boolean),
+    maintenanceFile: env.MAINTENANCE_FILE ?? join(tmpdir(), 'crateball-maintenance'),
   };
 }

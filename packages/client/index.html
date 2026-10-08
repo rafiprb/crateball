@@ -120,6 +120,22 @@
     <canvas id="game"></canvas>
     <div id="ui"></div>
     <div id="banner" hidden></div>
+    <div id="maintenance" role="status" hidden>
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="9" y="17" width="30" height="30" rx="3" fill="#C88A4A" stroke="#7A4E22" stroke-width="3" />
+        <path d="M9 17 39 47M39 17 9 47" stroke="#7A4E22" stroke-width="3" />
+        <circle cx="43" cy="38" r="13" fill="#FFFFFF" stroke="#1B2133" stroke-width="3" />
+        <path d="M43 31.5l5.5 4-2 6.5h-7l-2-6.5z" fill="#1B2133" />
+        <path
+          d="M43 25v6.5M48.5 35.5l6-1.5M46.5 42l3.5 5.5M39.5 42 36 47.5M37.5 35.5l-6-1.5"
+          stroke="#1B2133"
+          stroke-width="2"
+        />
+      </svg>
+      <h1>Down for maintenance</h1>
+      <p>We're working on the server. Crateball will be back in a few minutes.</p>
+      <p class="small">No need to refresh, this screen goes away by itself.</p>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -67,6 +67,17 @@ let queueAvg = 0;
 /** A join is on its way: a refusal (full, gone, kicked) means we are not in that room. */
 let joinPending = false;
 
+/** Server under maintenance: a full screen over everything except a match still being played. */
+let maintenance = false;
+const maintenanceEl = $<HTMLDivElement>('#maintenance');
+const showMaintenance = () => {
+  maintenanceEl.hidden = !(maintenance && room?.state !== 'playing');
+};
+const setMaintenance = (on: boolean) => {
+  maintenance = on;
+  showMaintenance();
+};
+
 const showError = (text: string) => {
   banner.hidden = false;
   banner.textContent = text;
@@ -85,6 +96,7 @@ const toMenu = () => {
   pred.reset();
   history.replaceState(null, '', `/${params.has('debug') ? '?debug' : ''}`);
   ui.menu();
+  showMaintenance();
 };
 
 const lag = import.meta.env.DEV ? Number(params.get('lag') ?? 0) : 0;
@@ -187,6 +199,7 @@ const conn = connect({
     btn.onclick = () => location.reload();
     banner.append(btn);
   },
+  onMaintenance: setMaintenance,
   onServerVersion: (v) => {
     // A deploy restarts the server: everyone reconnects and lands here. Old client code must not keep
     // playing against new server code, so reload into the new release (at most twice a minute, in case
@@ -222,6 +235,10 @@ const conn = connect({
         break;
       case 'room':
         onRoom(m.room);
+        showMaintenance();
+        break;
+      case 'maintenance':
+        setMaintenance(m.on);
         break;
       case 'chat':
         // In a match a new line also pops up above the speaker (replays after a reconnect don't).
@@ -244,6 +261,11 @@ const conn = connect({
         rtt = performance.now() - m.id;
         break;
       case 'error':
+        if (m.code === 'maintenance') {
+          setMaintenance(true);
+          if (joinPending) toMenu();
+          break;
+        }
         showError(m.message);
         // A refused rejoin after a long drop also lands here: drop the stale match instead of playing alone.
         if (m.code === 'room_not_found' || m.code === 'kicked' || (joinPending && m.code === 'room_full'))

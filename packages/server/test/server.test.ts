@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
@@ -30,6 +30,7 @@ async function boot(over: Partial<ServerConfig> = {}, helloTimeoutMs?: number) {
     logFile: join(dir, 'dev.log'),
     version: 'test',
     extraOrigins: [],
+    maintenanceFile: join(dir, 'maintenance'),
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: silent }), { helloTimeoutMs });
@@ -1252,5 +1253,59 @@ describe('oda sınırları (#4, #7)', () => {
     expect(said.filter((r) => r === null).length).toBeLessThanOrEqual(15);
     expect(said).toContain('rate_limited');
     rooms.stop();
+  });
+});
+
+describe('bakım modu', () => {
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: true,
+  };
+  const until = async <T extends ServerMessage['t']>(c: ReturnType<typeof client>, t: T) => {
+    for (;;) {
+      const m = await c.next();
+      if (m.t === t) return m as Extract<ServerMessage, { t: T }>;
+    }
+  };
+  const hello = (c: ReturnType<typeof client>) =>
+    c.socket.send(encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION }));
+
+  it('dosya varken yeni oda ve katılım reddedilir, bağlı herkese anında duyurulur; yük testi girer', async () => {
+    const { cfg, wsUrl } = await boot();
+    const before = client(wsUrl);
+    await before.opened;
+    hello(before);
+    expect((await until(before, 'welcome')).maintenance).toBeUndefined();
+
+    writeFileSync(cfg.maintenanceFile, '');
+    expect(await until(before, 'maintenance')).toEqual({ t: 'maintenance', on: true });
+
+    const c = client(wsUrl);
+    await c.opened;
+    hello(c);
+    expect((await until(c, 'welcome')).maintenance).toBe(true);
+    c.socket.send(encode({ t: 'create', name: 'Ali', roomName: 'R', public: false, settings }));
+    expect((await until(c, 'error')).code).toBe('maintenance');
+    c.socket.send(encode({ t: 'join', code: 'ABCD', name: 'Ali' }));
+    expect((await until(c, 'error')).code).toBe('maintenance');
+
+    const load = client(wsUrl);
+    await load.opened;
+    hello(load);
+    await until(load, 'welcome');
+    load.socket.send(encode({ t: 'create', name: 'load-x-0', roomName: 'load', public: false, settings }));
+    const joined = await until(load, 'joined');
+    // Back into the room you are in (a reconnect mid-match) is always allowed.
+    load.socket.send(encode({ t: 'join', code: joined.code, name: 'load-x-0' }));
+    expect((await until(load, 'room')).room.code).toBe(joined.code);
+
+    rmSync(cfg.maintenanceFile);
+    expect(await until(c, 'maintenance')).toEqual({ t: 'maintenance', on: false });
+    c.socket.send(encode({ t: 'create', name: 'Ali', roomName: 'R', public: false, settings }));
+    expect((await until(c, 'joined')).code).toHaveLength(4);
+    for (const s of [before, c, load]) s.socket.close();
   });
 });

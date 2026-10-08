@@ -35,6 +35,7 @@ async function boot(over: Partial<ServerConfig> = {}, now?: () => number) {
     logFile: join(dir, 'dev.log'),
     version: 'test',
     extraOrigins: [],
+    maintenanceFile: join(dir, 'maintenance'),
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: out }), { now });

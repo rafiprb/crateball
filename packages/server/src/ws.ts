@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Logger } from 'pino';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
@@ -101,7 +102,11 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
   rate_limited: 'Slow down a little',
   kicked: 'The host removed you from this room',
   no_players: 'Nobody is on a team — take a seat or turn bots on',
+  maintenance: 'Crateball is down for maintenance. Back soon',
 };
+
+/** Load test clients (tests/load) still get in during maintenance: a test runs while the doors are shut. */
+const maintenanceOpen = (name: string) => name.startsWith('load-');
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
@@ -166,6 +171,8 @@ export function attachWebSocket(
     budget?: LogBudget;
     /** Server-wide counters for the `sunucu istatistik` line. */
     metrics?: Metrics;
+    /** While this file exists: no new rooms, no joins into other rooms (see `maintenanceOpen`). */
+    maintenanceFile?: string;
     now?: () => number;
   } = {},
 ): WebSocketServer {
@@ -506,6 +513,7 @@ export function attachWebSocket(
           serverTime: Date.now(),
           version: opts.version,
           token,
+          ...(maintenance ? { maintenance: true } : {}),
         });
         return;
       }
@@ -531,6 +539,10 @@ export function attachWebSocket(
           rooms.leave(clientId);
           break;
         case 'create': {
+          if (maintenance && !maintenanceOpen(msg.name)) {
+            fail('maintenance');
+            break;
+          }
           if (!mayCreate()) {
             fail('rate_limited');
             break;
@@ -551,6 +563,11 @@ export function attachWebSocket(
           break;
         }
         case 'join': {
+          // A player coming back to the room they are in (a reconnect mid-match) is always let in.
+          if (maintenance && !maintenanceOpen(msg.name) && rooms.whereIs(clientId).room !== msg.code) {
+            fail('maintenance');
+            break;
+          }
           if (!mayJoin()) {
             fail('rate_limited');
             break;
@@ -567,6 +584,11 @@ export function attachWebSocket(
           fail(rooms.setSettings(clientId, msg.settings));
           break;
         case 'start':
+          // Matches already running finish; no new one starts (the lobby shows the maintenance screen).
+          if (maintenance && !maintenanceOpen(rooms.whereIs(clientId).name ?? '')) {
+            fail('maintenance');
+            break;
+          }
           fail(rooms.start(clientId));
           break;
         case 'meta':
@@ -614,6 +636,18 @@ export function attachWebSocket(
 
   // Tokens of players who are gone for good (and not on a socket either) are forgotten; old admission
   // records expire; dropped log lines are summarised.
+  // Maintenance: checked once a second; everyone connected hears of a change at once.
+  let maintenance = opts.maintenanceFile ? existsSync(opts.maintenanceFile) : false;
+  const maintenanceWatch = setInterval(() => {
+    const on = opts.maintenanceFile ? existsSync(opts.maintenanceFile) : false;
+    if (on === maintenance) return;
+    maintenance = on;
+    log.info({ on }, 'bakım modu');
+    const raw = encode({ t: 'maintenance', on });
+    for (const s of wss.clients) if (s.readyState === s.OPEN) s.send(raw);
+  }, 1000);
+  maintenanceWatch.unref();
+
   const prune = setInterval(() => {
     const t = now();
     for (const [tk, { id, at }] of sessions) if (t - at > BAN_MS && !keep(tk, id)) sessions.delete(tk);
@@ -625,6 +659,7 @@ export function attachWebSocket(
   wss.on('close', () => {
     clearInterval(prune);
     clearInterval(heartbeat);
+    clearInterval(maintenanceWatch);
   });
   return wss;
 }

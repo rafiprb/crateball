@@ -51,6 +51,7 @@ export async function startServer(
     origins: cfg.extraOrigins,
     budget,
     metrics,
+    maintenanceFile: cfg.maintenanceFile,
   });
   const stopStats = startServerStats(log, metrics, () => ({ ...rooms.stats(), sockets: wss.clients.size }));
   try {

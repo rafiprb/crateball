@@ -76,7 +76,8 @@ export type ErrorCode =
   | 'server_full'
   | 'rate_limited'
   | 'kicked'
-  | 'no_players';
+  | 'no_players'
+  | 'maintenance';
 
 export interface RoomPlayer {
   id: string;
@@ -120,8 +121,12 @@ export type ServerMessage =
       serverTime: number;
       version?: string;
       token?: string;
+      /** The server is under maintenance: new rooms and joins are refused (matches already running go on). */
+      maintenance?: boolean;
     }
   | { t: 'pong'; id: number; serverTime: number }
+  /** Maintenance turned on or off (sent to everyone connected the moment it changes). */
+  | { t: 'maintenance'; on: boolean }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'joined'; code: string; playerId: string }
   | { t: 'room'; room: RoomInfo }
@@ -148,6 +153,7 @@ const ERROR_CODES: readonly string[] = [
   'rate_limited',
   'kicked',
   'no_players',
+  'maintenance',
 ];
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isUint = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
@@ -389,6 +395,7 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
             serverTime: m.serverTime,
             ...(isStr(m.version, 64) ? { version: m.version } : {}),
             ...(isStr(m.token, 128) ? { token: m.token } : {}),
+            ...(m.maintenance === true ? { maintenance: true } : {}),
           }
         : null;
     case 'pong':
@@ -399,6 +406,8 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
       return typeof m.code === 'string' && ERROR_CODES.includes(m.code) && isStr(m.message, 500)
         ? { t: 'error', code: m.code as ErrorCode, message: m.message }
         : null;
+    case 'maintenance':
+      return typeof m.on === 'boolean' ? { t: 'maintenance', on: m.on } : null;
     case 'joined':
       return isStr(m.code, 4) && isStr(m.playerId, 64)
         ? { t: 'joined', code: m.code, playerId: m.playerId }
