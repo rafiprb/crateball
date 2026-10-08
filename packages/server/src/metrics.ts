@@ -1,4 +1,4 @@
-import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { PerformanceObserver, monitorEventLoopDelay } from 'node:perf_hooks';
 import type { Logger } from 'pino';
 
 /** Server-wide counters, reset by every `sunucu istatistik` line. Only read for that line. */
@@ -11,6 +11,8 @@ export interface Metrics {
   tickMsMax: number;
   tickMsSum: number;
   ticks: number;
+  /** Ticks (one pass over every room) over the 16.7 ms budget. */
+  slowTicks: number;
 }
 
 export const createMetrics = (): Metrics => ({
@@ -21,6 +23,7 @@ export const createMetrics = (): Metrics => ({
   tickMsMax: 0,
   tickMsSum: 0,
   ticks: 0,
+  slowTicks: 0,
 });
 
 /** How often the server line is written (only while anyone is connected or a room exists). */
@@ -39,6 +42,10 @@ export interface Sample extends Counts {
   tickMsAvg: number;
   loopDelayP99Ms: number;
   loopDelayMaxMs: number;
+  slowTicks: number;
+  /** Garbage collection pauses in the window: the longest, and all of them added up (ms). */
+  gcMsMax: number;
+  gcMsSum: number;
   /** CPU of this process: 100 = one full core. */
   cpuPct: number;
   rssMb: number;
@@ -59,6 +66,15 @@ export function createSampler(m: Metrics) {
   loop.enable();
   let cpu = process.cpuUsage();
   let at = performance.now();
+  let gcMax = 0;
+  let gcSum = 0;
+  const gc = new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      gcMax = Math.max(gcMax, e.duration);
+      gcSum += e.duration;
+    }
+  });
+  gc.observe({ entryTypes: ['gc'] });
   return {
     sample(c: Counts): Sample {
       const t = performance.now();
@@ -74,6 +90,9 @@ export function createSampler(m: Metrics) {
         // The histogram measures a timer of LOOP_RES_MS: what is above that is the delay.
         loopDelayP99Ms: r1(Math.max(0, loop.percentile(99) / 1e6 - LOOP_RES_MS)),
         loopDelayMaxMs: r1(Math.max(0, loop.max / 1e6 - LOOP_RES_MS)),
+        slowTicks: m.slowTicks,
+        gcMsMax: r1(gcMax),
+        gcMsSum: r1(gcSum),
         cpuPct: Math.round(((used.user + used.system) / 1e6 / secs) * 100),
         rssMb: Math.round(mem.rss / 1048576),
         heapMb: Math.round(mem.heapUsed / 1048576),
@@ -83,10 +102,15 @@ export function createSampler(m: Metrics) {
         msgsInPerSec: Math.round(m.msgsIn / secs),
       };
       loop.reset();
+      gcMax = 0;
+      gcSum = 0;
       Object.assign(m, createMetrics());
       return s;
     },
-    stop: () => loop.disable(),
+    stop: () => {
+      loop.disable();
+      gc.disconnect();
+    },
   };
 }
 
@@ -107,6 +131,9 @@ export function mergeSamples(main: Sample, workers: Sample[]) {
     tickMsAvg: workers.length ? r2(Math.max(...workers.map((s) => s.tickMsAvg))) : main.tickMsAvg,
     loopDelayP99Ms: max('loopDelayP99Ms'),
     loopDelayMaxMs: max('loopDelayMaxMs'),
+    slowTicks: sum('slowTicks'),
+    gcMsMax: max('gcMsMax'),
+    gcMsSum: sum('gcMsSum'),
     cpuPct: max('cpuPct'),
     cpuTotalPct: sum('cpuPct'),
     rssMb: sum('rssMb'),

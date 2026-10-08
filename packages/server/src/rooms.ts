@@ -539,6 +539,7 @@ export function createRooms(
       m.tickMsMax = Math.max(m.tickMsMax, ms);
       m.tickMsSum += ms;
       m.ticks++;
+      if (ms > TICK_MS) m.slowTicks++;
     }
   };
 
