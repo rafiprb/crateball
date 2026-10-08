@@ -18,7 +18,14 @@ export function createHttpHandler(
 ) {
   const assets = cfg.staticDir ? sirv(cfg.staticDir, { single: true, etag: true }) : null;
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+    // A malformed request target (e.g. "//foo:bad/", which Caddy passes on as is) is the client's error:
+    // 400, not an exception (and a log line) per request.
+    let pathname: string;
+    try {
+      ({ pathname } = new URL(req.url ?? '/', 'http://localhost'));
+    } catch {
+      return json(res, 400, { error: 'bad_request' });
+    }
     if (pathname === '/health' && (req.method === 'GET' || req.method === 'HEAD')) {
       if (req.method === 'HEAD') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });

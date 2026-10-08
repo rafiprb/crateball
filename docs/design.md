@@ -199,10 +199,14 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   (yeniden bağlanınca sıfırlanmaz), türe göre boyut sınırı (rapor 8 KB, gerisi 2 KB). Yerel WebSocket
   ping'lerine sunucu kendisi, bütçeyle cevap verir (`autoPong: false`); kalp atışı rastgele bir yük taşır,
   yalnızca onu taşıyan pong sayılır. 90 sn tam mesaj göndermeyen (yarım/parçalı mesajda kalan) soket kapanır.
-- Log: bozuk mesajlar bağlantı başına ilk ve her 100'üncü; istemcinin tetiklediği loglar sunucu çapında
-  saniyede 20 satır bütçeli (aşan sayılır, dakikada bir özetlenir); istatistik/rapor yalnızca odadakilerden.
+- Log: istemcinin tetiklediği her satır sunucu çapında türüne göre bütçeli (`log-budget.ts`): yaşam döngüsü
+  ve raporlar (bağlantı, oda, maç, atma, R) için ayrılmış 40 satır/sn; `istemci istatistik` 60 satır/sn
+  (~120 oyuncuya kadar hepsi yazılır, üstünde örneklenir); uyarılar 20 satır/sn. Biri diğerini aç
+  bırakmaz; aşanlar türüne göre sayılıp dakikada bir özetlenir. Bozuk mesaj bağlantı başına ilk ve her
+  100'üncü; bozuk HTTP istek hedefi 400 alır; istatistik/rapor yalnızca odadakilerden.
 - Kimlik: yeniden bağlanma anahtarını sunucu verir (`welcome.token`); istemcinin uydurduğu anahtar yok
-  sayılır. Atma kaydı oda başına en fazla 64, 30 dk sürer. Yeni anonim kimlik her zaman alınabildiği için
+  sayılır. Odada/bağlı olanların ve süren bir atma kaydındakilerin anahtarı hiç unutulmaz; yalnızca geri
+  kalan geçmiş en fazla 50.000 ile sınırlı. Atma kaydı oda başına en fazla 64, 30 dk sürer. Yeni anonim kimlik her zaman alınabildiği için
   oda çapında katılma (12'lik patlama, 5 sn'de bir) ve sohbet (15'lik patlama, saniyede 2) bütçesi var.
 - Özel oda: 4 harfli kod kriptografik rastgele; yanlış kod denemesi adres başına dakikada 60, sunucu
   çapında dakikada 300. Bütçe dolunca yalnızca son dakikada ıskalamış adresler bekler (doğru kodla da: kod

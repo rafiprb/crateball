@@ -10,7 +10,7 @@ import {
   type ErrorCode,
   type ServerMessage,
 } from '@crateball/protocol';
-import { createLogBudget, type LogBudget } from './log-budget';
+import { LOG_BUDGETS, createLogBudget, type LogBudget, type LogKind } from './log-budget';
 import { BAN_MS, type Rooms } from './rooms';
 
 export const HELLO_TIMEOUT_MS = 5000;
@@ -77,13 +77,14 @@ export const LIMITS = {
   idleMs: 90_000,
   /** Heartbeat ping (and the sweep for idle or backed-up sockets) every N ms. */
   heartbeatMs: 5000,
-  /** Server-wide budget for log lines clients can cause (connections, rooms, matches, telemetry,
-   * warnings): burst and per second. A busy evening (~600 people) logs a few lines a second. */
-  logBurst: 400,
-  logPerSec: 40,
+  /** Server-wide budgets for log lines clients can cause, per kind (see log-budget.ts). */
+  logBudgets: LOG_BUDGETS,
   /** Housekeeping (expired admission records, issued tokens, the dropped-lines summary) every N ms. */
   sweepMs: 60_000,
-  /** Issued reconnect tokens remembered at most (oldest first); each lives as long as a ban can. */
+  /** Issued reconnect tokens of people who are gone (and not under a kick) remembered at most, oldest
+   * forgotten first. Tokens of people in a room or connected (≤ sockets + members) and tokens under an
+   * active kick (≤ 64 per room × 100 rooms) are kept on top of this, so no flood of new sessions can
+   * push them out. */
   maxSessions: 50_000,
   /** Remembered addresses (admission maps) at most; the oldest are forgotten first. */
   maxTrackedIps: 20_000,
@@ -166,7 +167,7 @@ export function attachWebSocket(
   } = {},
 ): WebSocketServer {
   const now = opts.now ?? (() => Date.now());
-  const budget = opts.budget ?? createLogBudget(log, LIMITS.logBurst, LIMITS.logPerSec, now);
+  const budget = opts.budget ?? createLogBudget(log, LIMITS.logBudgets, now);
   const production = opts.production ?? process.env.NODE_ENV === 'production';
   const connectsByIp = new Map<string, ReturnType<typeof bucket>>();
   const bytesByIp = new Map<string, ReturnType<typeof bucket>>();
@@ -215,8 +216,8 @@ export function attachWebSocket(
   const lastMessageAt = new WeakMap<WebSocket, number>();
 
   // Server-wide budget for log lines clients can trigger; what does not fit is counted and summarised.
-  function logLimited(write: () => void) {
-    budget.line(write);
+  function logLimited(write: () => void, kind: LogKind = 'warn') {
+    budget.line(write, kind);
   }
 
   // Heartbeat: browsers answer pings on their own. A socket that stops answering is gone even if TCP
@@ -247,6 +248,19 @@ export function attachWebSocket(
     }
   }, LIMITS.heartbeatMs);
   heartbeat.unref();
+
+  /** A token whose holder is in a room, connected, or kicked from a room (still in force) must never be
+   * forgotten: only plain history is evictable. */
+  const keep = (token: string, id: string) => rooms.isMember(id) || owners.has(id) || rooms.isBanned(token);
+  const remember = (token: string, id: string) => {
+    sessions.delete(token);
+    sessions.set(token, { id, at: now() });
+    if (sessions.size <= LIMITS.maxSessions) return;
+    for (const [tk, s] of sessions) {
+      if (sessions.size <= LIMITS.maxSessions) break;
+      if (!keep(tk, s.id)) sessions.delete(tk);
+    }
+  };
 
   /** An id nobody in a room or on a socket is using (ids are short to keep snapshots small). */
   const freshId = () => {
@@ -373,7 +387,7 @@ export function attachWebSocket(
       if (badMessages > 1) logLimited(() => clog.warn({ count: badMessages }, 'bozuk mesajlar (toplam)'));
       const session = token ? sessions.get(token) : undefined;
       if (session) session.at = now(); // the ban clock for this tab runs from its last connection
-      logLimited(() => clog.info({ code }, 'ws kapandı'));
+      logLimited(() => clog.info({ code }, 'ws kapandı'), 'life');
     });
     onError = (err) => logLimited(() => clog.warn({ err }, 'ws hatası'));
     socket.on('message', (data: RawData, isBinary) => {
@@ -450,15 +464,18 @@ export function attachWebSocket(
             clientId = previous;
             owners.set(clientId, socket);
             clog = log.child({ clientId });
-            logLimited(() => clog.info(old ? 'oyuncu yeni bağlantıyla devraldı' : 'oyuncu yeniden bağlandı'));
+            logLimited(
+              () => clog.info(old ? 'oyuncu yeni bağlantıyla devraldı' : 'oyuncu yeniden bağlandı'),
+              'life',
+            );
             if (old && old !== socket) {
               old.close(CLOSE_TAKEN_OVER, 'taken over');
               setTimeout(() => old.terminate(), 1000).unref();
             }
           }
         }
-        boundedSet(sessions, token, { id: clientId, at: now() }, LIMITS.maxSessions);
-        logLimited(() => clog.info('oyuncu bağlandı'));
+        remember(token, clientId);
+        logLimited(() => clog.info('oyuncu bağlandı'), 'life');
         send({
           t: 'welcome',
           protocolVersion: PROTOCOL_VERSION,
@@ -551,16 +568,21 @@ export function attachWebSocket(
           // Gameplay telemetry only from someone in a room, at most 1/s, within the log budget.
           if (!rooms.isMember(clientId) || t - lastStatsAt < 1000) break;
           lastStatsAt = t;
-          logLimited(() => clog.info({ ...rooms.whereIs(clientId), ...msg.s }, 'istemci istatistik'));
+          logLimited(
+            () => clog.info({ ...rooms.whereIs(clientId), ...msg.s }, 'istemci istatistik'),
+            'telemetry',
+          );
           break;
         case 'report':
           if (!rooms.isMember(clientId) || t - lastReportAt < LIMITS.reportGapMs) break;
           lastReportAt = t;
-          logLimited(() =>
-            clog.warn(
-              { ...rooms.whereIs(clientId), note: msg.note, recent: msg.recent },
-              'oyuncu raporu (R)',
-            ),
+          logLimited(
+            () =>
+              clog.warn(
+                { ...rooms.whereIs(clientId), note: msg.note, recent: msg.recent },
+                'oyuncu raporu (R)',
+              ),
+            'life',
           );
           break;
       }
@@ -570,10 +592,8 @@ export function attachWebSocket(
   // Tokens of players who are gone for good (and not on a socket either) are forgotten; old admission
   // records expire; dropped log lines are summarised.
   const prune = setInterval(() => {
-    const connected = new Set(owners.keys());
     const t = now();
-    for (const [tk, { id, at }] of sessions)
-      if (!rooms.isMember(id) && !connected.has(id) && t - at > BAN_MS) sessions.delete(tk);
+    for (const [tk, { id, at }] of sessions) if (t - at > BAN_MS && !keep(tk, id)) sessions.delete(tk);
     for (const [ip, ts] of createsByIp) if (ts.every((x) => t - x > 60_000)) createsByIp.delete(ip);
     for (const [ip, ts] of failedJoinsByIp) if (ts.every((x) => t - x > 60_000)) failedJoinsByIp.delete(ip);
     budget.flush();

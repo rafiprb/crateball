@@ -175,6 +175,8 @@ export interface Rooms {
   /** Same player is back on a new socket within the grace period. */
   reattach(id: string, send: Send): Room | null;
   isMember(id: string): boolean;
+  /** Some room has an unexpired kick for this session key (at most 64 per room × 100 rooms). */
+  isBanned(key: string): boolean;
   /** In a room but without a socket (inside the reconnect grace period). */
   isAway(id: string): boolean;
   input(id: string, seq: number, bits: number): void;
@@ -275,7 +277,7 @@ export function createRooms(
   const secret = opts.secret ?? (() => randomInt(0, 0x100000000));
   const now = opts.now ?? Date.now;
   /** Lifecycle lines (rooms, joins, matches) are caused by clients: they go through the shared budget. */
-  const lim = (write: () => void) => (opts.budget ? opts.budget.line(write) : write());
+  const lim = (write: () => void) => (opts.budget ? opts.budget.line(write, 'life') : write());
   const rooms = new Map<string, Room>();
   const byClient = new Map<string, Room>();
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -684,6 +686,11 @@ export function createRooms(
     },
     reattach,
     isMember: (id) => byClient.has(id),
+    isBanned(key) {
+      const t = now();
+      for (const r of rooms.values()) if ((r.banned.get(key) ?? 0) > t) return true;
+      return false;
+    },
     isAway: (id) => !!byClient.get(id)?.members.get(id)?.awayTimer,
     create(id, name, roomName, isPublic, settings, send, key = id, owner = id) {
       if (rooms.size >= MAX_ROOMS || (!byClient.has(id) && memberCount() >= MAX_MEMBERS_TOTAL))

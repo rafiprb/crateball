@@ -399,8 +399,7 @@ describe('atma kalıcılığı ve log bütçesi (#3, #4)', () => {
   });
 
   it('meşru mesajlarla oda/maç çalkalama logu bütçeyi aşamaz; aşan satırlar özetlenir', async () => {
-    LIMITS.logBurst = 40;
-    LIMITS.logPerSec = 1;
+    LIMITS.logBudgets = { ...LIMITS.logBudgets, life: { burst: 40, perSec: 1 } };
     LIMITS.sweepMs = 100;
     const { url, lines } = await boot();
     const hosts = Array.from({ length: 30 }, (_, i) => client(url, { 'x-forwarded-for': `198.18.0.${i}` }));
@@ -446,5 +445,61 @@ describe('atma kalıcılığı ve log bütçesi (#3, #4)', () => {
         m,
       ).toBe(true);
     expect(lines.some((l) => l.includes('log bütçesi aşıldı'))).toBe(false);
+  });
+});
+
+describe('oturum sınırı ve HTTP hataları (#2, #3)', () => {
+  it('yeni oturum seli atılmış sekmenin anahtarını unutturamaz (sınır küçültülmüş)', async () => {
+    LIMITS.maxSessions = 10;
+    const { url } = await boot();
+    const host = client(url);
+    await host.opened;
+    host.hello();
+    await host.until('welcome');
+    host.socket.send(encode({ t: 'create', name: 'Host', roomName: 'R', public: false, settings }));
+    const { code } = await host.until('joined');
+    const g = client(url);
+    await g.opened;
+    g.hello();
+    const gw = await g.until('welcome');
+    g.socket.send(encode({ t: 'join', code, name: 'G' }));
+    await g.until('joined');
+    host.socket.send(encode({ t: 'kick', id: gw.clientId }));
+    await g.until('error');
+    g.socket.close();
+    await g.closed;
+    // Three times the cap in fresh sessions, each coming and going.
+    for (let i = 0; i < 30; i++) {
+      const f = client(url, { 'x-forwarded-for': `203.0.113.${i % 20}` });
+      await f.opened;
+      f.hello();
+      await f.until('welcome');
+      f.socket.close();
+      await f.closed;
+    }
+    const back = client(url);
+    await back.opened;
+    back.hello(gw.token);
+    expect((await back.until('welcome')).token).toBe(gw.token);
+    back.socket.send(encode({ t: 'join', code, name: 'G' }));
+    expect((await back.until('error')).code).toBe('kicked');
+    // The host (in a room, connected) kept its token through the flood too.
+    expect(host.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it('bozuk istek hedefi 400 alır; istek başına log satırı yazılmaz', async () => {
+    const { url, lines } = await boot();
+    const port = Number(new URL(url).port);
+    const codes: number[] = [];
+    for (let i = 0; i < 300; i++) {
+      const s = tcp(port, '127.0.0.1');
+      await new Promise<void>((ok) => s.once('connect', () => ok()));
+      s.write('GET //foo:bad/ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n');
+      const head = await new Promise<string>((ok) => s.once('data', (d: Buffer) => ok(d.toString())));
+      codes.push(Number(/^HTTP\/1\.1 (\d+)/.exec(head)?.[1]));
+      s.destroy();
+    }
+    expect(new Set(codes)).toEqual(new Set([400]));
+    expect(lines.filter((l) => l.includes('http hatası')).length).toBe(0);
   });
 });

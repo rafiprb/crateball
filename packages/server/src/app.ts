@@ -26,7 +26,7 @@ export async function startServer(
     if (cfg.mode === 'development') devLog = (await import('./dev-log')).createDevLogRoute(log);
   }
   // One budget for every log line clients can cause, in the rooms and on the sockets.
-  const budget = createLogBudget(log, LIMITS.logBurst, LIMITS.logPerSec, opts.now);
+  const budget = createLogBudget(log, LIMITS.logBudgets, opts.now);
   const rooms = createRooms(log, { budget, now: opts.now });
   const handler = createHttpHandler(
     cfg,
@@ -36,7 +36,8 @@ export async function startServer(
   );
   const server = createServer((req, res) => {
     handler(req, res).catch((err: unknown) => {
-      log.error({ err }, 'http hatası');
+      // Anything a request can trigger is metered like the other client-caused lines.
+      budget.line(() => log.error({ err }, 'http hatası'), 'warn');
       if (!res.headersSent) res.writeHead(500);
       res.end();
     });
