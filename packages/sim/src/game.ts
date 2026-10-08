@@ -556,6 +556,7 @@ function integrate(g: Game): void {
     b.x += b.vx / steps;
     b.y += b.vy / steps;
     confineBall(b);
+    if (g.arena.ducks.length) ballHitsDucks(g);
   }
   const bd = ballDamping(g, BALL.damping);
   b.vx *= bd;
@@ -673,6 +674,34 @@ function closing(a: Body, b: Body): number {
   return Math.max(0, -((a.vx - b.vx) * dx + (a.vy - b.vy) * dy) / d);
 }
 
+/** A duck bumped at closing speed `v`: it may quack (a fast one, `hard`, also sends feathers and dazes
+ * it). Counted in `bumps`/`hard`, which the client turns into sound and feathers. */
+function duckBump(d: Duck, v: number, hard: boolean): void {
+  const b = ARENAS.beach;
+  if (v < b.duckBumpMin) return;
+  if (d.cd > 0 && !(hard && d.cd < b.duckCooldown / 2)) return;
+  d.cd = b.duckCooldown;
+  d.bumps++;
+  if (hard) {
+    d.hard++;
+    d.stun = b.duckStun;
+  }
+}
+
+/** The ball against the ducks: also checked in every ball sub-step, so a hard shot cannot pass through. */
+function ballHitsDucks(g: Game): void {
+  const b = ARENAS.beach;
+  for (const d of g.arena.ducks) {
+    const v = closing(g.ball, d);
+    if (contact(g.ball, BALL.radius, BALL.invMass, 1, d, b.duckRadius, b.duckBallInvMass, b.duckBallBounce))
+      duckBump(d, v, v >= b.duckHardBall);
+  }
+}
+
+/** Duck state rounded as snapshots round it, every tick: the server goes on from exactly the state its
+ * clients get, so the steering (which turns on signs) cannot take the two different ways. */
+const quantise = (v: number) => Math.round(v * 1000) / 1000 + 0;
+
 /**
  * Beach: the ducks paddle, move, and meet the ball (it bounces off a duck like off a heavy rubber toy),
  * the players (who shove them aside) and each other (a nudge, no quack). A bump fast enough makes the duck
@@ -689,31 +718,27 @@ function updateDucks(g: Game): void {
     d.vx *= b.duckDamping;
     d.vy *= b.duckDamping;
   }
-  const bump = (d: Duck, v: number, hard: boolean) => {
-    if (v < b.duckBumpMin) return;
-    if (d.cd > 0 && !(hard && d.cd < b.duckCooldown / 2)) return;
-    d.cd = b.duckCooldown;
-    d.bumps++;
-    if (hard) {
-      d.hard++;
-      d.stun = b.duckStun;
-    }
-  };
   const alive = g.players.filter((p) => p.dead === 0);
-  for (const d of ducks) {
-    const v = closing(g.ball, d);
-    if (contact(g.ball, BALL.radius, BALL.invMass, 1, d, b.duckRadius, b.duckBallInvMass, b.duckBallBounce))
-      bump(d, v, v >= b.duckHardBall);
+  ballHitsDucks(g);
+  for (const d of ducks)
     for (const p of alive) {
       const pv = closing(p, d);
       if (contact(p, p.r, invMass(p), PLAYER.bounce, d, b.duckRadius, b.duckPlayerInvMass, 0.6))
-        bump(d, pv, pv >= b.duckHardPlayer);
+        duckBump(d, pv, pv >= b.duckHardPlayer);
     }
-  }
   for (let i = 0; i < ducks.length; i++)
     for (let j = i + 1; j < ducks.length; j++)
       contact(ducks[i]!, b.duckRadius, 1, 1, ducks[j]!, b.duckRadius, 1, 0.3);
-  for (const d of ducks) keepDuckInWater(d);
+  for (const d of ducks) {
+    keepDuckInWater(d);
+    d.x = quantise(d.x);
+    d.y = quantise(d.y);
+    d.vx = quantise(d.vx);
+    d.vy = quantise(d.vy);
+    d.hx = quantise(d.hx);
+    d.hy = quantise(d.hy);
+    d.turn = quantise(d.turn);
+  }
   for (const p of alive) confinePlayer(g, p);
   confineBall(g.ball);
 }
@@ -861,8 +886,17 @@ function spawnCrate(g: Game): void {
     const x = (rand(g) * 2 - 1) * (FIELD.halfW - 70);
     const y = (rand(g) * 2 - 1) * (FIELD.halfH - 30);
     if (x * x + y * y < (FIELD.centerRadius + 20) ** 2) continue;
-    // Beach: crates land on the sand, not in the sea.
-    if (g.arena.kind === 'beach' && inWater(x, y - CRATES.radius - 6)) continue;
+    // Beach: crates land on the sand, not in the sea (the whole box, with a little room).
+    const m = CRATES.radius + 6;
+    if (
+      g.arena.kind === 'beach' &&
+      (inWater(x, y - m) ||
+        inWater(x - m, y - m) ||
+        inWater(x + m, y - m) ||
+        inWater(x - m, y) ||
+        inWater(x + m, y))
+    )
+      continue;
     const c = { id: g.nextId++, x, y };
     const clear = (o: { x: number; y: number }, r: number) => dist2(o, c) > (r + CRATES.radius + 20) ** 2;
     if (!g.players.every((p) => clear(p, PLAYER.radius)) || !g.crates.every((o) => clear(o, CRATES.radius)))

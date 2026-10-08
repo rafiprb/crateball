@@ -51,8 +51,10 @@ export function createEventTracker(me: () => string | null = () => null) {
   /** Blast key → tick first seen. Kept across frames so a blast that a rollback removes and a later
    * replay brings back does not play twice; forgotten after a few seconds. */
   const blastsSeen = new Map<string, number>();
-  /** Beach: per kickoff and duck, the quack counts already played (a replay reaches the same counts). */
-  const quacksSeen = new Map<string, { bumps: number; hard: number }>();
+  /** Beach: per kickoff and duck, the quack counts already played (a replay reaches the same counts). The
+   * last two kickoffs are kept (a rollback can cross a kickoff); a new match starts over. */
+  const quacksSeen = new Map<string, { bumps: number; hard: number; kickoff: number }>();
+  let lastKickoffs = 0;
 
   return (g: Game | null): GameEvent[] => {
     const out: GameEvent[] = [];
@@ -140,19 +142,24 @@ export function createEventTracker(me: () => string | null = () => null) {
         if (!fresh) out.push({ type: 'item', x: b.x, y: b.y, kind: b.kind });
       }
     }
+    // A new match: kickoffs count from the start again with nothing scored (a rollback over a goal's
+    // kickoff still has the goal on the board).
+    if (fresh || (g.kickoffs < lastKickoffs && g.score[0] + g.score[1] === 0)) quacksSeen.clear();
+    lastKickoffs = g.kickoffs;
     for (const d of g.arena.ducks) {
       const key = `${g.kickoffs}:${d.id}`;
       const seen = quacksSeen.get(key);
-      if (!fresh && seen && d.bumps > seen.bumps)
-        out.push({ type: 'quack', x: d.x, y: d.y, hard: d.hard > seen.hard, duck: d.id });
+      // A new quack, or a hit corrected to a hard one after it played soft: the feathers still come.
+      const bump = !!seen && d.bumps > seen.bumps;
+      const hard = !!seen && d.hard > seen.hard;
+      if (!fresh && (bump || hard)) out.push({ type: 'quack', x: d.x, y: d.y, hard, duck: d.id });
       quacksSeen.set(key, {
         bumps: Math.max(d.bumps, seen?.bumps ?? 0),
         hard: Math.max(d.hard, seen?.hard ?? 0),
+        kickoff: g.kickoffs,
       });
     }
-    // Ducks of earlier kickoffs: gone with their arena.
-    if (quacksSeen.size > g.arena.ducks.length)
-      for (const key of quacksSeen.keys()) if (!key.startsWith(`${g.kickoffs}:`)) quacksSeen.delete(key);
+    for (const [key, s] of quacksSeen) if (s.kickoff < g.kickoffs - 1) quacksSeen.delete(key);
     for (const [key, seenAt] of blastsSeen)
       if (g.tick - seenAt > SEEN_TTL_TICKS || seenAt > g.tick) blastsSeen.delete(key);
     // Players who left: forget them (a long-lived room would otherwise grow these maps forever).

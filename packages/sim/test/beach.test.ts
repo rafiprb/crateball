@@ -99,3 +99,29 @@ describe('sahil', () => {
     expect(d.hard).toBe(1);
   });
 });
+
+describe('sahil (inceleme düzeltmeleri)', () => {
+  it('ördek durumu her tick snapshotun yuvarladığı gibi: sunucu ile istemci aynı ördekten devam eder', () => {
+    const g = beachGame(41);
+    const exact = (v: number) => Math.round(v * 1000) / 1000 === v && !Object.is(v, -0);
+    for (let t = 0; t < 2000; t++) {
+      step(g);
+      for (const d of g.arena.ducks)
+        for (const v of [d.x, d.y, d.vx, d.vy, d.hx, d.hy, d.turn]) expect(exact(v)).toBe(true);
+    }
+  });
+
+  it('çok hızlı top ördeğin içinden geçemez', () => {
+    const g = beachGame(11, false);
+    addPlayer(g, 'p', 'P', 'red');
+    restartMatch(g);
+    g.phase = 'play';
+    const d = g.arena.ducks[0]!;
+    Object.assign(d, { x: 0, y: -170, vx: 0, vy: 0, stun: 100 });
+    for (const o of g.arena.ducks.slice(1)) Object.assign(o, { x: 250, y: -175, stun: 100 });
+    Object.assign(g.ball, { x: -11, y: -152, vx: 22, vy: 0 });
+    step(g);
+    expect(d.bumps).toBe(1);
+    expect(g.ball.vx).toBeLessThan(22);
+  });
+});

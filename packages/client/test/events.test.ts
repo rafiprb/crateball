@@ -88,3 +88,68 @@ describe('kilitlenme uyarısı', () => {
     meId = 'nobody';
   });
 });
+
+describe('sahil: quack olayları', () => {
+  const beach = () => {
+    const g = createGame(1);
+    g.phase = 'play';
+    g.kickoffs = 1;
+    g.arena = { ...g.arena, kind: 'beach', ducks: [] };
+    g.arena.ducks.push({
+      id: 0,
+      x: 0,
+      y: -170,
+      vx: 0,
+      vy: 0,
+      hx: 1,
+      hy: 0,
+      turn: 0,
+      cd: 0,
+      stun: 0,
+      bumps: 0,
+      hard: 0,
+    });
+    return g;
+  };
+  const next = (
+    g: ReturnType<typeof createGame>,
+    f: (d: ReturnType<typeof createGame>['arena']['ducks'][0]) => void,
+  ) => {
+    const c = cloneGame(g);
+    c.tick++;
+    f(c.arena.ducks[0]!);
+    return c;
+  };
+  const quacks = (es: ReturnType<ReturnType<typeof createEventTracker>>) =>
+    es.filter((e) => e.type === 'quack');
+
+  it('bir kez çalar; geri sarma aynı sayıya dönünce tekrar çalmaz; sonradan sertleşen çarpma tüyünü alır', () => {
+    const track = createEventTracker();
+    let g = beach();
+    track(g);
+    g = next(g, (d) => (d.bumps = 1));
+    expect(quacks(track(g))).toEqual([{ type: 'quack', x: 0, y: -170, hard: false, duck: 0 }]);
+    // A rollback replays to the same count: nothing new.
+    expect(quacks(track(next(g, () => {})))).toHaveLength(0);
+    // The server says that hit was a hard one: the feathers come now.
+    g = next(g, (d) => (d.hard = 1));
+    expect(quacks(track(g))).toEqual([{ type: 'quack', x: 0, y: -170, hard: true, duck: 0 }]);
+  });
+
+  it('yeni maçta sayılar baştan: önceki maçın quack sayısı yenilerini yutmaz', () => {
+    const track = createEventTracker();
+    let g = beach();
+    track(g);
+    g = next(g, (d) => (d.bumps = 3));
+    track(g);
+    g.kickoffs = 4;
+    g.score = [2, 1];
+    track(next(g, () => {}));
+    // Next match: kickoff 1 again, 0-0, the same duck from zero.
+    let m = beach();
+    m.tick = g.tick + 10;
+    track(m);
+    m = next(m, (d) => (d.bumps = 1));
+    expect(quacks(track(m))).toHaveLength(1);
+  });
+});

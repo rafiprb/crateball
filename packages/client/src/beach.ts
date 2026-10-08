@@ -364,6 +364,7 @@ export function createBeach() {
   /** Waves rolling in, sparkles, wakes and the foam line; under everything that moves. */
   const drawWater = (c: CanvasRenderingContext2D, g: Game, t: number) => {
     wakes(g);
+    keep(g);
     c.save();
     c.lineCap = 'round';
     c.lineJoin = 'round';
@@ -548,6 +549,12 @@ export function createBeach() {
    * How far player `id` wears a ring (0 on sand, 1 swimming; it pops on and off over a few frames), so
    * the caller knows whether to draw the plain body.
    */
+  /** Forget players who are gone (a swimmer leaving in the water would keep its ring entry forever). */
+  const keep = (g: Game) => {
+    if (ring.size === 0) return;
+    for (const id of ring.keys()) if (!g.players.some((p) => p.id === id && p.dead === 0)) ring.delete(id);
+  };
+
   const swim = (id: string, x: number, y: number): number => {
     const k = Math.max(0, Math.min(1, (ring.get(id) ?? 0) + (inWater(x, y) ? 0.12 : -0.12)));
     if (k === 0) ring.delete(id);
