@@ -15,6 +15,8 @@ export { createLogger } from './logger';
 export interface RunningServer {
   port: number;
   close(): Promise<void>;
+  /** Several processes: the game processes' pids (tests). */
+  workerPids?(): Array<number | undefined>;
 }
 
 export async function startServer(

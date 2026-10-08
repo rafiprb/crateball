@@ -52,8 +52,8 @@ async function boot(over: Partial<ServerConfig> = {}, helloTimeoutMs?: number) {
   return { cfg, dir, base: `http://127.0.0.1:${running.port}`, wsUrl: `ws://127.0.0.1:${running.port}/ws` };
 }
 
-function client(url: string) {
-  const socket = new WebSocket(url);
+function client(url: string, headers: Record<string, string> = {}) {
+  const socket = new WebSocket(url, { headers });
   const inbox: ServerMessage[] = [];
   const waiters: Array<() => void> = [];
   const dec = createSnapDecoder();
@@ -1472,6 +1472,81 @@ describe('çoklu oyun süreci', () => {
     expect(fake.welcome.token).not.toBe('uydurma.anahtar');
     for (const c of [a.c, b.c, fake.c]) c.socket.close();
   });
+
+  it('yarıda kesilen bağlantılar sayılarda kalmaz: soket sınırı dolup kilitlenmez', async () => {
+    const { wsUrl, base } = await boot({ workers: 2, caps: { rooms: 100, players: 600, sockets: 3 } });
+    const port = new URL(base).port;
+    const { connect } = await import('node:net');
+    // Upgrade requests cut off right after they are sent (some die while being handed over).
+    for (let i = 0; i < 40; i++) {
+      const s = connect(Number(port), '127.0.0.1');
+      s.write(
+        `GET /ws?room=${i % 2 ? 'AAAA' : 'BBBB'} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n',
+      );
+      s.destroy();
+    }
+    await new Promise((r) => setTimeout(r, 500));
+    const live = await Promise.all([0, 1, 2].map(() => greet(wsUrl)));
+    for (const { c } of live) c.socket.close();
+  });
+
+  it('başka süreçte odaya giren oyuncunun eski odada yeniden bağlanma için tutulan yeri bırakılır', async () => {
+    const { wsUrl, base } = await boot({ workers: 2 });
+    const { codeOwner } = await import('../src/cluster');
+    const host = await greet(`${wsUrl}?room=AAAA`);
+    host.c.socket.send(encode({ t: 'create', name: 'H', roomName: 'R', public: false, settings }));
+    const code = (await until(host.c, 'joined')).code;
+    const guest = await greet(`${wsUrl}?room=${code}`);
+    guest.c.socket.send(encode({ t: 'join', code, name: 'G' }));
+    await until(guest.c, 'joined');
+    // The guest drops (its slot is kept for a reconnect) and opens a room on the other worker.
+    guest.c.socket.close();
+    await new Promise((r) => setTimeout(r, 200));
+    const other = codeOwner(code, 2) === 0 ? 'BBBB' : 'AAAA';
+    const g2 = await greet(`${wsUrl}?room=${other}`, guest.welcome.token);
+    g2.c.socket.send(encode({ t: 'create', name: 'G', roomName: 'R2', public: false, settings }));
+    await until(g2.c, 'joined');
+    await new Promise((r) => setTimeout(r, 1200));
+    const health = (await (await fetch(`${base}/health`)).json()) as { players: number };
+    expect(health.players).toBe(2); // host + guest in the new room; no ghost in the old one
+    for (const c of [host.c, g2.c]) c.socket.close();
+  });
+
+  it('adres başına oda sınırı süreçlere bölünür: toplam tek süreçteki kadar', async () => {
+    const { ROOMS_PER_OWNER } = await import('../src/rooms');
+    const { wsUrl } = await boot({ workers: 2 });
+    let made = 0;
+    for (let i = 0; i < ROOMS_PER_OWNER + 4; i++) {
+      const c = client(`${wsUrl}?room=${i % 2 ? 'AAAA' : 'BBBB'}`, { 'x-forwarded-for': '203.0.113.50' });
+      await c.opened;
+      c.socket.send(encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION }));
+      await until(c, 'welcome');
+      c.socket.send(encode({ t: 'create', name: 'O', roomName: 'R', public: false, settings }));
+      let m: ServerMessage;
+      do m = await c.next();
+      while (m.t !== 'joined' && m.t !== 'error');
+      if (m.t === 'joined') made++;
+    }
+    expect(made).toBe(ROOMS_PER_OWNER);
+  });
+
+  it("düşen oyun süreci /health'i 503 yapar ve yeniden başlar; donmuş süreç kapanmayı kilitlemez", async () => {
+    const { base } = await boot({ workers: 2 });
+    const pids = running!.workerPids!();
+    process.kill(pids[0]!, 'SIGKILL');
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await fetch(`${base}/health`)).status).toBe(503);
+    await expect
+      .poll(async () => (await fetch(`${base}/health`)).status, { timeout: 15_000, interval: 300 })
+      .toBe(200);
+    // A worker whose event loop is stuck cannot end itself: close() still finishes.
+    process.kill(running!.workerPids!()[1]!, 'SIGSTOP');
+    const t0 = Date.now();
+    await running!.close();
+    running = null;
+    expect(Date.now() - t0).toBeLessThan(8000);
+  }, 30_000);
 
   it('oda sınırı tüm sunucu için sayılır', async () => {
     const { wsUrl } = await boot({ workers: 2, caps: { rooms: 1, players: 600, sockets: 1000 } });

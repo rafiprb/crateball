@@ -7,7 +7,7 @@ import type { AddressInfo, Socket } from 'node:net';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Logger } from 'pino';
 import { CODE_RE } from '@crateball/protocol';
-import { codeOwner, LOAD_MS, type FromWorker, type Load, type ToWorker } from './cluster';
+import { codeOwner, share, type FromWorker, type Load, type ToWorker } from './cluster';
 import type { ServerConfig } from './config';
 import { createHttpHandler, type Route } from './http';
 import { createLogBudget } from './log-budget';
@@ -24,6 +24,11 @@ interface Worker {
   ips: Map<string, number>;
   sockets: number;
 }
+
+/** A worker that has not said it is ready after this long is started again. */
+const READY_MS = 30_000;
+/** Shutdown: how long a worker gets to exit before SIGTERM, then as long again before SIGKILL. */
+const STOP_MS = 2000;
 
 const emptyLoad = (): Load => ({ rooms: 0, members: 0, playing: 0, sockets: 0, list: [] });
 
@@ -52,7 +57,7 @@ export async function startCoordinator(
   cfg: ServerConfig,
   log: Logger,
   opts: { quietWorkers?: boolean } = {},
-): Promise<{ port: number; close(): Promise<void> }> {
+): Promise<{ port: number; close(): Promise<void>; workerPids(): Array<number | undefined> }> {
   const n = cfg.workers;
   const secret = randomBytes(32).toString('base64');
   const budget = createLogBudget(log, LIMITS.logBudgets);
@@ -90,19 +95,41 @@ export async function startCoordinator(
 
   let started: () => void;
   const allReady = new Promise<void>((resolve) => (started = resolve));
+  const respawn = (w: Worker) => setTimeout(() => !closing && spawn(w), 1000).unref();
   const spawn = (w: Worker) => {
     const proc = fork(entry.path, [], {
       env: { ...process.env, CRATEBALL_WORKER: String(w.k) },
       execArgv: entry.execArgv,
     });
     w.proc = proc;
-    // A message to a worker that just died (EPIPE): its 'exit' handles that.
-    proc.on('error', (err) => log.warn({ err, worker: w.k }, 'oyun sürecine yazılamadı'));
+    // Every start gets a deadline: one that never becomes ready is killed and started again.
+    const deadline = setTimeout(() => {
+      if (w.proc !== proc || w.ready) return;
+      log.error({ worker: w.k }, 'oyun süreci 30 sn içinde hazır olmadı, yeniden başlatılıyor');
+      proc.kill('SIGKILL');
+    }, READY_MS);
+    deadline.unref();
+    proc.on('error', (err) => {
+      // Could not be started at all (no exit will follow): try again. Otherwise a message to a worker
+      // that just died (EPIPE): its 'exit' handles that.
+      if (proc.pid === undefined && w.proc === proc) {
+        log.error({ err, worker: w.k }, 'oyun süreci başlatılamadı');
+        w.proc = null;
+        respawn(w);
+      } else log.warn({ err, worker: w.k }, 'oyun sürecine yazılamadı');
+    });
     proc.on('message', (m: FromWorker) => {
+      if (w.proc !== proc) return; // an earlier, replaced process
       switch (m.t) {
         case 'ready':
           w.ready = true;
+          clearTimeout(deadline);
           if (workers.every((o) => o.ready)) started();
+          break;
+        case 'entered':
+          // In a room here now: a slot it still holds for a reconnect in another worker goes.
+          for (const o of workers)
+            if (o !== w && o.ready && o.proc?.connected) o.proc.send({ t: 'release', key: m.key });
           break;
         case 'load':
           w.load = {
@@ -122,6 +149,8 @@ export async function startCoordinator(
       }
     });
     proc.on('exit', (code, signal) => {
+      clearTimeout(deadline);
+      if (w.proc !== proc) return;
       w.ready = false;
       w.proc = null;
       w.load = emptyLoad();
@@ -133,23 +162,14 @@ export async function startCoordinator(
       w.ips.clear();
       if (closing) return;
       log.error({ worker: w.k, code, signal }, 'oyun süreci düştü, yeniden başlatılıyor');
-      setTimeout(() => !closing && spawn(w), 1000).unref();
+      respawn(w);
     });
     const init: ToWorker = { t: 'init', k: w.k, n, cfg, secret, quiet: opts.quietWorkers ?? false };
     proc.send(init);
   };
   for (const w of workers) spawn(w);
 
-  // The caps count the whole server: each worker hears what the others hold.
   const sum = (f: (l: Load) => number) => workers.reduce((a, w) => a + f(w.load), 0);
-  const share = setInterval(() => {
-    const rooms = sum((l) => l.rooms);
-    const members = sum((l) => l.members);
-    for (const w of workers)
-      if (w.ready && w.proc?.connected)
-        w.proc.send({ t: 'elsewhere', rooms: rooms - w.load.rooms, members: members - w.load.members });
-  }, LOAD_MS);
-  share.unref();
 
   // Development only (the production bundle drops this branch, as in app.ts).
   let devLog: Route | null = null;
@@ -161,6 +181,8 @@ export async function startCoordinator(
     devLog,
     () => workers.flatMap((w) => w.load.list),
     () => ({ rooms: sum((l) => l.rooms), playing: sum((l) => l.playing), players: sum((l) => l.members) }),
+    // A worker down (restarting, or failing to): its share of the room codes cannot be reached.
+    () => workers.every((w) => w.ready),
   );
   const server = createServer((req, res) => {
     handler(req, res).catch((err: unknown) => {
@@ -183,13 +205,15 @@ export async function startCoordinator(
     const origin = req.headers.origin;
     const refused = admission.check(ip, Array.isArray(origin) ? origin[0] : origin);
     if (refused !== null) return refuse(socket, refused);
-    // A room's own worker; the menu goes to the one with the fewest sockets.
+    // A room's own worker. The menu (where rooms are created) goes to the one with the fewest sockets
+    // among those with room to spare in their share of the caps.
     const room = url.searchParams.get('room');
     const ready = workers.filter((w) => w.ready);
+    const spare = ready.filter((o) => o.load.rooms < share(cfg.caps.rooms, o.k, n));
     const w =
       room && CODE_RE.test(room)
         ? workers[codeOwner(room, n)]!
-        : ready.reduce<Worker | undefined>(
+        : (spare.length ? spare : ready).reduce<Worker | undefined>(
             (best, o) => (!best || o.sockets < best.sockets ? o : best),
             undefined,
           );
@@ -238,9 +262,9 @@ export async function startCoordinator(
   log.info({ port, mode: cfg.mode, version: cfg.version, workers: n }, 'sunucu hazır');
   return {
     port,
+    workerPids: () => workers.map((w) => w.proc?.pid),
     close: async () => {
       closing = true;
-      clearInterval(share);
       stopStats();
       // Stop listening now. Not waiting for the callback: sockets handed to workers stay on the server's
       // books (Node asks the workers about them), and the workers are about to exit.
@@ -250,9 +274,13 @@ export async function startCoordinator(
         workers.map(
           (w) =>
             new Promise<void>((resolve) => {
-              if (!w.proc) return resolve();
-              w.proc.once('exit', () => resolve());
-              w.proc.disconnect();
+              const proc = w.proc;
+              if (!proc || proc.exitCode !== null || proc.signalCode !== null) return resolve();
+              proc.once('exit', () => resolve());
+              // Asked nicely (it ends itself when the channel closes), then told, then made to.
+              if (proc.connected) proc.disconnect();
+              setTimeout(() => proc.kill('SIGTERM'), STOP_MS).unref();
+              setTimeout(() => proc.kill('SIGKILL'), STOP_MS * 2).unref();
             }),
         ),
       );

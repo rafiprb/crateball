@@ -195,6 +195,8 @@ export interface Rooms {
   isBanned(key: string): boolean;
   /** In a room but without a socket (inside the reconnect grace period). */
   isAway(id: string): boolean;
+  /** Frees the slots this session key holds only for a reconnect (it went on to a room elsewhere). */
+  releaseAway(key: string): void;
   input(id: string, seq: number, bits: number): void;
   move(by: string, id: string, team: Seat): ErrorCode | null;
   swap(by: string, a: string, b: string): ErrorCode | null;
@@ -287,10 +289,10 @@ export function createRooms(
     budget?: LogBudget;
     /** Server-wide counters for the `sunucu istatistik` line. */
     metrics?: Metrics;
-    /** Server-wide caps: rooms, and people in rooms (players and spectators). */
+    /** Caps: rooms, and people in rooms (players and spectators); a worker gets its share. */
     caps?: { rooms: number; members: number };
-    /** Rooms and people held by the other worker processes: the caps count the whole server. */
-    elsewhere?: () => { rooms: number; members: number };
+    /** Rooms one address may hold open at once (a worker gets its share). */
+    roomsPerOwner?: number;
     /** Several processes: the codes this one may give out (see cluster.ts). */
     codeOk?: (code: string) => boolean;
   } = {},
@@ -309,9 +311,9 @@ export function createRooms(
   let acc = 0;
 
   const caps = opts.caps ?? { rooms: MAX_ROOMS, members: MAX_MEMBERS_TOTAL };
-  const elsewhere = opts.elsewhere ?? (() => ({ rooms: 0, members: 0 }));
-  const roomsFull = () => rooms.size + elsewhere().rooms >= caps.rooms;
-  const membersFull = () => byClient.size + elsewhere().members >= caps.members;
+  const roomsPerOwner = opts.roomsPerOwner ?? ROOMS_PER_OWNER;
+  const roomsFull = () => rooms.size >= caps.rooms;
+  const membersFull = () => byClient.size >= caps.members;
   /** Takes one from a refilling budget (`refillMs` per token); false if empty. */
   const refill = (b: { tokens: number; at: number }, burst: number, refillMs: number) => {
     const t = now();
@@ -743,11 +745,15 @@ export function createRooms(
       return false;
     },
     isAway: (id) => !!byClient.get(id)?.members.get(id)?.awayTimer,
+    releaseAway(key) {
+      for (const room of rooms.values())
+        for (const m of room.members.values()) if (m.key === key && m.awayTimer) leave(m.id, true);
+    },
     create(id, name, roomName, isPublic, settings, send, key = id, owner = id) {
       if (roomsFull() || (!byClient.has(id) && membersFull())) return 'server_full';
       let mine = 0;
       for (const r of rooms.values()) if (r.owner === owner && r !== byClient.get(id)) mine++;
-      if (mine >= ROOMS_PER_OWNER) return 'rate_limited';
+      if (mine >= roomsPerOwner) return 'rate_limited';
       leave(id);
       const code = newCode();
       const room: Room = {

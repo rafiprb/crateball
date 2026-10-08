@@ -113,6 +113,7 @@ $<HTMLButtonElement>('#full-retry').onclick = retryFull;
 $<HTMLButtonElement>('#full-back').onclick = () => {
   hideFull();
   lastAttempt = null;
+  moveTo = null;
   toMenu();
 };
 /** A create or join from the menu (remembered for a retry when the servers are full). */
@@ -130,6 +131,7 @@ const showError = (text: string) => {
 
 const toMenu = () => {
   joinPending = false;
+  moveTo = null;
   chat.mode('off');
   chat.mount(null);
   stopBtn.hidden = true;
@@ -221,15 +223,13 @@ const conn = connect({
         banner.hidden = true;
     }
     if (s === 'open') {
+      // Joins go through `attempt`: a refusal because the servers are full then retries them.
       if (moveTo) {
-        // Connected to the process that holds the room we were sent to: join it now.
-        const target = moveTo;
-        moveTo = null;
-        attempt({ t: 'join', code: target, name: ui.name });
-      } else if (code) {
-        joinPending = true;
-        conn.send({ t: 'join', code, name: ui.name });
-      } else if (params.has('autoplay'))
+        // Connected to the process that holds the room we were sent to: join it (kept until joined, so a
+        // drop on the way reconnects there again).
+        attempt({ t: 'join', code: moveTo, name: ui.name });
+      } else if (code) attempt({ t: 'join', code, name: ui.name });
+      else if (params.has('autoplay'))
         conn.send({
           t: 'create',
           name: ui.name,
@@ -237,10 +237,8 @@ const conn = connect({
           public: false,
           settings: DEFAULT_SETTINGS,
         });
-      else if (pathCode && rejoin && ui.name !== 'Player') {
-        joinPending = true;
-        conn.send({ t: 'join', code: pathCode, name: ui.name });
-      }
+      else if (pathCode && rejoin && ui.name !== 'Player')
+        attempt({ t: 'join', code: pathCode, name: ui.name });
     }
     if (s !== 'version_mismatch') return;
     banner.hidden = false;
@@ -280,6 +278,7 @@ const conn = connect({
       case 'joined':
         joinPending = false;
         lastAttempt = null;
+        moveTo = null;
         hideFull();
         code = m.code;
         rememberRoom(m.code);
@@ -326,14 +325,19 @@ const conn = connect({
           break;
         }
         if (m.code === 'server_full' && lastAttempt) {
+          // Also a rejoin after a long drop, its slot taken meanwhile: leave the stale match, keep trying.
           joinPending = false;
+          moveTo = null;
+          if (room) toMenu();
           showFull();
           break;
         }
         showError(m.message);
         // A refused rejoin after a long drop also lands here: drop the stale match instead of playing alone.
-        if (m.code === 'room_not_found' || m.code === 'kicked' || (joinPending && m.code === 'room_full'))
+        if (m.code === 'room_not_found' || m.code === 'kicked' || (joinPending && m.code === 'room_full')) {
+          moveTo = null;
           toMenu();
+        }
         break;
     }
   },

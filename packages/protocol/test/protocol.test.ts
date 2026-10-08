@@ -245,13 +245,24 @@ describe('binary snapshot', () => {
       [{ list: [{ x: 1 }, { x: 2 }] }, { list: [{ x: 1, target: 'p' }, { x: 3 }] }],
       [{ k: true }, { k: false }],
       [{ k: 'a' }, { k: 1 }],
+      // Same keys in another order, a new key in the middle: sent whole, so the order matches too.
+      [
+        { a: 1, b: 2 },
+        { b: 2, a: 1 },
+      ],
+      [
+        { a: 1, c: 3 },
+        { a: 1, b: 2, c: 3 },
+      ],
     ];
     for (const [a, b] of cases) {
       const dec = createSnapDecoder();
       const f1 = encodeFrame(SNAP_KEY, head, 0, keyBody(a));
       const f2 = encodeFrame(SNAP_DELTA, { ...head, tick: 5 }, 4, deltaBody(a, b));
       expect(decodeFrame(f1, dec)?.state).toEqual(a);
-      expect(decodeFrame(f2, dec)?.state).toEqual(b);
+      const got = decodeFrame(f2, dec)?.state;
+      expect(got).toEqual(b);
+      expect(JSON.stringify(got)).toBe(JSON.stringify(b));
     }
     // As JSON did: -0 is 0, non-finite is null, undefined fields are left out.
     expect(snapState({ x: -0, y: NaN, z: Infinity, u: undefined } as unknown as Game)).toEqual({

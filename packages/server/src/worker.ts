@@ -1,11 +1,11 @@
 import type { IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { Writable } from 'node:stream';
-import { LOAD_MS, codeOwner, type FromWorker, type ToWorker } from './cluster';
+import { LOAD_MS, budgetShare, codeOwner, share, type FromWorker, type ToWorker } from './cluster';
 import { createLogBudget } from './log-budget';
 import { createLogger } from './logger';
 import { SERVER_STATS_MS, createMetrics, createSampler } from './metrics';
-import { createRooms } from './rooms';
+import { ROOMS_PER_OWNER, createRooms } from './rooms';
 import { LIMITS, attachWebSocket, createTokens } from './ws';
 
 /** To the coordinator, while it is there (after it is gone, the 'disconnect' handler ends this process). */
@@ -28,13 +28,13 @@ export async function runWorker(): Promise<void> {
   const log = createLogger(cfg, init.quiet ? { stdout: silent } : {}).child({ worker: k });
   const budget = createLogBudget(log, LIMITS.logBudgets);
   const metrics = createMetrics();
-  let elsewhere = { rooms: 0, members: 0 };
   const mine = (code: string) => codeOwner(code, n) === k;
+  // This worker's shares: of the caps (they add up to the server's) and of the per-address budgets.
   const rooms = createRooms(log, {
     budget,
     metrics,
-    caps: { rooms: cfg.caps.rooms, members: cfg.caps.players },
-    elsewhere: () => elsewhere,
+    caps: { rooms: share(cfg.caps.rooms, k, n), members: share(cfg.caps.players, k, n) },
+    roomsPerOwner: budgetShare(ROOMS_PER_OWNER, n),
     codeOk: mine,
   });
   const wss = attachWebSocket(null, log, rooms, {
@@ -48,13 +48,16 @@ export async function runWorker(): Promise<void> {
     maxSockets: Infinity,
     tokens: createTokens(Buffer.from(init.secret, 'base64')),
     ownsCode: mine,
+    perIp: (limit) => budgetShare(limit, n),
+    onEntered: (key) => send({ t: 'entered', key }),
   });
 
   process.on('message', (m: ToWorker, handle?: unknown) => {
-    if (m.t === 'elsewhere') elsewhere = { rooms: m.rooms, members: m.members };
+    if (m.t === 'release') rooms.releaseAway(m.key);
     else if (m.t === 'upgrade') {
       const socket = handle as Socket | undefined;
-      if (!socket) return;
+      // The socket died on its way over (the message arrives without it): still counted, so report it.
+      if (!socket) return send({ t: 'closed', ip: m.ip });
       // Counted by the coordinator from the handover: whatever happens next, it hears when this one ends.
       socket.once('close', () => send({ t: 'closed', ip: m.ip }));
       const req = { method: 'GET', url: m.url, headers: m.headers, socket } as unknown as IncomingMessage;

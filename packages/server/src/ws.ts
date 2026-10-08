@@ -254,6 +254,10 @@ export function attachWebSocket(
     tokens?: ReturnType<typeof createTokens>;
     /** Several processes: does this one hold room `code`? A join elsewhere is answered with `moved`. */
     ownsCode?: (code: string) => boolean;
+    /** Several processes: this one's share of the per-address and server-wide budgets (see cluster.ts). */
+    perIp?: (limit: number) => number;
+    /** A session (by its key) is now in a room here. */
+    onEntered?: (key: string) => void;
     now?: () => number;
   } = {},
 ): WebSocketServer {
@@ -262,6 +266,7 @@ export function attachWebSocket(
   const production = opts.production ?? process.env.NODE_ENV === 'production';
   const bytesByIp = new Map<string, ReturnType<typeof bucket>>();
   const mint = opts.tokens ?? createTokens();
+  const perIp = opts.perIp ?? ((limit: number) => limit);
   const admission = createAdmission(log, {
     production,
     origins: opts.origins,
@@ -434,7 +439,7 @@ export function attachWebSocket(
       const t = now();
       if (t - lastCreateAt < LIMITS.createGapMs) return false;
       const recent = (createsByIp.get(ip) ?? []).filter((x) => t - x < 60_000);
-      if (recent.length >= LIMITS.createsPerIpPerMin) return false;
+      if (recent.length >= perIp(LIMITS.createsPerIpPerMin)) return false;
       recent.push(t);
       boundedSet(createsByIp, ip, recent, LIMITS.maxTrackedIps);
       lastCreateAt = t;
@@ -444,10 +449,10 @@ export function attachWebSocket(
     const myFailedJoins = () => (failedJoinsByIp.get(ip) ?? []).filter((x) => now() - x < 60_000);
     const mayJoin = () => {
       const mine = myFailedJoins();
-      if (mine.length >= LIMITS.failedJoinsPerIpPerMin) return false;
+      if (mine.length >= perIp(LIMITS.failedJoinsPerIpPerMin)) return false;
       failedJoins = failedJoins.filter((x) => now() - x < 60_000);
       // Server-wide guessing budget spent: addresses that missed recently wait; everyone else joins.
-      return failedJoins.length < LIMITS.failedJoinsPerMin || mine.length === 0;
+      return failedJoins.length < perIp(LIMITS.failedJoinsPerMin) || mine.length === 0;
     };
     const joinFailed = () => {
       boundedSet(failedJoinsByIp, ip, [...myFailedJoins(), now()], LIMITS.maxTrackedIps);
@@ -497,7 +502,7 @@ export function attachWebSocket(
       }
       let ipBytes = bytesByIp.get(ip);
       if (!ipBytes) {
-        ipBytes = bucket(LIMITS.ipBytesBurst, LIMITS.ipBytesPerSec, now);
+        ipBytes = bucket(perIp(LIMITS.ipBytesBurst), perIp(LIMITS.ipBytesPerSec), now);
         boundedSet(bytesByIp, ip, ipBytes, LIMITS.maxTrackedIps);
       }
       // Counted before anything is parsed: a message count limit alone lets 64 KB pings through.
@@ -632,8 +637,10 @@ export function attachWebSocket(
             // Local development (tests, several tabs) shares one address: no per-address room cap there.
             LOOPBACK.has(ip) ? clientId : ip,
           );
-          if (typeof r !== 'string') send({ t: 'joined', code: r.code, playerId: clientId });
-          else fail(r);
+          if (typeof r !== 'string') {
+            send({ t: 'joined', code: r.code, playerId: clientId });
+            opts.onEntered?.(key);
+          } else fail(r);
           break;
         }
         case 'join': {
@@ -653,8 +660,10 @@ export function attachWebSocket(
             break;
           }
           const r = rooms.join(msg.code, clientId, msg.name, sendRaw, key);
-          if (typeof r !== 'string') send({ t: 'joined', code: r.code, playerId: clientId });
-          else {
+          if (typeof r !== 'string') {
+            send({ t: 'joined', code: r.code, playerId: clientId });
+            opts.onEntered?.(key);
+          } else {
             if (r === 'room_not_found') joinFailed();
             fail(r);
           }

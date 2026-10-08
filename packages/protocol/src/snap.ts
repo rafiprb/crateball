@@ -277,6 +277,19 @@ export function readValue(r: Reader): Plain {
   return readValueTagged(r, r.u8(), 0);
 }
 
+/**
+ * Whether patching `prev` gives `cur`'s key order too: the decoder keeps the remaining keys where they
+ * were and appends new ones. If not (keys reordered), the object is sent whole, so a client's state keeps
+ * exactly the key order JSON.parse used to give it.
+ */
+function keepsOrder(prev: PlainObj, cur: PlainObj): boolean {
+  const ck = Object.keys(cur);
+  let i = 0;
+  for (const k of Object.keys(prev)) if (Object.hasOwn(cur, k) && ck[i++] !== k) return false;
+  for (; i < ck.length; i++) if (Object.hasOwn(prev, ck[i]!)) return false;
+  return true;
+}
+
 /** Writes what turns `prev` into `cur`; false (and nothing written) if they are equal. */
 export function writePatch(w: Writer, prev: Plain, cur: Plain): boolean {
   if (prev === cur) return false;
@@ -301,7 +314,7 @@ export function writePatch(w: Writer, prev: Plain, cur: Plain): boolean {
     w.uint(0);
     if (!changed) w.len = mark;
     return changed;
-  } else if (isObj(prev) && isObj(cur)) {
+  } else if (isObj(prev) && isObj(cur) && keepsOrder(prev, cur)) {
     const mark = w.len;
     w.u8(P_OBJ);
     let changed = false;
