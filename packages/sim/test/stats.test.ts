@@ -13,12 +13,13 @@ import {
   mvpScore,
   setRole,
   openCrate,
+  removePlayer,
   restartMatch,
   step,
   type Game,
   type Player,
 } from '../src/index';
-import { scoreGoal, touchBall, updateScoring } from '../src/stats';
+import { finishScoring, scoreGoal, touchBall, updateScoring } from '../src/stats';
 
 const run = (g: Game, n: number, inputs?: Map<string, number>) => {
   for (let i = 0; i < n; i++) step(g, inputs);
@@ -492,6 +493,99 @@ describe('skorlama kuralları', () => {
     off.f.stats.assists = 1;
     off.f.stats.onTarget = 4;
     expect(mvpScore(off.g, off.f)).toBe(5);
+  });
+
+  it('aynı adımda vuruş sonra temas: vuruş unutulmaz (kendi kalesine gol, top kapma yok)', () => {
+    const { f, d, touch, goal } = pitch();
+    touch(1000, f, 300, 0, { kick: SHOT });
+    touch(1010, d, 380, 0, { kick: [6, 0] }); // d kicks it toward their own net...
+    touch(1010, d, 381, 0); // ...and brushes it again in the same step
+    goal('red');
+    expect(d.stats.ownGoals).toBe(1);
+    expect(f.goals).toBe(0);
+  });
+
+  it('iki savunmacıya çarpıp giren şut şutu atanın golü', () => {
+    const { f, d, q, touch, goal } = pitch();
+    touch(1000, f, 300, 0, { kick: SHOT });
+    touch(1008, d, 360, 0, { inV: SHOT });
+    touch(1010, q, 400, 0, { inV: [6, 0] });
+    goal('red');
+    expect(f.goals).toBe(1);
+    expect(d.stats.ownGoals + q.stats.ownGoals).toBe(0);
+  });
+
+  it('savunmacı topu kontrol edip sonra kendi kalesine sokarsa kendi kalesine gol (süre şutçunun vuruşundan)', () => {
+    const { f, d, touch, goal } = pitch();
+    touch(1000, f, 300, 0, { kick: SHOT });
+    for (let t = 1040; t <= 1080; t += 5) touch(t, d, 380, 0, { inV: [1, 0] });
+    goal('red');
+    expect(d.stats.ownGoals).toBe(1);
+    expect(f.goals).toBe(0);
+  });
+
+  it('kaleci iki ayrı şutu kurtarır: iki kurtarış', () => {
+    const { f, m, q, touch, wait } = pitch();
+    touch(1000, f, 300, 0, { kick: SHOT });
+    touch(1010, q, 400, 0, { inV: SHOT });
+    touch(1060, m, 300, 0, { kick: SHOT }); // a clean rebound, still inside the first save's 2 s
+    touch(1070, q, 400, 0, { inV: SHOT });
+    wait(1300);
+    expect(q.stats.saves).toBe(2);
+    expect(f.stats.onTarget + m.stats.onTarget).toBe(2);
+  });
+
+  it('pas sırası değişince aynı ikili yine 10 sn de bir sayılır', () => {
+    const { g, f, m, k, touch } = pitch();
+    const o = addPlayer(g, 'x', 'X', 'red');
+    let t = 1000;
+    const seq = [f, m, f, k, f, m, f, o, f, m];
+    for (const p of seq) {
+      touch(t, p, p === f ? 0 : 150, 0, { kick: [4, 0] });
+      t += 40;
+    }
+    // f → m three times in 360 ticks (6 s): once.
+    expect(f.stats.passes).toBe(3); // to m, k and x once each
+  });
+
+  it('karambolde alınan topu takım arkadaşı hemen vurursa şut sayılmaz', () => {
+    const { o, d, f, touch } = pitch();
+    touch(1000, f, 250, 0);
+    touch(1000 + S + 5, f, 255, 0);
+    touch(1000 + S + 10, o, 258, 0); // blue takes it off red, who owned it: clean
+    touch(1000 + S + 12, f, 260, 0); // red straight back: a scramble
+    touch(1000 + S + 14, f, 262, 0);
+    touch(1000 + S + 16, o, 264, 0); // blue pokes it back: a scramble too
+    touch(1000 + S + 17, d, 266, 0, { kick: [-9, 0] }); // a blue teammate shoots at once
+    expect(d.stats.shots).toBe(0);
+  });
+
+  it('maçtan ayrılan oyuncunun golleri kalır; bekleyen şutu gol olursa ona yazılır; dönerse devam eder', () => {
+    const { g, f, m, touch, goal } = pitch();
+    f.goals = 2;
+    touch(1000, f, 300, 0, { kick: SHOT });
+    removePlayer(g, 'f');
+    goal('red');
+    const gone = g.scoring.gone.find((p) => p.id === 'f')!;
+    expect(gone.goals).toBe(3);
+    expect(mvp(g)).toBe('f');
+    expect(m.stats.assists).toBe(0);
+    const back = addPlayer(g, 'f', 'F', 'red');
+    expect(back.goals).toBe(3);
+    expect(g.scoring.gone).toHaveLength(0);
+    restartMatch(g);
+    expect(back.goals).toBe(0);
+  });
+
+  it('gol sonrası duraklamada hasar, ölüm ve kutu sayılmaz', () => {
+    const g = createGame(1, { ...DEFAULT_SETTINGS, crates: 'off' });
+    const a = addPlayer(g, 'a', 'A', 'red');
+    addPlayer(g, 'b', 'B', 'blue');
+    g.phase = 'goal';
+    openCrate(g, a, a.x, a.y, 'gun');
+    openCrate(g, a, a.x, a.y, 'mine');
+    expect(a.stats).toMatchObject({ goodCrates: 0, badCrates: 0, deaths: 0 });
+    finishScoring(g);
   });
 
   it('MVP: en çok puan; eşitlikte kazanan takım, sonra gol, sonra asist', () => {

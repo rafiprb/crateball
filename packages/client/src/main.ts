@@ -149,6 +149,7 @@ const toMenu = () => {
   rememberRoom(null);
   pred.reset();
   results.hide();
+  results.forget();
   history.replaceState(null, '', `/${params.has('debug') ? '?debug' : ''}`);
   ui.menu();
   showMaintenance();
@@ -327,7 +328,11 @@ const conn = connect({
           clock.feedback(m.lead);
           work.snap = Math.max(work.snap, performance.now() - ts);
           // The final whistle: the results from the server's own numbers.
-          if (m.g.phase === 'over') results.show(m.g, pred.me ?? conn.clientId);
+          if (m.g.phase === 'over' && !results.visible) {
+            results.show(m.g, pred.me ?? conn.clientId);
+            // Keys held at the whistle are let go (the results screen takes the keyboard).
+            if (results.visible) keyboard.release();
+          }
           queueAvg = queueAvg * 0.9 + m.q * 0.1;
         }
         break;

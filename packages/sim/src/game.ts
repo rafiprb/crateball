@@ -40,9 +40,12 @@ import { gunTarget } from './aim';
 import {
   clearScoring,
   cloneScoring,
+  cloneStats,
+  departed,
   finishScoring,
   newScoring,
   newStats,
+  rejoined,
   scoreGoal,
   touchBall,
   updateScoring,
@@ -92,7 +95,7 @@ export function cloneGame(g: Game): Game {
   return {
     ...g,
     score: [g.score[0], g.score[1]],
-    players: g.players.map((p) => ({ ...p, stats: { ...p.stats } })),
+    players: g.players.map((p) => ({ ...p, stats: cloneStats(p.stats) })),
     scoring: cloneScoring(g.scoring),
     ball: { ...g.ball },
     crates: g.crates.map((c) => ({ ...c })),
@@ -180,12 +183,15 @@ export function addPlayer(g: Game, id: string, name: string, team: Team, bot = f
     stats: newStats(),
   };
   g.players.push(p);
+  rejoined(g, p);
   placeAtSpawn(g, p, teamCount(g, team) - 1);
   return p;
 }
 
 export function removePlayer(g: Game, id: string): void {
-  g.players = g.players.filter((p) => p.id !== id);
+  const p = g.players.find((o) => o.id === id);
+  if (p) departed(g, p);
+  g.players = g.players.filter((o) => o.id !== id);
 }
 
 const SPAWN_Y = [0, -90, 90, -150, 150];
@@ -246,6 +252,7 @@ export function restartMatch(g: Game): void {
     p.goals = 0;
     p.stats = newStats();
   }
+  g.scoring.gone = [];
   resetKickoff(g, 'red');
   g.matches++;
   canonicalise(g);
@@ -894,14 +901,16 @@ function shieldBlocks(g: Game, p: Player): boolean {
 function damage(g: Game, p: Player, amount: number, kx: number, ky: number, by?: Player): void {
   p.vx += kx;
   p.vy += ky;
+  // The stats count only while the ball is live (not in the pause after a goal, say the winning one).
+  const counts = live(g);
   if (shieldBlocks(g, p)) {
-    p.stats.absorbed += amount;
+    if (counts) p.stats.absorbed += amount;
     return;
   }
-  if (by && by.team !== p.team) by.stats.damage += Math.min(amount, p.hp);
+  if (counts && by && by.team !== p.team) by.stats.damage += Math.min(amount, p.hp);
   p.hp -= amount;
   if (p.hp <= 0) {
-    p.stats.deaths++;
+    if (counts) p.stats.deaths++;
     p.hp = 0;
     p.dead = PLAYER.respawn;
     p.gun = 0;
@@ -1017,8 +1026,10 @@ export function rollLoot(g: Game): ItemKind {
 
 export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKind): void {
   g.blasts.push({ x, y, kind, t: ITEMS.blastShow });
-  if (ITEM_BAD.includes(kind)) p.stats.badCrates++;
-  else p.stats.goodCrates++;
+  if (live(g)) {
+    if (ITEM_BAD.includes(kind)) p.stats.badCrates++;
+    else p.stats.goodCrates++;
+  }
   switch (kind) {
     // One item on E/Shift at a time: a new one replaces the old.
     case 'gun':
@@ -1074,7 +1085,7 @@ export function openCrate(g: Game, p: Player, x: number, y: number, kind: ItemKi
         body.vy += dy * f;
       }
       if (spared) {
-        p.stats.absorbed += ITEMS.mineDamage;
+        if (live(g)) p.stats.absorbed += ITEMS.mineDamage;
         break;
       }
       if (p.dead === 0) p.slow = ITEMS.mineSlow;

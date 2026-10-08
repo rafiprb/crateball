@@ -78,6 +78,20 @@ describe('maç sonu ekranı', () => {
     expect(r.visible).toBe(false);
   });
 
+  it('başka odada aynı anda biten maç da açılır; açılınca sohbet kutusu bırakılır', () => {
+    const r = createResults();
+    const chat = document.createElement('input');
+    document.body.append(chat);
+    r.show(finished(500), 'a');
+    r.hide();
+    r.forget(); // left the room
+    chat.focus();
+    r.show(finished(500), 'a');
+    expect(r.visible).toBe(true);
+    expect(document.activeElement).not.toBe(chat);
+    expect(document.activeElement?.textContent).toBe('Back to lobby');
+  });
+
   it('süresi dolunca kendiliğinden kapanır', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
     const r = createResults();

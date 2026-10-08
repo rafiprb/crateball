@@ -1,4 +1,4 @@
-import { MATCH, TICK_HZ, mvp, mvpScore, type Game, type Player, type Team } from '@crateball/sim';
+import { MATCH, TICK_HZ, everyone, mvp, mvpScore, type Game, type Scored, type Team } from '@crateball/sim';
 import { ROLE_LABEL, h } from './ui';
 
 /**
@@ -12,6 +12,8 @@ export interface Results {
    * after being closed while the room is still on its final whistle. */
   show(g: Game, me: string | null): void;
   hide(): void;
+  /** Leaving the room: the next room's matches are new ones even at the same tick. */
+  forget(): void;
 }
 
 type Cell = Node | string;
@@ -54,7 +56,8 @@ export function createResults(parent: HTMLElement = document.body): Results {
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-labelledby', 'results-title');
   parent.append(root);
-  let shownFor: number | null = null;
+  /** The match on screen (or closed): its number and the tick of its final whistle. */
+  let shownFor: string | null = null;
   let closeAt = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -67,7 +70,7 @@ export function createResults(parent: HTMLElement = document.body): Results {
     if (e.key === 'Escape' && !root.hidden) hide();
   });
 
-  const row = (g: Game, p: Player, me: string | null, best: string | null, roles: boolean) => {
+  const row = (g: Game, p: Scored, me: string | null, best: string | null, roles: boolean, left: boolean) => {
     const s = p.stats;
     const pts = mvpScore(g, p);
     const all: Array<[Cell, boolean]> = [
@@ -96,6 +99,7 @@ export function createResults(parent: HTMLElement = document.body): Results {
           h('span', { class: 'pname' }, p.name),
           p.id === best && h('span', { class: 'mvp', title: 'Most valuable player' }, 'MVP'),
           p.bot && h('span', { class: 'tag' }, 'BOT'),
+          left && h('span', { class: 'tag', title: 'Left during the match' }, 'LEFT'),
         ),
       ),
       ...cells.map(([c, zero]) =>
@@ -109,10 +113,14 @@ export function createResults(parent: HTMLElement = document.body): Results {
       return !root.hidden;
     },
     hide,
+    forget() {
+      shownFor = null;
+    },
     show(g, me) {
-      const end = g.tick - g.phaseT;
+      const end = `${g.matches}:${g.tick - g.phaseT}`;
       if (g.phase !== 'over' || shownFor === end) return;
       shownFor = end;
+      const gone = new Set(g.scoring.gone.map((p) => p.id));
       const [red, blue] = g.score;
       const won: Team | null = red > blue ? 'red' : blue > red ? 'blue' : null;
       const best = mvp(g);
@@ -148,7 +156,13 @@ export function createResults(parent: HTMLElement = document.body): Results {
                   ),
                 ),
               ),
-              h('tbody', {}, ...g.players.filter((p) => p.team === t).map((p) => row(g, p, me, best, roles))),
+              h(
+                'tbody',
+                {},
+                ...everyone(g)
+                  .filter((p) => p.team === t)
+                  .map((p) => row(g, p, me, best, roles, gone.has(p.id))),
+              ),
             ),
           ),
         );
@@ -167,6 +181,10 @@ export function createResults(parent: HTMLElement = document.body): Results {
         ),
       );
       root.hidden = false;
+      // Whatever had the keyboard (the chat box, mid-message) lets go: Enter and Esc are the screen's now.
+      if (document.activeElement instanceof HTMLElement && !root.contains(document.activeElement))
+        document.activeElement.blur();
+      back.focus();
       closeAt = performance.now() + (MATCH.resultsShow / TICK_HZ) * 1000;
       const tick = () => {
         const left = Math.ceil((closeAt - performance.now()) / 1000);

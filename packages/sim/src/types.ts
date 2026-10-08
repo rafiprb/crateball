@@ -88,11 +88,10 @@ export interface Stats {
   /** Damage the shield took instead of you. */
   absorbed: number;
   deaths: number;
-  /** Bookkeeping, not shown: tick of the latest contact with the ball; the last completed pass (to whom,
-   * when) so the same pair counts once per STATS.passRepeat. */
+  /** Bookkeeping, not shown: tick of the latest contact with the ball; when each teammate last got a
+   * completed pass from this player (a pair counts once per STATS.passRepeat). */
   ballAt: number;
-  passTo: string;
-  passAt: number;
+  passLog: Record<string, number>;
 }
 
 /** A player's unbroken time on the ball: from the touch that took it to the latest one. */
@@ -101,28 +100,44 @@ export interface Spell {
   team: Team;
   first: number;
   last: number;
-  /** Not taken off an opponent in a scramble (their spell was shorter than STATS.own). */
+  /** When the side got the ball (a teammate's touch carries it on). */
+  since: number;
+  /** The side did not take it off the other side in a scramble (their possession was shorter than
+   * STATS.own); passed on to teammates. */
   clean: boolean;
   /** Where the ball was at the latest touch. */
   x: number;
   y: number;
-  /** The latest touch was a kick. */
-  kick: boolean;
+  /** Tick of the latest kick in this spell, -1 for none. */
+  kickAt: number;
   /** A shot already counted in this spell (one per spell). */
   shot: boolean;
 }
 
+/** Someone who left during the match: their line stays on the results screen until the next one. */
+export interface Departed {
+  id: string;
+  name: string;
+  team: Team;
+  role: Role;
+  bot: boolean;
+  goals: number;
+  stats: Stats;
+}
+
 /** Who had the ball lately, and what is waiting for an outcome. Written by stats.ts only. */
 export interface Scoring {
-  /** The latest spells, oldest first (at most three). Cleared at every kickoff. */
+  /** The latest spells, oldest first (at most STATS.spells). Cleared at every kickoff. */
   spells: Spell[];
   /** The latest counted shot: `done` once someone else touched the ball (its outcome known), `on` when
    * that made it a shot on target (a save or a block). */
   shot: { by: string; team: Team; done: boolean; on: boolean } | null;
-  /** A save or a block that stands unless a goal comes within STATS.saveHold. */
-  stop: { by: string; kind: 'save' | 'block'; at: number } | null;
+  /** Saves and blocks that stand unless a goal comes within STATS.saveHold. */
+  stops: Array<{ by: string; kind: 'save' | 'block'; at: number }>;
   /** A ball won off an opponent: a tackle once the side keeps it for STATS.own. */
   tackle: { by: string; team: Team; at: number } | null;
+  /** Players who left during this match (cleared when the next one starts). */
+  gone: Departed[];
 }
 
 export interface Body {
