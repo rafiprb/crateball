@@ -43,3 +43,38 @@ describe('sürüm', () => {
     expect(seen).toBe('abc1234');
   });
 });
+
+describe('başka sunucu sürecine taşınma', () => {
+  it('reconnect eski soketi bırakıp adresi yeniden okuyarak hemen bağlanır; eski soketin kapanışı yok sayılır', () => {
+    const urls: string[] = [];
+    const socks: SocketLike[] = [];
+    const statuses: string[] = [];
+    let room: string | null = null;
+    const conn = connect({
+      url: () => `ws://x/ws${room ? `?room=${room}` : ''}`,
+      createSocket: (url) => {
+        urls.push(url);
+        const s: SocketLike = {
+          send: () => {},
+          close: () => {},
+          onopen: null,
+          onmessage: null,
+          onclose: null,
+        };
+        socks.push(s);
+        return s;
+      },
+      schedule: () => {
+        throw new Error('no backoff for a move');
+      },
+      onStatus: (s) => statuses.push(s),
+    });
+    room = 'BCDE';
+    conn.reconnect();
+    // The old socket closing later must not schedule a retry or flip the status.
+    socks[0]!.onclose?.();
+    expect(urls).toEqual(['ws://x/ws', 'ws://x/ws?room=BCDE']);
+    expect(statuses).toEqual(['connecting', 'connecting']);
+    expect(conn.attempts).toBe(0);
+  });
+});

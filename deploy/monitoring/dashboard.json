@@ -483,9 +483,9 @@
     },
     {
       "id": 23,
-      "title": "Oyun süreci CPU (100 = bir çekirdek)",
+      "title": "Oyun süreçleri CPU (100 = bir çekirdek)",
       "type": "timeseries",
-      "description": "Oyun tek bir Node sürecinde koşar ve bir çekirdeğe sığmak zorundadır. 100'e yaklaşınca tickler gecikir, makinenin geri kalanı boş olsa bile.",
+      "description": "Her oyun süreci bir çekirdekte koşar. \"En yüklü süreç\" 100'e yaklaşınca o süreçteki odalar takılır, diğerleri boş olsa bile. \"Toplam\" tüm süreçlerin toplamı (prod: 3 oyun süreci + ana süreç).",
       "datasource": {
         "type": "loki",
         "uid": "${loki}"
@@ -504,7 +504,17 @@
             "type": "loki",
             "uid": "${loki}"
           },
-          "legendFormat": "CPU",
+          "legendFormat": "en yüklü süreç",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "max(max_over_time({job=\"crateball\", msg=\"sunucu istatistik\"} | json v=\"cpuTotalPct\" | unwrap v [1m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki}"
+          },
+          "legendFormat": "toplam",
           "queryType": "range"
         }
       ],

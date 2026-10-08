@@ -291,6 +291,8 @@ export function createRooms(
     caps?: { rooms: number; members: number };
     /** Rooms and people held by the other worker processes: the caps count the whole server. */
     elsewhere?: () => { rooms: number; members: number };
+    /** Several processes: the codes this one may give out (see cluster.ts). */
+    codeOk?: (code: string) => boolean;
   } = {},
 ): Rooms {
   const seed = opts.seed ?? (() => Date.now() >>> 0);
@@ -580,7 +582,7 @@ export function createRooms(
     for (;;) {
       let code = '';
       for (let i = 0; i < 4; i++) code += CODE_ALPHABET[Math.floor(random() * CODE_ALPHABET.length)];
-      if (!rooms.has(code)) return code;
+      if (!rooms.has(code) && (opts.codeOk?.(code) ?? true)) return code;
     }
   };
 

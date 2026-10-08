@@ -42,9 +42,13 @@ async function boot(over: Partial<ServerConfig> = {}, helloTimeoutMs?: number) {
     extraOrigins: [],
     maintenanceFile: join(dir, 'maintenance'),
     caps: { rooms: 100, players: 600, sockets: 1000 },
+    workers: 0,
     ...over,
   };
-  running = await startServer(cfg, createLogger(cfg, { stdout: silent }), { helloTimeoutMs });
+  running = await startServer(cfg, createLogger(cfg, { stdout: silent }), {
+    helloTimeoutMs,
+    quietWorkers: true,
+  });
   return { cfg, dir, base: `http://127.0.0.1:${running.port}`, wsUrl: `ws://127.0.0.1:${running.port}/ws` };
 }
 
@@ -1382,5 +1386,103 @@ describe('binary snapshot gönderimi', () => {
     rooms.tickAll();
     rooms.tickAll();
     expect(kinds[0]).toBe(1);
+  });
+});
+
+describe('çoklu oyun süreci', () => {
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: true,
+  };
+  const until = async <T extends ServerMessage['t']>(c: ReturnType<typeof client>, t: T) => {
+    for (;;) {
+      const m = await c.next();
+      if (m.t === t) return m as Extract<ServerMessage, { t: T }>;
+    }
+  };
+  /** Connects and greets; resolves with the welcome. */
+  const greet = async (url: string, sessionToken?: string) => {
+    const c = client(url);
+    await c.opened;
+    c.socket.send(
+      encode({ t: 'hello', protocolVersion: PROTOCOL_VERSION, ...(sessionToken ? { sessionToken } : {}) }),
+    );
+    return { c, welcome: await until(c, 'welcome') };
+  };
+  /** Joins `code` the way the client does, from a socket on `via`: a `moved` means connect again with
+   * ?room= and join there. */
+  const joinAnywhere = async (wsUrl: string, code: string, name: string, via = wsUrl) => {
+    let { c, welcome } = await greet(via);
+    c.socket.send(encode({ t: 'join', code, name }));
+    let first: ServerMessage;
+    do first = await c.next();
+    while (first.t !== 'joined' && first.t !== 'moved');
+    if (first.t === 'moved') {
+      c.socket.close();
+      ({ c, welcome } = await greet(`${wsUrl}?room=${code}`, welcome.token));
+      c.socket.send(encode({ t: 'join', code, name }));
+      await until(c, 'joined');
+    }
+    return { c, welcome, moved: first.t === 'moved' };
+  };
+
+  it('odalar süreçlere dağılır; başka süreçteki odaya katılan yönlendirilir; sayımlar toplanır', async () => {
+    const { wsUrl, base } = await boot({ workers: 2 });
+    // Rooms land on both workers (the menu goes to the one with fewer sockets).
+    const hosts = [];
+    const codes: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const { c } = await greet(wsUrl);
+      c.socket.send(encode({ t: 'create', name: `H${i}`, roomName: `R${i}`, public: true, settings }));
+      codes.push((await until(c, 'joined')).code);
+      hosts.push(c);
+    }
+    const { codeOwner } = await import('../src/cluster');
+    expect(new Set(codes.map((c) => codeOwner(c, 2))).size).toBe(2);
+    // Joining each room from a socket on the other process: told to move, then in.
+    const guests = [];
+    for (const code of codes) {
+      const other = ['AAAA', 'BBBB'].find((c) => codeOwner(c, 2) !== codeOwner(code, 2))!;
+      const g = await joinAnywhere(wsUrl, code, 'Guest', `${wsUrl}?room=${other}`);
+      expect(g.moved).toBe(true);
+      guests.push(g.c);
+    }
+    // The room sees both (its own snapshot stream works across the handover).
+    hosts[0]!.socket.send(encode({ t: 'start' }));
+    const snap = await until(guests[0]!, 'snap');
+    expect(snap.g.players.filter((p) => !p.bot)).toHaveLength(2);
+    // Counts from every process add up (reported twice a second).
+    await new Promise((r) => setTimeout(r, 1200));
+    const health = (await (await fetch(`${base}/health`)).json()) as { players: number; rooms: number };
+    expect(health).toMatchObject({ players: 8, rooms: 4 });
+    const list = (await (await fetch(`${base}/rooms`)).json()) as Array<{ code: string }>;
+    expect(list.map((r) => r.code).sort()).toEqual([...codes].sort());
+    for (const c of [...hosts, ...guests]) c.socket.close();
+  });
+
+  it('bir sürecin verdiği yeniden bağlanma anahtarı diğerinde de geçerli; uydurma anahtar geçmez', async () => {
+    const { wsUrl } = await boot({ workers: 2 });
+    const a = await greet(`${wsUrl}?room=AAAA`);
+    const b = await greet(`${wsUrl}?room=BBBB`, a.welcome.token);
+    expect(b.welcome.token).toBe(a.welcome.token);
+    const fake = await greet(`${wsUrl}?room=BBBB`, 'uydurma.anahtar');
+    expect(fake.welcome.token).not.toBe('uydurma.anahtar');
+    for (const c of [a.c, b.c, fake.c]) c.socket.close();
+  });
+
+  it('oda sınırı tüm sunucu için sayılır', async () => {
+    const { wsUrl } = await boot({ workers: 2, caps: { rooms: 1, players: 600, sockets: 1000 } });
+    const a = await greet(`${wsUrl}?room=AAAA`);
+    a.c.socket.send(encode({ t: 'create', name: 'A', roomName: 'R', public: false, settings }));
+    await until(a.c, 'joined');
+    await new Promise((r) => setTimeout(r, 1200));
+    // The other worker (codes starting with B go to worker 1, A to worker 0).
+    const b = await greet(`${wsUrl}?room=BBBB`);
+    b.c.socket.send(encode({ t: 'create', name: 'B', roomName: 'R', public: false, settings }));
+    expect((await until(b.c, 'error')).code).toBe('server_full');
+    for (const c of [a.c, b.c]) c.socket.close();
   });
 });

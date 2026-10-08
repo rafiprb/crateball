@@ -187,14 +187,28 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   `scripts/install-deploy.sh` (sahibin SSH anahtarıyla) değiştirir. Çalınan bir deploy anahtarı en fazla
   aynı kısıtlı konteynere (salt okunur, yetkisiz, bellek/pid sınırlı) başka bir oyun derlemesi koyabilir.
   Sağlıksız yayın `crateball:previous` imajına döner.
-- Telemetri: istemci 2 sn'lik özet + R ile işaretli rapor; sunucu oda başına girdisiz tick ve tick süresi.
+- Süreçler (`packages/server/src/cluster.ts`): bir Node süreci tek çekirdekte koşar; prod'da 3 oyun süreci
+  (`CRATEBALL_WORKERS`). Ana süreç (coordinator) sayfayı, `/health`, `/rooms`'u sunar, her WebSocket
+  upgrade'ini kabul kontrolünden geçirir ve TCP soketini odanın sürecine devreder; sonrasında oyun trafiği
+  ana süreçten geçmez. Oda kodunun ilk harfi süreci belirler: `/ws?room=KOD` doğrudan oraya, menü en az
+  soketi olan sürece gider ve oda o sürecin kod payından kurulur. Başka süreçteki odaya katılma `moved`
+  cevabı alır, istemci `?room=` ile yeniden bağlanır. Yeniden bağlanma anahtarları tüm süreçlerin bildiği
+  bir sırla MAC'lidir. Süreçler sayılarını saniyede iki kez bildirir; sınırlar, `/health` ve `/rooms`
+  toplamdan. Düşen süreç 1 sn sonra yeniden başlar (odaları gider). Dev ve testlerde 0: tek süreç.
+- Telemetri: istemci 2 sn'lik özet + R ile işaretli rapor; sunucu oda başına girdisiz tick ve tick süresi;
+  5 sn'de bir `sunucu istatistik` (tick süresi, event loop gecikmesi, en yüklü sürecin ve toplam CPU,
+  bellek, trafik).
 
 ## Güvenlik ve sınırlar (`packages/server/src/ws.ts` `LIMITS`, `rooms.ts`)
 
 - Sınırlar ofise göre gevşek: tek genel IP'nin (NAT) arkasında ~30 kişi, 4-5 oda hiçbir sınıra
   takılmamalı. Adres başına: 96 açık bağlantı, 120'lik patlama + saniyede 2 yeni bağlantı, dakikada 30 oda
   kurma, en fazla 20 oda. IP ile yasaklama yok; önek (prefix) bazlı kısıtlama yok.
-- Sunucu çapında: en fazla 100 oda, 600 kişi (oyuncu + izleyici), 1000 soket (lobi gezenler dahil).
+- Sunucu çapında (tüm süreçler, env ile: `CRATEBALL_MAX_ROOMS/PLAYERS/SOCKETS`): varsayılan 100 oda, 600 kişi
+  (oyuncu + izleyici), 1000 soket (lobi gezenler dahil); yük testinden sonra ölçülen kapasitenin biraz
+  altına çekilecek. Dolunca "Servers are full" ekranı, 15 sn'de bir yeniden dener. Adres başına sınırlar
+  ve soket sayısı ana süreçte (tüm upgrade'leri o görür); mesaj, oda kurma ve kod deneme bütçeleri her
+  oyun sürecinde ayrı tutulur.
 - Kabul (upgrade'den önce): prod'da tarayıcı Origin'i yalnızca `playcrateball.com` (masaüstü uygulaması da
   bu siteyi yükler; Origin'siz istemciler geçer, yerel prod denemesi için `CRATEBALL_ORIGINS`), dev'de
   localhost. Dolu sunucu 503, çok hızlı bağlanan adres 429.

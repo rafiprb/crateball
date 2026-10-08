@@ -7,6 +7,7 @@ import { createRooms } from './rooms';
 import { createLogBudget } from './log-budget';
 import { LIMITS, attachWebSocket } from './ws';
 import { createMetrics, startServerStats } from './metrics';
+import { startCoordinator } from './coordinator';
 
 export { loadConfig, type ServerConfig } from './config';
 export { createLogger } from './logger';
@@ -19,8 +20,10 @@ export interface RunningServer {
 export async function startServer(
   cfg: ServerConfig,
   log: Logger,
-  opts: { helloTimeoutMs?: number; now?: () => number } = {},
+  opts: { helloTimeoutMs?: number; now?: () => number; quietWorkers?: boolean } = {},
 ): Promise<RunningServer> {
+  // Several game processes: this one only takes connections (see cluster.ts).
+  if (cfg.workers > 0) return startCoordinator(cfg, log, { quietWorkers: opts.quietWorkers });
   // Derleme sabiti: prod paketinde (esbuild define) bu dal ve dev-log modülü tamamen silinir.
   let devLog: Route | null = null;
   if (process.env.NODE_ENV !== 'production') {

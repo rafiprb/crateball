@@ -64,7 +64,7 @@ test('debug köprüsü komut çalıştırır ve bilinmeyeni reddeder', async ({ 
 test('sunucuya ulaşılamazsa yeniden dener, ulaşınca bağlanır', async ({ page }) => {
   let refused = 0;
   let passed = 0;
-  await page.routeWebSocket('**/ws', (ws) => {
+  await page.routeWebSocket(/\/ws(\?.*)?$/, (ws) => {
     if (refused < 2) {
       refused++;
       void ws.close();
@@ -87,7 +87,7 @@ test('sunucuya ulaşılamazsa yeniden dener, ulaşınca bağlanır', async ({ pa
 
 test('sürüm uyuşmazlığında yenile uyarısı gösterir ve tekrar denemez', async ({ page }) => {
   let connections = 0;
-  await page.routeWebSocket('**/ws', (ws) => {
+  await page.routeWebSocket(/\/ws(\?.*)?$/, (ws) => {
     connections++;
     ws.onMessage(() => {
       ws.send(

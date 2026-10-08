@@ -29,7 +29,9 @@ export interface SocketLike {
 }
 
 export interface ConnectionOptions {
-  url: string;
+  /** Read at every (re)connect: it names the room this tab is in or going to (`?room=`), so the server
+   * can hand the socket straight to the process that holds it. */
+  url: string | (() => string);
   createSocket?: (url: string) => SocketLike;
   /** Sent in hello so the server can give a reconnecting tab its old slot back (server-issued). */
   sessionToken?: string;
@@ -51,6 +53,8 @@ export interface Connection {
   readonly clientId: string | null;
   readonly attempts: number;
   send(m: ClientMessage): void;
+  /** Connect again right away (the URL changed: the server said the room is elsewhere). */
+  reconnect(): void;
   close(): void;
 }
 
@@ -83,7 +87,7 @@ export function connect(o: ConnectionOptions): Connection {
   const open = () => {
     if (stopped) return; // close() bekleyen yeniden denemeyi de iptal eder
     setStatus('connecting');
-    const s = createSocket(o.url);
+    const s = createSocket(typeof o.url === 'string' ? o.url : o.url());
     socket = s;
     // Snapshot deltas build on the last one this connection got: a new connection starts from a key frame.
     const snaps = createSnapDecoder();
@@ -163,6 +167,18 @@ export function connect(o: ConnectionOptions): Connection {
       if (socket && status === 'open') socket.send(encode(m));
       // A click before the handshake finishes (slow link) must not vanish; per-tick traffic is dropped.
       else if (m.t !== 'in' && m.t !== 'ping') queued.push(m);
+    },
+    reconnect() {
+      const s = socket;
+      // No socket: a retry is already scheduled, and it reads the new URL.
+      if (!s || stopped) return;
+      socket = null;
+      clientId = null;
+      s.onmessage = null;
+      s.onclose = null;
+      s.close();
+      attempts = 0;
+      open();
     },
     close() {
       stopped = true;

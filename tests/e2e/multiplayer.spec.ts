@@ -24,7 +24,7 @@ const state = (p: Page) => p.evaluate(() => window.__game?.getState() as State);
 
 /** Adds `ms` one-way delay in both directions to the game socket. */
 async function withLatency(page: Page, ms: number) {
-  await page.routeWebSocket('**/ws', (ws) => {
+  await page.routeWebSocket(/\/ws(\?.*)?$/, (ws) => {
     const server = ws.connectToServer();
     ws.onMessage((m) => void setTimeout(() => server.send(m), ms));
     server.onMessage((m) => void setTimeout(() => ws.send(m), ms));

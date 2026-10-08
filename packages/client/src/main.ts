@@ -66,6 +66,8 @@ let queueAvg = 0;
 
 /** A join is on its way: a refusal (full, gone, kicked) means we are not in that room. */
 let joinPending = false;
+/** The server said this room is in another of its processes: reconnecting there to join it. */
+let moveTo: string | null = null;
 
 /** Server under maintenance: a full screen over everything except a match still being played. */
 let maintenance = false;
@@ -197,7 +199,10 @@ if (splash) {
 const conn = connect({
   sessionToken,
   onToken: keepToken,
-  url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
+  url: () => {
+    const room = moveTo ?? code ?? (pathCode && CODE_RE.test(pathCode) ? pathCode : null);
+    return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws${room ? `?room=${room}` : ''}`;
+  },
   createSocket: laggySocket ? (url) => laggySocket(url, lag, jitter) : undefined,
   onStatus: (s) => {
     if (s !== 'connecting') connAnswered();
@@ -208,7 +213,7 @@ const conn = connect({
       banner.textContent = 'Crateball is open in another tab — this one is disconnected.';
       return;
     }
-    if (room) {
+    if (room && !moveTo) {
       if (s === 'closed') {
         banner.hidden = false;
         banner.textContent = 'Connection lost — reconnecting…';
@@ -216,7 +221,12 @@ const conn = connect({
         banner.hidden = true;
     }
     if (s === 'open') {
-      if (code) {
+      if (moveTo) {
+        // Connected to the process that holds the room we were sent to: join it now.
+        const target = moveTo;
+        moveTo = null;
+        attempt({ t: 'join', code: target, name: ui.name });
+      } else if (code) {
         joinPending = true;
         conn.send({ t: 'join', code, name: ui.name });
       } else if (params.has('autoplay'))
@@ -283,6 +293,11 @@ const conn = connect({
         break;
       case 'maintenance':
         setMaintenance(m.on);
+        break;
+      case 'moved':
+        // That room lives in another server process: connect there (the URL now names it) and join.
+        moveTo = m.code;
+        conn.reconnect();
         break;
       case 'chat':
         // In a match a new line also pops up above the speaker (replays after a reconnect don't).

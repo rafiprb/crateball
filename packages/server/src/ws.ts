@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Logger } from 'pino';
@@ -127,14 +127,14 @@ export function originAllowed(
 }
 
 /** Behind Caddy the client address is in X-Forwarded-For (Caddy sets it; it does not trust incoming ones). */
-function clientIp(req: IncomingMessage): string {
+export function clientIp(req: Pick<IncomingMessage, 'headers' | 'socket'>): string {
   const fwd = req.headers['x-forwarded-for'];
   const first = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim();
   return first || req.socket.remoteAddress || 'unknown';
 }
 
 /** A refilling budget. */
-function bucket(burst: number, perSec: number, now: () => number) {
+export function bucket(burst: number, perSec: number, now: () => number) {
   let tokens = burst;
   let at = now();
   return {
@@ -150,16 +150,91 @@ function bucket(burst: number, perSec: number, now: () => number) {
 }
 
 /** Map with a size cap: the oldest entries go first (insertion order; re-set moves to the end). */
-function boundedSet<V>(m: Map<string, V>, key: string, value: V, max: number) {
+export function boundedSet<V>(m: Map<string, V>, key: string, value: V, max: number) {
   m.delete(key);
   m.set(key, value);
   while (m.size > max) m.delete(m.keys().next().value as string);
 }
 
+/**
+ * Who may open a game socket, decided before the upgrade: other websites, a full server, an address with
+ * too many sockets or opening them too fast. A socket refused after the upgrade would still parse frames
+ * while closing (and an invalid one with no error listener would crash the process). In several processes
+ * the coordinator runs this for everyone, so the limits count the whole server.
+ */
+export function createAdmission(
+  log: Logger,
+  opts: {
+    production: boolean;
+    origins?: string[];
+    /** Open sockets right now, and the cap. */
+    sockets: () => number;
+    maxSockets: () => number;
+    now: () => number;
+    logLimited: (write: () => void) => void;
+  },
+) {
+  const connectsByIp = new Map<string, ReturnType<typeof bucket>>();
+  const connectionsByIp = new Map<string, number>();
+  return {
+    /** An HTTP status to refuse with, or null to let it in. */
+    check(ip: string, origin: string | undefined): number | null {
+      if (!originAllowed(origin || undefined, opts.production, opts.origins)) {
+        opts.logLimited(() => log.warn({ ip, origin }, 'yabancı Origin reddedildi'));
+        return 403;
+      }
+      if (opts.sockets() >= opts.maxSockets()) return 503;
+      if ((connectionsByIp.get(ip) ?? 0) >= LIMITS.connectionsPerIp) {
+        opts.logLimited(() => log.warn({ ip }, 'bir adresten çok fazla bağlantı'));
+        return 429;
+      }
+      let b = connectsByIp.get(ip);
+      if (!b) {
+        b = bucket(LIMITS.connectsPerIpBurst, LIMITS.connectsPerIpPerSec, opts.now);
+        boundedSet(connectsByIp, ip, b, LIMITS.maxTrackedIps);
+      }
+      return b.take() ? null : 429;
+    },
+    /** A socket of this address opened; false if it is one too many (two upgrades raced the check). */
+    opened(ip: string): boolean {
+      const open = (connectionsByIp.get(ip) ?? 0) + 1;
+      if (open > LIMITS.connectionsPerIp) return false;
+      connectionsByIp.set(ip, open);
+      return true;
+    },
+    closed(ip: string) {
+      const left = (connectionsByIp.get(ip) ?? 1) - 1;
+      if (left > 0) connectionsByIp.set(ip, left);
+      else connectionsByIp.delete(ip);
+    },
+  };
+}
+
+/** Reconnect tokens: random, with a MAC under the server's secret. Every process of the server knows the
+ * secret, so any of them can tell a token it issued from a made-up one. */
+export function createTokens(secret: Buffer = randomBytes(32)) {
+  const mac = (r: string) => createHmac('sha256', secret).update(r).digest('base64url').slice(0, 22);
+  return {
+    issue(): string {
+      const r = randomBytes(18).toString('base64url');
+      return `${r}.${mac(r)}`;
+    },
+    valid(token: string): boolean {
+      const [r, m, extra] = token.split('.');
+      if (!r || !m || extra !== undefined || r.length !== 24) return false;
+      const want = Buffer.from(mac(r));
+      const got = Buffer.from(m);
+      return got.length === want.length && timingSafeEqual(got, want);
+    },
+  };
+}
+
 const typeOf = (data: Buffer) => /^\{"t":"([a-z]+)"/.exec(data.subarray(0, 24).toString('latin1'))?.[1];
 
+/** `server`: the HTTP server to take upgrades from (one process), or null when a coordinator hands sockets
+ * over (`handleUpgrade`, after its own admission check). */
 export function attachWebSocket(
-  server: Server,
+  server: Server | null,
   log: Logger,
   rooms: Rooms,
   opts: {
@@ -175,43 +250,43 @@ export function attachWebSocket(
     maintenanceFile?: string;
     /** Open sockets server-wide (default LIMITS.maxSockets). */
     maxSockets?: number;
+    /** Reconnect tokens (shared by every process of the server); one of its own if not given. */
+    tokens?: ReturnType<typeof createTokens>;
+    /** Several processes: does this one hold room `code`? A join elsewhere is answered with `moved`. */
+    ownsCode?: (code: string) => boolean;
     now?: () => number;
   } = {},
 ): WebSocketServer {
   const now = opts.now ?? (() => Date.now());
   const budget = opts.budget ?? createLogBudget(log, LIMITS.logBudgets, now);
   const production = opts.production ?? process.env.NODE_ENV === 'production';
-  const connectsByIp = new Map<string, ReturnType<typeof bucket>>();
   const bytesByIp = new Map<string, ReturnType<typeof bucket>>();
-  const connectionsByIp = new Map<string, number>();
+  const mint = opts.tokens ?? createTokens();
+  const admission = createAdmission(log, {
+    production,
+    origins: opts.origins,
+    sockets: () => wss.clients.size,
+    maxSockets: () => opts.maxSockets ?? LIMITS.maxSockets,
+    now,
+    logLimited: (write) => logLimited(write),
+  });
   const wss = new WebSocketServer({
-    server,
-    path: '/ws',
+    ...(server
+      ? {
+          server,
+          path: '/ws',
+          verifyClient: (
+            info: { origin: string; req: IncomingMessage },
+            done: (ok: boolean, code?: number) => void,
+          ) => {
+            const refused = admission.check(clientIp(info.req), info.origin);
+            done(refused === null, refused ?? undefined);
+          },
+        }
+      : { noServer: true }),
     maxPayload: MAX_MESSAGE_BYTES,
     // Native pings are answered by us, within a budget (ws would answer every one, unmetered).
     autoPong: false,
-    // Before the upgrade: other websites, a full server, an address opening sockets too fast.
-    verifyClient: (info, done) => {
-      const ip = clientIp(info.req);
-      if (!originAllowed(info.origin || undefined, production, opts.origins)) {
-        logLimited(() => log.warn({ ip, origin: info.origin }, 'yabancı Origin reddedildi'));
-        return done(false, 403);
-      }
-      if (wss.clients.size >= (opts.maxSockets ?? LIMITS.maxSockets)) return done(false, 503);
-      // Refused here, before any WebSocket exists: a socket refused after the upgrade would still parse
-      // frames while closing (and an invalid one with no error listener would crash the process).
-      if ((connectionsByIp.get(ip) ?? 0) >= LIMITS.connectionsPerIp) {
-        logLimited(() => log.warn({ ip }, 'bir adresten çok fazla bağlantı'));
-        return done(false, 429);
-      }
-      let b = connectsByIp.get(ip);
-      if (!b) {
-        b = bucket(LIMITS.connectsPerIpBurst, LIMITS.connectsPerIpPerSec, now);
-        boundedSet(connectsByIp, ip, b, LIMITS.maxTrackedIps);
-      }
-      if (!b.take()) return done(false, 429);
-      done(true);
-    },
   });
   /** sessionToken (server-issued) → player id and when it was last used. A reconnect within the grace
    * period gets its slot back; and a token is kept as long as a ban by it can last, so a kicked tab
@@ -288,14 +363,12 @@ export function attachWebSocket(
     let onError = (err: Error) => logLimited(() => log.warn({ err }, 'ws hatası'));
     socket.on('error', (err) => onError(err));
     const ip = clientIp(req);
-    const open = (connectionsByIp.get(ip) ?? 0) + 1;
-    if (open > LIMITS.connectionsPerIp) {
-      // Two upgrades raced past the check above: close this one (its error listener is in place).
+    if (!admission.opened(ip)) {
+      // Two upgrades raced past the check: close this one (its error listener is in place).
       socket.close(CLOSE_TOO_MANY, 'too many connections');
       setTimeout(() => socket.terminate(), 1000).unref();
       return;
     }
-    connectionsByIp.set(ip, open);
     lastMessageAt.set(socket, now());
     const control = bucket(LIMITS.controlBurst, LIMITS.controlPerSec, now);
     const controlFlood = () => {
@@ -391,9 +464,7 @@ export function attachWebSocket(
 
     socket.on('close', (code) => {
       clearTimeout(timer);
-      const left = (connectionsByIp.get(ip) ?? 1) - 1;
-      if (left > 0) connectionsByIp.set(ip, left);
-      else connectionsByIp.delete(ip);
+      admission.closed(ip);
       // Replaced by a newer socket of the same tab: the player is not ours to drop any more.
       if (owners.get(clientId) === socket) {
         owners.delete(clientId);
@@ -470,8 +541,8 @@ export function attachWebSocket(
         // Only tokens this server issued count: a made-up one gets a fresh identity, so a kick or a chat
         // budget cannot be reset by choosing a new token (a fresh anonymous identity can still be had:
         // rooms also budget joins and chat room-wide).
-        const known = msg.sessionToken !== undefined && sessions.has(msg.sessionToken);
-        token = known ? msg.sessionToken! : randomBytes(24).toString('base64url');
+        const known = msg.sessionToken !== undefined && mint.valid(msg.sessionToken);
+        token = known ? msg.sessionToken! : mint.issue();
         // Same browser tab back within the grace period: continue as the same player.
         const previous = known ? sessions.get(token)?.id : undefined;
         // One live socket per token, in a room or not: otherwise two sockets would share the token while
@@ -566,6 +637,12 @@ export function attachWebSocket(
           break;
         }
         case 'join': {
+          // That room lives in another process of this server: reconnect there (nothing is revealed: the
+          // process follows from the code alone, whether or not such a room exists).
+          if (opts.ownsCode && !opts.ownsCode(msg.code)) {
+            send({ t: 'moved', code: msg.code });
+            break;
+          }
           // A player coming back to the room they are in (a reconnect mid-match) is always let in.
           if (maintenance && !maintenanceOpen(msg.name) && rooms.whereIs(clientId).room !== msg.code) {
             fail('maintenance');

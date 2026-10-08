@@ -130,6 +130,8 @@ export type ServerMessage =
   | { t: 'pong'; id: number; serverTime: number }
   /** Maintenance turned on or off (sent to everyone connected the moment it changes). */
   | { t: 'maintenance'; on: boolean }
+  /** That room lives in another server process: connect again with `?room=CODE` and join there. */
+  | { t: 'moved'; code: string }
   | { t: 'error'; code: ErrorCode; message: string }
   | { t: 'joined'; code: string; playerId: string }
   | { t: 'room'; room: RoomInfo }
@@ -430,6 +432,8 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
         : null;
     case 'maintenance':
       return typeof m.on === 'boolean' ? { t: 'maintenance', on: m.on } : null;
+    case 'moved':
+      return typeof m.code === 'string' && CODE_RE.test(m.code) ? { t: 'moved', code: m.code } : null;
     case 'joined':
       return isStr(m.code, 4) && isStr(m.playerId, 64)
         ? { t: 'joined', code: m.code, playerId: m.playerId }

@@ -24,15 +24,14 @@ Measure before deciding anything about capacity (no scaling work without numbers
   client today). Clients on the server itself measure CPU without the network; combine both.
 - Watch it in Grafana: per-core CPU, network, tick time, rooms and players. Add proper game metrics for
   it (tick time, bytes sent, rooms, players) instead of the 5 s log lines.
-- Rough estimate to check: about 100 concurrent players / 15-25 full rooms on one Node process, with
-  bandwidth (full JSON snapshots at 60 Hz) as the first limit.
+- **Prod, one process, JSON snapshots (2026-10-08, from the office):** 24 players fine; 48 players: game
+  process 66-77% of a core, slowest tick 15-24 ms (budget 16.7), Caddy ~1.1 cores; 72 players: ticks
+  30-40 ms, everyone lags. The office downlink (~67 Mbit/s) capped the 90 step. Since then: binary
+  snapshots and 3 processes (see Capacity); measure again.
 
 ## Launch readiness
 
-- **Caps from the load test.** The server caps (100 rooms, 600 people, 1000 sockets) protect the server;
-  set them just under the measured capacity, and make them configurable by env so they can be raised
-  on launch day without a code change.
-- **"Servers are full" screen.** A refused join should say so and suggest trying again, not fail silently.
+- **Caps from the load test.** Configurable by env now; set the defaults just under the measured capacity.
 - **Admission queue when the server is full.** Lives wherever the caps are counted (the server today,
   the coordinator later). A full room (6/6) is not this: that stays spectate-then-take-a-seat.
   - Two thresholds: up to 90% everyone gets in; from 90% new rooms and quick play queue while joins
@@ -49,15 +48,21 @@ Measure before deciding anything about capacity (no scaling work without numbers
   players above 80% of the cap, server not answering for 2 min, slowest tick above 10 ms, disk or
   memory nearly full. Shipped as an importable file like the dashboard.
 
-## Capacity (only if the load test says so)
+## Capacity
 
-1. **Delta + binary snapshots.** Diff computed once per room against the previous tick, with a full
-   state every so often and on join/reconnect; quantised positions. Expected 5-10x less traffic, and
-   less CPU (encoding and TLS cost more than the diff).
-2. **Several processes.** A coordinator keeps the room list in memory (a `Map`), workers run rooms and
-   report changes over IPC; the coordinator hands each WebSocket to the room's worker. One public port.
-3. **Several servers.** Same model across machines (room list in the coordinator or Redis, clients
-   connect straight to the room's server). Also allows regions.
+Done on 2026-10-08 (load test on prod showed the single game process topping out around 50-60 players on
+the production CPU, and Caddy spending a core on TLS at 48 players):
+
+1. **Caps from env** (`CRATEBALL_MAX_ROOMS/PLAYERS/SOCKETS`) and a "servers are full" screen that retries.
+2. **Binary delta snapshots** (protocol 13): ~3.3 KB → ~210 B per snapshot, ~800 → ~50 kbit/s per player.
+   No quantisation beyond the 1/1000 rounding the JSON snapshots already had (prediction stays exact).
+3. **Several game processes** (3 in production): the coordinator hands each socket to the worker that
+   holds its room; caps, /health and /rooms add the workers up.
+
+Still to do: the load test again on prod, then set the caps just under what it measures.
+
+**Several servers** (later, if one machine is not enough): the same split across machines, the room list
+in the coordinator or Redis, clients connecting straight to the room's server; also allows regions.
 
 Rewriting the backend in Go is not planned: the sim would exist twice (TS client prediction + Go server)
 and any difference shows up as constant corrections.

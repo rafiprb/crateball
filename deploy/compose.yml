@@ -19,6 +19,8 @@ services:
       CRATEBALL_MAX_ROOMS: ${CRATEBALL_MAX_ROOMS:-}
       CRATEBALL_MAX_PLAYERS: ${CRATEBALL_MAX_PLAYERS:-}
       CRATEBALL_MAX_SOCKETS: ${CRATEBALL_MAX_SOCKETS:-}
+      # Game processes (empty = 3 in production; see packages/server/src/cluster.ts).
+      CRATEBALL_WORKERS: ${CRATEBALL_WORKERS:-}
     expose: ['8080']
     read_only: true
     tmpfs: ['/tmp:size=16m']

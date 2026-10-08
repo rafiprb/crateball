@@ -27,6 +27,8 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 | `pnpm docker:stack` | Sunucudaki sertleştirilmiş compose yığınını yerelde koşar: Caddy (localhost:18443, kendi sertifikası), CSP/HSTS başlıkları, salt okunur/yetkisiz konteynerler + tarayıcı testi (`docker stack smoke OK`). Compose/Caddyfile değişikliğinden sonra `install-deploy.sh`'tan önce koş |
 | `pnpm deploy` | (`.deploy.env` gerekir) Commit'lenmiş HEAD'i VPS'e gönderir, orada derler. Maç oynanıyorsa bekler; `pnpm deploy --force` beklemez (açık odalar silinir) |
 | `pnpm logs` / `pnpm watch` | VPS'teki oyun logunu canlı izler / sadece önemli olayları süzer (`scripts/watch.mjs`) |
+| `pnpm loadtest --url wss://playcrateball.com/ws --players 60 --seconds 180` | Yük testi: `load-` adlı başsız istemciler gizli odalarda oynar (`tests/load`). Bir makineden en fazla 96. Sonuç sunucunun `sunucu istatistik` satırında (Grafana) |
+| `sh scripts/maintenance.sh on\|off\|status` | Bakım modu: yeni oda/katılım/maç başlatma reddedilir, açık sayfalar bakım ekranı gösterir; süren maçlar biter. Yayın (yeniden başlatma) kapatır |
 
 ## Mimari kuralları (lint ile zorlanır)
 
@@ -43,9 +45,9 @@ unset -f node npm npx pnpm pnpx corepack 2>/dev/null; export PATH="$HOME/.nvm/ve
 - Sunucu: İstanbul VPS, `root`, yalnızca SSH anahtarıyla. Adres/port/anahtar yolu **`.deploy.env`** içinde (git'e girmez; örnek: `deploy/deploy.env.example`); yedeği ve açıklaması yerel backup klasöründe (`OKUBENI.txt`). Sunucuya komut: `sh scripts/server.sh '<komut>'`. ufw: yalnızca SSH portu, 80, 443. Güvenlik güncellemeleri otomatik.
 - GitHub secret'ları: `DEPLOY_SSH_KEY` (sunucuda sadece `crateball-deploy` çalıştırabilen kısıtlı anahtar), `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_PORT`.
 - Sunucuda sabit, root'a ait dosyalar: `/etc/crateball/{compose.yml,Caddyfile,Dockerfile}` ve `/usr/local/bin/crateball-deploy` (`deploy/remote-deploy.sh`). Yayın (deploy anahtarı) bunları **değiştiremez**: yüklenen arşiv yalnızca oyun imajının derleme bağlamıdır (`/opt/crateball/src`), sabit Dockerfile ile derlenir. Bu dosyalardan biri (compose, Caddyfile, Dockerfile, deploy betiği) değişince: commit'le, sonra `sh scripts/install-deploy.sh` (dosyaları koyar; bir sonraki yayın uygular) ya da `sh scripts/install-deploy.sh apply` (hemen uygular; oyun konteyneri yeniden kurulursa açık odalar silinir). Oyun logu sunucunun journald'ına gider (yayınlardan sonra da kalır, toplam en fazla 500 MB): `journalctl -o cat CONTAINER_TAG=crateball-game`.
-- Odalar bellekte: yeniden başlatma açık odaları siler. Tek süreç, tek makine olmalı.
+- Odalar bellekte: yeniden başlatma açık odaları siler. Tek makine. Prod'da 3 oyun süreci (`CRATEBALL_WORKERS`, dev ve testlerde 0 = tek süreç): ana süreç bağlantıyı alıp soketi odanın sürecine devreder, oda kodunun ilk harfi süreci belirler (`packages/server/src/cluster.ts`). Snapshot'lar binary delta (`packages/protocol/src/snap.ts`).
 - `/health`: `{ ok, version, rooms, playing, players }`.
-- Sınırlar (`ws.ts` `LIMITS`, `rooms.ts`): ofis dostu (tek IP'den ~30 kişi); sunucu çapında 100 oda, 600 kişi, 1000 soket. Prod'da WebSocket yalnızca `https://playcrateball.com` Origin'inden (prod imajını yerelde denerken `CRATEBALL_ORIGINS=http://localhost:8080`). Ayrıntı: `docs/design.md` "Güvenlik ve sınırlar".
+- Sınırlar (`ws.ts` `LIMITS`, `config.ts` `DEFAULT_CAPS`): ofis dostu (tek IP'den ~30 kişi); sunucu çapında oda/kişi/soket sınırı yük testinden (env `CRATEBALL_MAX_ROOMS/PLAYERS/SOCKETS`, sunucuda `/etc/crateball/.env`). Dolunca istemci "Servers are full" ekranı gösterip 15 sn'de bir yeniden dener. Prod'da WebSocket yalnızca `https://playcrateball.com` Origin'inden (prod imajını yerelde denerken `CRATEBALL_ORIGINS=http://localhost:8080`). Ayrıntı: `docs/design.md` "Güvenlik ve sınırlar".
 
 ## Debug akışı
 

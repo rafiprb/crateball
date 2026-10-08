@@ -20,10 +20,24 @@ export interface ServerConfig {
   /** Server-wide caps, set just under the capacity measured by the load test (docs/next.md). Beyond them
    * people get "servers are full". Env: CRATEBALL_MAX_ROOMS, CRATEBALL_MAX_PLAYERS, CRATEBALL_MAX_SOCKETS. */
   caps: { rooms: number; players: number; sockets: number };
+  /** Game processes (CRATEBALL_WORKERS). 0: everything in this one process (development, tests). More:
+   * this process only takes connections and hands each to the process that holds its room. */
+  workers: number;
 }
 
 /** Measured with the load test (2026-10-08, one game process on the production server). */
 export const DEFAULT_CAPS = { rooms: 100, players: 600, sockets: 1000 };
+
+/** Production server: 4 cores, one for the coordinator and Caddy, three for rooms. */
+export const DEFAULT_WORKERS = 3;
+/** Room codes are split between processes by their first letter (24 letters). */
+export const MAX_WORKERS = 12;
+
+function workersFrom(v: string): number {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_WORKERS) throw new Error(`Geçersiz CRATEBALL_WORKERS: ${v}`);
+  return n;
+}
 
 function capFrom(env: Record<string, string | undefined>, name: string, def: number): number {
   const v = env[name];
@@ -59,5 +73,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       players: capFrom(env, 'CRATEBALL_MAX_PLAYERS', DEFAULT_CAPS.players),
       sockets: capFrom(env, 'CRATEBALL_MAX_SOCKETS', DEFAULT_CAPS.sockets),
     },
+    workers:
+      env.CRATEBALL_WORKERS === undefined || env.CRATEBALL_WORKERS === ''
+        ? mode === 'production'
+          ? DEFAULT_WORKERS
+          : 0
+        : workersFrom(env.CRATEBALL_WORKERS),
   };
 }

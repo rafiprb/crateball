@@ -43,6 +43,7 @@ async function boot(over: Partial<ServerConfig> = {}, now?: () => number) {
     extraOrigins: [],
     maintenanceFile: join(dir, 'maintenance'),
     caps: { rooms: 100, players: 600, sockets: 1000 },
+    workers: 0,
     ...over,
   };
   running = await startServer(cfg, createLogger(cfg, { stdout: out }), { now });

@@ -97,8 +97,19 @@ function think(g: Game, id: string): number {
   return b;
 }
 
-function connect(c: Client, host: boolean, room: { code: Promise<string>; resolve: (s: string) => void }) {
-  const ws = new WebSocket(URL_);
+/** Guests connect once the room exists, naming it (`?room=`) so the server hands them to the process that
+ * holds it, as the browser does. */
+function connect(
+  c: Client,
+  host: boolean,
+  room: { code: Promise<string>; resolve: (s: string) => void },
+  code?: string,
+) {
+  if (!host && code === undefined) {
+    void room.code.then((rc) => connect(c, host, room, rc));
+    return;
+  }
+  const ws = new WebSocket(code ? `${URL_}?room=${code}` : URL_);
   c.ws = ws;
   let snapN = 0;
   let pingId = 0;
@@ -174,7 +185,7 @@ function connect(c: Client, host: boolean, room: { code: Promise<string>; resolv
             public: false,
             settings: { ...DEFAULT_SETTINGS, minutes: 10, scoreLimit: 10, bots: BOTS },
           });
-        else void room.code.then((code) => send({ t: 'join', code, name: c.name }));
+        else if (code) send({ t: 'join', code, name: c.name });
         break;
       case 'joined':
         c.me = m.playerId;
