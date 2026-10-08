@@ -24,7 +24,8 @@ describe('ağ ölçümü (netsim)', () => {
   it('aynı tohum aynı maçı üretir (ganimetin gizli akışı da tohumlu)', () => {
     const again = runSim({ seed: 7919, seconds: 90, clients: DEFAULT_CLIENTS });
     expect(again).toEqual(runs.slice(0, DEFAULT_CLIENTS.length));
-  });
+    // A whole 90 s run with every client predicting: ~2 s here, nearer 6 on a CI runner.
+  }, 30_000);
 
   it('girdi aktarımı bant genişliğine yük olmaz', () => {
     for (const c of runs) expect(c.relayKBps).toBeLessThan(2);
