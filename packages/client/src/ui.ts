@@ -44,6 +44,7 @@ const ARENA_CHIP: Record<string, [string, string]> = {
   volcano: ['Volcano', '#D0502A'],
   ice: ['Ice', '#8FC3E3'],
   wind: ['Wind', '#9AB86A'],
+  beach: ['Beach', '#E0B060'],
 };
 
 export const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DF', mid: 'MF', fwd: 'FW', none: '–' };

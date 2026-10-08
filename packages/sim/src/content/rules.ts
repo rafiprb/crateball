@@ -246,14 +246,14 @@ export const BOT = {
   blinkFrom: 200,
 };
 
-export type ArenaKind = 'classic' | 'rain' | 'volcano' | 'ice' | 'wind';
+export type ArenaKind = 'classic' | 'rain' | 'volcano' | 'ice' | 'wind' | 'beach';
 
 /**
  * Arenas: a new one at every kickoff, in an order fixed before the match (shown in the lobby).
  * Every block of five kickoffs contains all five arenas; never the same one twice in a row.
  */
 export const ARENAS = {
-  kinds: ['classic', 'rain', 'volcano', 'ice', 'wind'] as readonly ArenaKind[],
+  kinds: ['classic', 'rain', 'volcano', 'ice', 'wind', 'beach'] as readonly ArenaKind[],
   /** Normal pitch values, for reference: ball 0.99, player 0.96. */
   rain: {
     ballDamping: 0.994,
@@ -304,6 +304,42 @@ export const ARENAS = {
   },
   /** The wind turns smoothly through all directions; its turn rate wanders. */
   wind: { force: 0.012, maxTurn: 0.006, turnJitter: 0.0004 },
+  /**
+   * Beach: a sandy pitch with the sea coming in from the top touchline in two bays. The water is only a
+   * look (everyone moves exactly as on sand); rubber ducks paddle about in it and the ball bounces off
+   * them. Shoreline y(x) = −halfH + (1 − u²)(centre + bays·u²), u = x / reach; dry beyond |x| ≥ reach,
+   * so the goal mouths, the boxes and the kickoff spot stay on sand.
+   */
+  beach: {
+    centre: 118,
+    bays: 300,
+    reach: 365,
+    ducks: 4,
+    duckRadius: 11,
+    /** Paddling thrust per tick and water drag: top speed about 0.34 px/tick. */
+    duckThrust: 0.022,
+    duckDamping: 0.94,
+    duckJitter: 0.003,
+    duckMaxTurn: 0.018,
+    /** Looks this far ahead; dry there: turns back towards the middle of the water. */
+    duckProbe: 30,
+    /** Where a lost duck heads: the middle of the water, at most this far to the side. */
+    duckHomeX: 230,
+    duckHomeY: -170,
+    /** Against the ball a duck is a heavy rubber toy (the ball glances off); a player shoves it away. */
+    duckBallInvMass: 0.5,
+    duckBallBounce: 0.85,
+    duckPlayerInvMass: 2,
+    /** Closing speed (px/tick) for a quack; this fast is a hard hit (feathers): the ball, a player. */
+    duckBumpMin: 0.45,
+    duckHardBall: 3,
+    duckHardPlayer: 1.2,
+    /** Ticks before the same duck quacks again (a hard hit may cut in after half), and a dazed spin. */
+    duckCooldown: 30,
+    duckStun: 40,
+    /** Ducks turn away from a player this close. */
+    duckShy: 46,
+  },
   /** Puddles keep clear of the centre circle and the goal boxes. */
   keepClearCenter: 150,
   keepClearBoxDepth: 170,

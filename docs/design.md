@@ -70,7 +70,12 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   merkezde 1 hasar ve 90 px içinde herkesi ve topu savurur.
 - **Ice:** çok kaygan (ivme ×0.55, top neredeyse yavaşlamaz); koşanların ayağından buz kırıntıları.
 - **Wind:** topa hafif rüzgâr kuvveti; yön 360° yumuşakça döner (skorun altında ok).
-- Sesler: yağmur/volkan/rüzgâr uğultusu, birikintide şıpırtı, lavda cızırtı, patlama öncesi
+- **Beach:** kumdan saha, çizgiler kuma kazınmış gibi; deniz üst kenardan iki koy halinde girer (kaleler,
+  ceza sahaları, santra kuru; kutular suya düşmez). Su yalnızca görünüm: herkes kumdaki gibi hareket eder.
+  Suda oyuncu simitle yüzer (hafif sallantı, yüzey gerilmesi, halkalar, damlalar), top deniz topu olur.
+  4 lastik ördek sim varlığı: dolaşır, oyunculardan kaçar, top onlardan seker (ağır lastik oyuncak), oyuncu
+  iter. Çarpınca "quack", sert çarpmada "QUACK!" ve tüy; ördekler birbirine çarpınca ses yok.
+- Sesler: yağmur/volkan/rüzgâr/deniz uğultusu, ördek quack'ı, birikintide şıpırtı, lavda cızırtı, patlama öncesi
   gümbürtü, buzda kayma.
 
 ## Menü ve lobi

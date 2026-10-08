@@ -132,6 +132,61 @@ export function createSound(target?: SoundTarget): Sound {
     src.stop(t + dur + 0.02);
   };
 
+  /**
+   * Rubber-duck quack: a sawtooth whose pitch rises a touch then drops ~38%, through a nasal formant that
+   * closes from 1.5 to 1 kHz and a small one at 2.6 kHz, with a soft attack. `hard` (the "QUACK!"): longer,
+   * a 28 Hz warble and a squeak of air first, still no louder than a kick. `pitch` tells the ducks apart.
+   */
+  const quack = (hard: boolean, pitch: number) => {
+    if (!ctx || !master) return;
+    const t = now();
+    const dur = hard ? 0.26 : 0.13;
+    const vol = hard ? 0.78 : 0.6;
+    const f0 = (hard ? 560 : 640) * pitch;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0 * 0.92, t);
+    o.frequency.linearRampToValueAtTime(f0, t + 0.025);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + dur);
+    let lfo: OscillatorNode | null = null;
+    if (hard) {
+      lfo = ctx.createOscillator();
+      lfo.frequency.value = 28;
+      const depth = ctx.createGain();
+      depth.gain.value = f0 * 0.04;
+      lfo.connect(depth).connect(o.frequency);
+    }
+    const f1 = ctx.createBiquadFilter();
+    f1.type = 'bandpass';
+    f1.Q.value = 4.5;
+    f1.frequency.setValueAtTime(1500 * pitch, t);
+    f1.frequency.exponentialRampToValueAtTime(1000 * pitch, t + dur);
+    const f2 = ctx.createBiquadFilter();
+    f2.type = 'bandpass';
+    f2.Q.value = 7;
+    f2.frequency.value = 2600 * pitch;
+    const mix2 = ctx.createGain();
+    mix2.gain.value = 0.45;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.setValueAtTime(vol, t + dur * 0.55);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(f1).connect(g);
+    o.connect(f2).connect(mix2).connect(g);
+    g.connect(master);
+    o.start(t);
+    o.stop(t + dur + 0.03);
+    if (lfo) {
+      lfo.start(t);
+      lfo.stop(t + dur + 0.03);
+      noise(0.03, 0.12, 'bandpass', 3200, 0, 3);
+    }
+  };
+  /** On top of the sim's per-duck cooldown: a soft quack at most every 0.45 s per duck, 0.12 s overall. */
+  const quackAt = new Map<number, number>();
+  let lastQuack = -1;
+
   const sfx = {
     kick: (power: boolean) => {
       tone('sine', power ? 140 : 190, 45, power ? 0.2 : 0.12, power ? 1 : 0.7);
@@ -264,6 +319,8 @@ export function createSound(target?: SoundTarget): Sound {
     rain: { type: 'bandpass', freq: 1800, q: 0.4, vol: 0.12 },
     volcano: { type: 'lowpass', freq: 140, q: 0.7, vol: 0.35, lfo: 0.15 },
     wind: { type: 'bandpass', freq: 520, q: 1.2, vol: 0.14, lfo: 0.2 },
+    // The sea: low surf with a slow swell.
+    beach: { type: 'lowpass', freq: 700, q: 0.6, vol: 0.08, lfo: 0.11 },
   };
   const setAmbient = (kind: ArenaKind | null) => {
     if (kind === ambientKind || !ctx || !master || !noiseBuf) return;
@@ -366,6 +423,14 @@ export function createSound(target?: SoundTarget): Sound {
           tone('square', 1760, 1760, 0.06, 0.12);
           tone('square', 1760, 1760, 0.06, 0.12, 0.1);
           break;
+        case 'quack': {
+          const t = now();
+          if (!e.hard && (t - (quackAt.get(e.duck) ?? -1) < 0.45 || t - lastQuack < 0.12)) break;
+          quackAt.set(e.duck, t);
+          lastQuack = t;
+          quack(e.hard, 1 + (((e.duck * 37) % 5) - 2) * 0.05);
+          break;
+        }
       }
     },
   };

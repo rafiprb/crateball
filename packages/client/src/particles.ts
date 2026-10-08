@@ -4,7 +4,7 @@ import type { GameEvent } from './events';
 /** Cosmetic only (client-side, Math.random is fine here). Fixed pool, no allocation per frame. */
 const MAX = 900;
 
-type Shape = 0 | 1 | 2 | 3 | 4; // dot, spark, shard, ring, bubble
+type Shape = 0 | 1 | 2 | 3 | 4 | 5 | 6; // dot, spark, shard, ring, bubble, feather, word
 interface P {
   x: number;
   y: number;
@@ -20,6 +20,8 @@ interface P {
   shape: Shape;
   color: string;
   ground: boolean;
+  /** Shape 6: the word to show (size is the font size). */
+  label?: string;
 }
 
 const ITEM_COLORS: Record<BlastKind, string[]> = {
@@ -395,6 +397,44 @@ export function createParticles(): Particles {
         case 'sizzle':
           burst(e.x, e.y, 8, [20, 80], ['#FFB760', '#FF6A3D', '#5A4A3A'], { size: 2.5, life: 0.5, drag: 3 });
           break;
+        case 'quack':
+          if (e.hard) {
+            // A puff, then feathers drifting down onto the water, and a big QUACK!
+            burst(e.x, e.y, 6, [40, 90], ['#FFFFFF'], { size: 6, grow: 14, life: 0.35, drag: 6 });
+            burst(e.x, e.y, 12, [60, 200], ['#FFFFFF', '#FFFFFF', '#FFF1C4', '#FFE27A'], {
+              shape: 5,
+              size: 1,
+              life: 1.7,
+              drag: 4,
+              spin: 4,
+            });
+            ring(e.x, e.y, 'rgba(255,255,255,.75)', 8, 0.5);
+            add({
+              x: e.x,
+              y: e.y - 18,
+              vy: -26,
+              drag: 0,
+              shape: 6,
+              label: 'QUACK!',
+              size: 17,
+              life: 0.85,
+              color: '#FFE066',
+            });
+          } else {
+            ring(e.x, e.y, 'rgba(255,255,255,.6)', 6, 0.4);
+            add({
+              x: e.x,
+              y: e.y - 16,
+              vy: -34,
+              drag: 0,
+              shape: 6,
+              label: 'quack',
+              size: 12,
+              life: 0.6,
+              color: '#FFF4E0',
+            });
+          }
+          break;
       }
     },
     ambient(g, pos, dt) {
@@ -546,6 +586,40 @@ export function createParticles(): Particles {
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             ctx.stroke();
+            break;
+          case 5: {
+            // Feather: a little quill with an ink outline and a golden shaft, tumbling.
+            ctx.save();
+            ctx.translate(p.x + Math.sin(p.rot * 1.3) * 2, p.y);
+            ctx.rotate(p.rot);
+            ctx.scale(0.8 + p.size * 0.4, 0.8 + p.size * 0.4);
+            ctx.beginPath();
+            ctx.moveTo(-7, 0);
+            ctx.quadraticCurveTo(-1, -4.2, 7, -0.5);
+            ctx.quadraticCurveTo(0, 3.6, -7, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.lineWidth = 1.1;
+            ctx.strokeStyle = '#1B2133';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-8.5, 0.4);
+            ctx.lineTo(5, -0.4);
+            ctx.strokeStyle = 'rgba(214,160,60,.95)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.restore();
+            break;
+          }
+          case 6:
+            ctx.font = `800 ${p.size}px 'Baloo 2', Nunito, system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = Math.max(2, p.size / 6);
+            ctx.strokeStyle = 'rgba(20,24,40,.85)';
+            ctx.strokeText(p.label ?? '', p.x, p.y);
+            ctx.fillText(p.label ?? '', p.x, p.y);
             break;
           case 4: {
             // Bubble: a thin ring with a highlight, swaying as it rises.

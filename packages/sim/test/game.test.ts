@@ -856,13 +856,13 @@ describe('sahalar', () => {
     return g;
   };
 
-  it('sıra: gol limitinin iki katı uzunlukta, her 5 santrada 5 sahanın hepsi, üst üste aynı saha yok', () => {
+  it('sıra: gol limitinin iki katı uzunlukta, her 6 santrada 6 sahanın hepsi, üst üste aynı saha yok', () => {
     for (let seed = 1; seed <= 30; seed++) {
       const g = arenaGame(seed, 7);
       newArenaPlan(g);
       expect(g.arenaPlan).toHaveLength(14);
-      expect(new Set(g.arenaPlan.slice(0, 5)).size).toBe(5);
-      expect(new Set(g.arenaPlan.slice(5, 10)).size).toBe(5);
+      expect(new Set(g.arenaPlan.slice(0, 6)).size).toBe(6);
+      expect(new Set(g.arenaPlan.slice(6, 12)).size).toBe(6);
       for (let i = 1; i < g.arenaPlan.length; i++) expect(g.arenaPlan[i]).not.toBe(g.arenaPlan[i - 1]);
     }
   });

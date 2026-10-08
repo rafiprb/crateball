@@ -202,7 +202,7 @@ function cleanText(v: unknown, max: number): string | null {
   return s || null;
 }
 
-const ARENA_KINDS: readonly string[] = ['classic', 'rain', 'volcano', 'ice', 'wind'];
+const ARENA_KINDS: readonly string[] = ['classic', 'rain', 'volcano', 'ice', 'wind', 'beach'];
 const ITEMS: readonly string[] = [
   'gun',
   'mine',

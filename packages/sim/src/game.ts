@@ -1,4 +1,5 @@
 import {
+  ARENAS,
   BALL,
   BOT,
   CHAOS,
@@ -26,6 +27,7 @@ import {
   USE,
   type Body,
   type Bullet,
+  type Duck,
   type Game,
   type Player,
   type Team,
@@ -36,9 +38,12 @@ import {
   arenaAccel,
   ballDamping,
   classicArena,
+  inWater,
+  keepDuckInWater,
   makeArena,
   planArenas,
   playerDamping,
+  steerDucks,
   updateArena,
 } from './arena';
 
@@ -83,6 +88,7 @@ export function cloneGame(g: Game): Game {
       streams: g.arena.streams.map((st) => ({ ...st, points: st.points.map((pt) => ({ ...pt })) })),
       wind: { ...g.arena.wind },
       warn: g.arena.warn && { ...g.arena.warn },
+      ducks: g.arena.ducks.map((d) => ({ ...d })),
     },
     arenaPlan: [...g.arenaPlan],
   };
@@ -244,6 +250,7 @@ export function step(g: Game, inputs?: ReadonlyMap<string, number>): void {
   for (const p of g.players) controlPlayer(g, p);
   integrate(g);
   collide(g);
+  updateDucks(g);
   updateBullets(g);
   updateCrates(g);
   updateArena(
@@ -658,6 +665,59 @@ function collide(g: Game): void {
   confineBall(g.ball);
 }
 
+/** How fast `a` and `b` are closing along the line between them (0 if they are not). */
+function closing(a: Body, b: Body): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const d = Math.sqrt(dx * dx + dy * dy) || 1;
+  return Math.max(0, -((a.vx - b.vx) * dx + (a.vy - b.vy) * dy) / d);
+}
+
+/**
+ * Beach: the ducks paddle, move, and meet the ball (it bounces off a duck like off a heavy rubber toy),
+ * the players (who shove them aside) and each other (a nudge, no quack). A bump fast enough makes the duck
+ * quack (counted in `bumps`, the client plays it); a hard one also sends feathers and dazes it.
+ */
+function updateDucks(g: Game): void {
+  const ducks = g.arena.ducks;
+  if (!ducks.length) return;
+  const b = ARENAS.beach;
+  steerDucks(g, () => rand(g));
+  for (const d of ducks) {
+    d.x += d.vx;
+    d.y += d.vy;
+    d.vx *= b.duckDamping;
+    d.vy *= b.duckDamping;
+  }
+  const bump = (d: Duck, v: number, hard: boolean) => {
+    if (v < b.duckBumpMin) return;
+    if (d.cd > 0 && !(hard && d.cd < b.duckCooldown / 2)) return;
+    d.cd = b.duckCooldown;
+    d.bumps++;
+    if (hard) {
+      d.hard++;
+      d.stun = b.duckStun;
+    }
+  };
+  const alive = g.players.filter((p) => p.dead === 0);
+  for (const d of ducks) {
+    const v = closing(g.ball, d);
+    if (contact(g.ball, BALL.radius, BALL.invMass, 1, d, b.duckRadius, b.duckBallInvMass, b.duckBallBounce))
+      bump(d, v, v >= b.duckHardBall);
+    for (const p of alive) {
+      const pv = closing(p, d);
+      if (contact(p, p.r, invMass(p), PLAYER.bounce, d, b.duckRadius, b.duckPlayerInvMass, 0.6))
+        bump(d, pv, pv >= b.duckHardPlayer);
+    }
+  }
+  for (let i = 0; i < ducks.length; i++)
+    for (let j = i + 1; j < ducks.length; j++)
+      contact(ducks[i]!, b.duckRadius, 1, 1, ducks[j]!, b.duckRadius, 1, 0.3);
+  for (const d of ducks) keepDuckInWater(d);
+  for (const p of alive) confinePlayer(g, p);
+  confineBall(g.ball);
+}
+
 function confinePlayer(g: Game, p: Player): void {
   const r = p.r;
   const mx = FIELD.halfW + FIELD.marginX - r;
@@ -801,6 +861,8 @@ function spawnCrate(g: Game): void {
     const x = (rand(g) * 2 - 1) * (FIELD.halfW - 70);
     const y = (rand(g) * 2 - 1) * (FIELD.halfH - 30);
     if (x * x + y * y < (FIELD.centerRadius + 20) ** 2) continue;
+    // Beach: crates land on the sand, not in the sea.
+    if (g.arena.kind === 'beach' && inWater(x, y - CRATES.radius - 6)) continue;
     const c = { id: g.nextId++, x, y };
     const clear = (o: { x: number; y: number }, r: number) => dist2(o, c) > (r + CRATES.radius + 20) ** 2;
     if (!g.players.every((p) => clear(p, PLAYER.radius)) || !g.crates.every((o) => clear(o, CRATES.radius)))

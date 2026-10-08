@@ -1,10 +1,11 @@
 import { ARENAS, FIELD, ITEMS, PLAYER, type ArenaKind } from './content/rules';
-import type { Arena, Body, Game, LavaStream, Player, Puddle } from './types';
+import type { Arena, Body, Duck, Game, LavaStream, Player, Puddle } from './types';
 
 type Rand = () => number;
 
 export const classicArena = (): Arena => ({
   kind: 'classic',
+  ducks: [],
   puddles: [],
   streams: [],
   wind: { x: 0, y: 0 },
@@ -52,6 +53,7 @@ export function makeArena(g: Game, kind: ArenaKind, rand: Rand): Arena {
     a.nextSpawn = g.tick;
     a.nextEvent = g.tick + ARENAS.volcano.eruptMinGap;
   }
+  if (kind === 'beach') spawnDucks(a, rand);
   if (kind === 'wind') {
     // A random starting direction without trig: a random vector, normalised.
     const x = rand() * 2 - 1;
@@ -60,6 +62,114 @@ export function makeArena(g: Game, kind: ArenaKind, rand: Rand): Arena {
     a.wind = { x: x / n, y: y / n };
   }
   return a;
+}
+
+// ---------- beach ----------
+
+/** The shoreline: water above it (y smaller). Only + − × ÷: safe for the deterministic sim. */
+export function shoreY(x: number): number {
+  const b = ARENAS.beach;
+  const u = x / b.reach;
+  const u2 = u * u;
+  return -FIELD.halfH + (1 - u2) * (b.centre + b.bays * u2);
+}
+
+export const inWater = (x: number, y: number): boolean => y < shoreY(x);
+
+/** A duck fits here: in the water all round, inside the pitch, away from the goal areas. */
+export function duckFits(x: number, y: number): boolean {
+  const r = ARENAS.beach.duckRadius;
+  const m = r - 2;
+  if (Math.abs(y) > FIELD.halfH - r - 2 || Math.abs(x) > FIELD.halfW - 60) return false;
+  return inWater(x, y) && inWater(x + m, y) && inWater(x - m, y) && inWater(x, y + m) && inWater(x, y - m);
+}
+
+function spawnDucks(a: Arena, rand: Rand): void {
+  const b = ARENAS.beach;
+  for (let i = 0; i < b.ducks; i++) {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const x = (rand() * 2 - 1) * (FIELD.halfW - 60);
+      const y = (rand() * 2 - 1) * (FIELD.halfH - 15);
+      if (!duckFits(x, y)) continue;
+      if (a.ducks.some((d) => (d.x - x) ** 2 + (d.y - y) ** 2 < 55 * 55)) continue;
+      // A random heading without trig: a random vector, normalised.
+      const hx = rand() * 2 - 1;
+      const hy = rand() * 2 - 1;
+      const n = Math.sqrt(hx * hx + hy * hy) || 1;
+      const duck: Duck = {
+        id: i,
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        hx: hx / n,
+        hy: hy / n,
+        turn: 0,
+        cd: 0,
+        stun: 0,
+        bumps: 0,
+        hard: 0,
+      };
+      a.ducks.push(duck);
+      break;
+    }
+  }
+}
+
+/** Ducks paddle about: a wandering heading, back towards open water before the shore, away from
+ * players. Movement and contacts are in game.ts (they share the game's contact). */
+export function steerDucks(g: Game, rand: Rand): void {
+  const b = ARENAS.beach;
+  for (const d of g.arena.ducks) {
+    if (d.cd > 0) d.cd--;
+    if (d.stun > 0) d.stun--;
+    d.turn = Math.max(-b.duckMaxTurn, Math.min(b.duckMaxTurn, d.turn + (rand() * 2 - 1) * b.duckJitter));
+    if (!duckFits(d.x + d.hx * b.duckProbe, d.y + d.hy * b.duckProbe)) {
+      const tx = homeX(d.x) - d.x;
+      const ty = b.duckHomeY - d.y;
+      d.turn = (d.hx * ty - d.hy * tx >= 0 ? 1 : -1) * b.duckMaxTurn * 1.4;
+    }
+    for (const p of g.players) {
+      if (p.dead > 0) continue;
+      const ox = p.x - d.x;
+      const oy = p.y - d.y;
+      if (ox * ox + oy * oy < b.duckShy * b.duckShy && ox * d.hx + oy * d.hy > 0) {
+        d.turn = (d.hx * oy - d.hy * ox >= 0 ? -1 : 1) * b.duckMaxTurn;
+        break;
+      }
+    }
+    // Small-angle rotation, then renormalise (no trig).
+    const hx = d.hx - d.hy * d.turn;
+    const hy = d.hy + d.hx * d.turn;
+    const n = Math.sqrt(hx * hx + hy * hy) || 1;
+    d.hx = hx / n;
+    d.hy = hy / n;
+    if (d.stun === 0) {
+      d.vx += d.hx * b.duckThrust;
+      d.vy += d.hy * b.duckThrust;
+    }
+  }
+}
+
+const homeX = (x: number) => Math.max(-ARENAS.beach.duckHomeX, Math.min(ARENAS.beach.duckHomeX, x));
+
+/** A duck pushed out of the water (by the ball or a player) walks back in and bounces off the shore. */
+export function keepDuckInWater(d: Duck): void {
+  if (duckFits(d.x, d.y)) return;
+  let tx = homeX(d.x) - d.x;
+  let ty = ARENAS.beach.duckHomeY - d.y;
+  const n = Math.sqrt(tx * tx + ty * ty) || 1;
+  tx /= n;
+  ty /= n;
+  for (let k = 0; k < 80 && !duckFits(d.x, d.y); k++) {
+    d.x += tx * 1.5;
+    d.y += ty * 1.5;
+  }
+  const vn = d.vx * tx + d.vy * ty;
+  if (vn < 0) {
+    d.vx -= 1.5 * vn * tx;
+    d.vy -= 1.5 * vn * ty;
+  }
 }
 
 // ---------- rain ----------

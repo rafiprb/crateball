@@ -143,21 +143,6 @@ decide the MVP.
 - **Kickoff countdown.** The kicking team has 5 s, then the ball is live for everyone; nothing shows
   this. Draw a shrinking ring around the centre circle with "BLUE KICKS OFF", then "BALL IS LIVE".
   Maybe shorten to 3 s.
-- **Beach arena** (prototype at scratchpad `beach.html`): umbrellas outside the pitch, a water zone
-  (slower, floatier, rings around swimmers), rubber ducks that quack and shed feathers when hit (on-screen text "quack", a hard hit "QUACK!"). Ducks
-  would be sim entities (deterministic, in snapshots). Owner's notes on the prototype:
-  - Make the water zone bigger (the side bays reach further into the pitch), still symmetric, with the
-    goal mouths and the kickoff circle kept dry.
-  - Ducks bumping into each other make no sound and no feathers; only the ball or a player hitting a
-    duck quacks.
-  - Water is a look, not a mechanic: players and the ball move exactly as on dry ground (no slowdown,
-    no glide, no current). In the water a player wears a ring and sways side to side while dipping in
-    and out; the ball turns into a beach ball. Ducks are still sim entities (they block the ball).
-  - Pitch lines look scratched into the sand (wobbly, broken, scuffed); no lines or markers in the water.
-  - A player running hard into a duck also sheds feathers (a lower hard-hit threshold for players than
-    for the ball, since players move slower than shots).
-  - Cost estimate from the prototype: about +3.5 KB gzipped, 4 ducks add about 380 B per snapshot
-    (about 13% of today's snapshot).
 - **Arena goal effects and balls** (prototype `arenas.html`): per-arena goal effects and sounds first;
   arena balls cosmetic only, with a "standard ball" option, tried in real matches before deciding
   (volcano ball is the least readable). Could later be cosmetics/DLC.

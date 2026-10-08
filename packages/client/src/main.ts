@@ -1,6 +1,6 @@
 import './style.css';
 import { CODE_RE, PROTOCOL_VERSION, type ClientMessage, type RoomInfo } from '@crateball/protocol';
-import { DEFAULT_SETTINGS, TICK_HZ, type BlastKind } from '@crateball/sim';
+import { ARENAS, DEFAULT_SETTINGS, TICK_HZ, type BlastKind } from '@crateball/sim';
 import { createChat } from './chat';
 import { createTickClock } from './clock';
 import { createEventTracker } from './events';
@@ -234,15 +234,17 @@ const conn = connect({
       const target = pendingJoin();
       if (target) attempt({ t: 'join', code: target, name: ui.name });
       else if (code) attempt({ t: 'join', code, name: ui.name });
-      else if (params.has('autoplay'))
+      else if (params.has('autoplay')) {
+        // `&arena=beach`: a test match on that arena only.
+        const only = ARENAS.kinds.find((k) => k === params.get('arena'));
         conn.send({
           t: 'create',
           name: ui.name,
           roomName: 'Test',
           public: false,
-          settings: DEFAULT_SETTINGS,
+          settings: only ? { ...DEFAULT_SETTINGS, arenas: [only] } : DEFAULT_SETTINGS,
         });
-      else if (pathCode && rejoin && ui.name !== 'Player')
+      } else if (pathCode && rejoin && ui.name !== 'Player')
         attempt({ t: 'join', code: pathCode, name: ui.name });
     }
     if (s !== 'version_mismatch') return;
@@ -647,7 +649,9 @@ if (import.meta.env.DEV) {
       fx.emit(
         kind === 'goal'
           ? { type: 'goal', team: me.team, x: 420, y: 0 }
-          : { type: 'item', x: me.x, y: me.y, kind: kind as BlastKind },
+          : kind === 'quack' || kind === 'QUACK'
+            ? { type: 'quack', x: me.x, y: me.y - 30, hard: kind === 'QUACK', duck: 0 }
+            : { type: 'item', x: me.x, y: me.y, kind: kind as BlastKind },
       );
     return fx.count;
   });

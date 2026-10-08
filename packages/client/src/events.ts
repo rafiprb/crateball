@@ -27,7 +27,9 @@ export type GameEvent =
   /** Our own player skating fast on ice. */
   | { type: 'scrape' }
   /** An enemy's gun just locked on to our player. */
-  | { type: 'locked' };
+  | { type: 'locked' }
+  /** Beach: a duck was bumped (`hard`: a hard hit, feathers fly). */
+  | { type: 'quack'; x: number; y: number; hard: boolean; duck: number };
 
 /**
  * Turns successive predicted states into one-shot events (sounds, particles). Rollback re-simulation
@@ -49,6 +51,8 @@ export function createEventTracker(me: () => string | null = () => null) {
   /** Blast key → tick first seen. Kept across frames so a blast that a rollback removes and a later
    * replay brings back does not play twice; forgotten after a few seconds. */
   const blastsSeen = new Map<string, number>();
+  /** Beach: per kickoff and duck, the quack counts already played (a replay reaches the same counts). */
+  const quacksSeen = new Map<string, { bumps: number; hard: number }>();
 
   return (g: Game | null): GameEvent[] => {
     const out: GameEvent[] = [];
@@ -136,6 +140,19 @@ export function createEventTracker(me: () => string | null = () => null) {
         if (!fresh) out.push({ type: 'item', x: b.x, y: b.y, kind: b.kind });
       }
     }
+    for (const d of g.arena.ducks) {
+      const key = `${g.kickoffs}:${d.id}`;
+      const seen = quacksSeen.get(key);
+      if (!fresh && seen && d.bumps > seen.bumps)
+        out.push({ type: 'quack', x: d.x, y: d.y, hard: d.hard > seen.hard, duck: d.id });
+      quacksSeen.set(key, {
+        bumps: Math.max(d.bumps, seen?.bumps ?? 0),
+        hard: Math.max(d.hard, seen?.hard ?? 0),
+      });
+    }
+    // Ducks of earlier kickoffs: gone with their arena.
+    if (quacksSeen.size > g.arena.ducks.length)
+      for (const key of quacksSeen.keys()) if (!key.startsWith(`${g.kickoffs}:`)) quacksSeen.delete(key);
     for (const [key, seenAt] of blastsSeen)
       if (g.tick - seenAt > SEEN_TTL_TICKS || seenAt > g.tick) blastsSeen.delete(key);
     // Players who left: forget them (a long-lived room would otherwise grow these maps forever).

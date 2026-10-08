@@ -19,6 +19,7 @@ import {
   type Role,
   type Team,
 } from '@crateball/sim';
+import { createBeach, drawBeachGround } from './beach';
 import type { Particles } from './particles';
 import type { Predictor } from './predict';
 
@@ -102,6 +103,14 @@ const ARENA_LOOK: Record<
     name: 'Wind',
     hint: 'The wind pushes the ball — watch the arrow',
   },
+  beach: {
+    outside: '#EED7A1',
+    grassA: '#E2C17E',
+    grassB: '#DCB976',
+    line: 'rgba(255,255,255,.92)',
+    name: 'Beach',
+    hint: 'Rubber ducks in the sea: the ball bounces off them',
+  },
 };
 
 const ROLE_STYLE: Record<Role, [string, string]> = {
@@ -163,6 +172,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let cy = 0;
   let dpr = 1;
   let shake = 0;
+  const beach = createBeach();
 
   const buildPitch = (kind: ArenaKind) => {
     const look = ARENA_LOOK[kind];
@@ -175,25 +185,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     g.fillRect(0, 0, c.width, c.height);
     g.setTransform(scale, 0, 0, scale, cx, cy);
     const { halfW, halfH, goalHalf, goalDepth, centerRadius, postRadius } = FIELD;
-    const stripe = (halfW * 2) / 12;
-    for (let i = 0; i < 12; i++) {
-      g.fillStyle = i % 2 ? look.grassA : look.grassB;
-      g.fillRect(-halfW + i * stripe, -halfH, stripe + 0.5, halfH * 2);
-    }
-    g.strokeStyle = look.line;
-    g.lineWidth = 3;
-    g.strokeRect(-halfW, -halfH, halfW * 2, halfH * 2);
-    g.beginPath();
-    g.moveTo(0, -halfH);
-    g.lineTo(0, halfH);
-    g.stroke();
-    g.beginPath();
-    g.arc(0, 0, centerRadius, 0, Math.PI * 2);
-    g.stroke();
-    for (const s of [-1, 1]) {
-      g.strokeStyle = look.line;
-      g.lineWidth = 3;
-      g.strokeRect(s > 0 ? halfW - 90 : -halfW, -130, 90, 260);
+    const goal = (s: -1 | 1) => {
       // Net
       g.fillStyle = 'rgba(255,255,255,.18)';
       g.fillRect(s > 0 ? halfW : -halfW - goalDepth, -goalHalf, goalDepth, goalHalf * 2);
@@ -217,6 +209,32 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         g.strokeStyle = COLORS.ink;
         g.stroke();
       }
+    };
+    if (kind === 'beach') {
+      drawBeachGround(g, goal);
+      pitch = c;
+      return;
+    }
+    const stripe = (halfW * 2) / 12;
+    for (let i = 0; i < 12; i++) {
+      g.fillStyle = i % 2 ? look.grassA : look.grassB;
+      g.fillRect(-halfW + i * stripe, -halfH, stripe + 0.5, halfH * 2);
+    }
+    g.strokeStyle = look.line;
+    g.lineWidth = 3;
+    g.strokeRect(-halfW, -halfH, halfW * 2, halfH * 2);
+    g.beginPath();
+    g.moveTo(0, -halfH);
+    g.lineTo(0, halfH);
+    g.stroke();
+    g.beginPath();
+    g.arc(0, 0, centerRadius, 0, Math.PI * 2);
+    g.stroke();
+    for (const s of [-1, 1]) {
+      g.strokeStyle = look.line;
+      g.lineWidth = 3;
+      g.strokeRect(s > 0 ? halfW - 90 : -halfW, -130, 90, 260);
+      goal(s as -1 | 1);
     }
     pitch = c;
   };
@@ -276,6 +294,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 
   const drawArena = (g: Game, now: number) => {
     const a = g.arena;
+    if (a.kind === 'beach') {
+      beach.drawWater(ctx, g, now);
+      for (const d of a.ducks) beach.drawDuck(ctx, d, now);
+    }
     if (a.kind === 'rain' && a.puddles.length) {
       const l = freshLayer();
       const parts: Array<[number, number, number]> = [];
@@ -431,7 +453,23 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (me) circle(pos.x, pos.y, r + 7, 'rgba(255,255,255,.18)');
       if (p.power) circle(pos.x, pos.y, r + 4 + Math.sin(now / 80) * 1.5, 'rgba(255,169,77,.55)');
       const kicking = (p.input & KICK) !== 0 && p.frozen === 0;
-      circle(pos.x, pos.y, r, COLORS[p.team], kicking ? '#FFFFFF' : COLORS.ink, kicking ? 3 : 2);
+      const swim = g.arena.kind === 'beach' ? beach.swim(p.id, pos.x, pos.y) : 0;
+      if (swim > 0)
+        beach.drawSwimmer(
+          ctx,
+          p.id,
+          pos.x,
+          pos.y,
+          r,
+          swim,
+          now,
+          COLORS[p.team],
+          kicking ? '#FFFFFF' : COLORS.ink,
+          kicking ? 3 : 2,
+          p.vx,
+          p.vy,
+        );
+      else circle(pos.x, pos.y, r, COLORS[p.team], kicking ? '#FFFFFF' : COLORS.ink, kicking ? 3 : 2);
       if (p.gun > 0) {
         // A chunky pistol: barrel with a yellow muzzle, slide with the rounds left as dots (everyone sees
         // them), a hand in the team's light colour. It kicks back and flashes on each shot: the sim's
@@ -608,8 +646,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       text(p.name, pos.x, pos.y + r + 10, 11, me ? '#FFF4E0' : 'rgba(255,244,224,.85)', 700);
     }
     const bp = pr.pos('ball', alpha) ?? g.ball;
-    circle(bp.x + 2, bp.y + 3, BALL.radius, 'rgba(0,0,0,.25)');
-    circle(bp.x, bp.y, BALL.radius, COLORS.ball, COLORS.ink, 2);
+    if (g.arena.kind !== 'beach' || !beach.drawBall(ctx, bp.x, bp.y, now)) {
+      circle(bp.x + 2, bp.y + 3, BALL.radius, 'rgba(0,0,0,.25)');
+      circle(bp.x, bp.y, BALL.radius, COLORS.ball, COLORS.ink, 2);
+    }
     // Someone has me in their sights: a red warning above my player.
     const myself = g.players.find((p) => p.id === pr.me);
     const hunted =

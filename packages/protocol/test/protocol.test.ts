@@ -100,7 +100,7 @@ describe('oyun mesajları', () => {
         ...ok,
         weights: defaultWeights(),
         roles: true,
-        arenas: ['classic', 'rain', 'volcano', 'ice', 'wind'],
+        arenas: ['classic', 'rain', 'volcano', 'ice', 'wind', 'beach'],
       },
     });
     expect(decodeClientMessage(raw({ ...ok, minutes: 999 }))).toBeNull();
@@ -123,7 +123,7 @@ describe('oyun mesajları', () => {
     expect(decodeClientMessage(raw({ ...ok, roles: 'no' }))).toBeNull();
     // Arenas: missing = all, a list is sorted and de-duplicated, empty or unknown is refused.
     expect(decodeClientMessage(raw(ok))).toMatchObject({
-      settings: { arenas: ['classic', 'rain', 'volcano', 'ice', 'wind'] },
+      settings: { arenas: ['classic', 'rain', 'volcano', 'ice', 'wind', 'beach'] },
     });
     expect(decodeClientMessage(raw({ ...ok, arenas: ['wind', 'ice', 'ice'] }))).toMatchObject({
       settings: { arenas: ['ice', 'wind'] },

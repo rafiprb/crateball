@@ -145,8 +145,29 @@ export interface LavaStream {
   points: LavaPoint[];
 }
 
+/** A rubber duck on the beach arena (sim state: the ball bounces off it, so prediction must agree). */
+export interface Duck {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Heading (unit vector) and its turn rate. */
+  hx: number;
+  hy: number;
+  turn: number;
+  /** Ticks until it may quack again; ticks left of a dazed spin after a hard hit. */
+  cd: number;
+  stun: number;
+  /** Quacks so far, and how many of them were hard hits: the client plays one per new count. */
+  bumps: number;
+  hard: number;
+}
+
 export interface Arena {
   kind: ArenaKind;
+  /** Beach: the ducks (empty elsewhere). */
+  ducks: Duck[];
   puddles: Puddle[];
   streams: LavaStream[];
   /** Unit vector; zero unless the arena is windy. */
