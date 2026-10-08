@@ -16,7 +16,12 @@
  *
  * Run: `pnpm netsim [seconds] [seeds]` (tests/netsim/run.ts).
  */
-import { decodeServerMessage, encode } from '../../packages/protocol/src/index';
+import {
+  createSnapDecoder,
+  decodeServerData,
+  encode,
+  type SnapDecoder,
+} from '../../packages/protocol/src/index';
 import { createRooms } from '../../packages/server/src/rooms';
 import { DEFAULT_SETTINGS, TICK_HZ, botInput, type Game, type Team } from '../../packages/sim/src/index';
 import { createPredictor, type Predictor } from '../../packages/client/src/predict';
@@ -242,6 +247,8 @@ export function runSim(o: SimOptions): ClientReport[] {
     spec: ClientSpec;
     id: string;
     pred: Predictor;
+    /** Binary snapshots arrive in order (TCP): decoded on delivery against the last one. */
+    snaps: SnapDecoder;
     up: (now: number) => number;
     down: (now: number) => number;
     acc: number;
@@ -288,13 +295,14 @@ export function runSim(o: SimOptions): ClientReport[] {
       starved: 0,
       bytes: 0,
       relayBytes: 0,
+      snaps: createSnapDecoder(),
     };
   });
 
-  const receive = (c: Client, raw: string) => {
+  const receive = (c: Client, raw: string | Uint8Array) => {
     if (now >= warm) c.bytes += raw.length;
-    if (now >= warm && raw.startsWith('{"t":"ri"')) c.relayBytes += raw.length;
-    const m = decodeServerMessage(raw);
+    if (now >= warm && typeof raw === 'string' && raw.startsWith('{"t":"ri"')) c.relayBytes += raw.length;
+    const m = decodeServerData(raw, c.snaps);
     if (!m) return;
     if (m.t === 'snap') {
       c.pred.snapshot(m.ack, m.g, m.h);
@@ -307,9 +315,10 @@ export function runSim(o: SimOptions): ClientReport[] {
   };
 
   const settings = { ...DEFAULT_SETTINGS, minutes: 0, scoreLimit: 99 };
-  const sendFor = (c: Client) => (raw: string) => {
+  const sendFor = (c: Client) => (raw: string | Uint8Array) => {
     const at = c.down(now);
     q.push(at, () => receive(c, raw));
+    return true;
   };
   const host = clients[0]!;
   const room = rooms.create(host.id, host.spec.name, 'netsim', false, settings, sendFor(host));

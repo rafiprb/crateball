@@ -330,22 +330,23 @@ export function attachWebSocket(
     let badMessages = 0;
 
     const send = (m: ServerMessage) => sendRaw(encode(m));
-    const sendRaw = (raw: string, droppable = false) => {
-      if (socket.readyState !== socket.OPEN) return;
+    const sendRaw = (raw: string | Uint8Array, droppable = false): boolean => {
+      if (socket.readyState !== socket.OPEN) return false;
       // A client that stops reading must not make the server buffer snapshots forever.
       if (socket.bufferedAmount > LIMITS.hardBufferBytes) {
         logLimited(() =>
           clog.warn({ buffered: socket.bufferedAmount }, 'istemci yetişemiyor, bağlantı kesildi'),
         );
         socket.terminate();
-        return;
+        return false;
       }
-      if (droppable && socket.bufferedAmount > LIMITS.softBufferBytes) return;
+      if (droppable && socket.bufferedAmount > LIMITS.softBufferBytes) return false;
       if (opts.metrics) {
         opts.metrics.bytesOut += raw.length;
         opts.metrics.msgsOut++;
       }
       socket.send(raw);
+      return true;
     };
     const fail = (code: ErrorCode | null) => {
       if (code) send({ t: 'error', code, message: ERROR_TEXT[code] });

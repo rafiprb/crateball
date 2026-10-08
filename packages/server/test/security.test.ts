@@ -5,7 +5,13 @@ import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { PROTOCOL_VERSION, decodeServerMessage, encode, type ServerMessage } from '@crateball/protocol';
+import {
+  PROTOCOL_VERSION,
+  createSnapDecoder,
+  decodeServerData,
+  encode,
+  type ServerMessage,
+} from '@crateball/protocol';
 import { defaultWeights, type Settings } from '@crateball/sim';
 import { createLogger, startServer, type RunningServer, type ServerConfig } from '../src/app';
 import { LIMITS, originAllowed } from '../src/ws';
@@ -47,8 +53,9 @@ function client(url: string, headers: Record<string, string> = {}, origin?: stri
   const socket = new WebSocket(url, { headers, ...(origin ? { origin } : {}) });
   const inbox: ServerMessage[] = [];
   const waiters: Array<() => void> = [];
-  socket.on('message', (d) => {
-    const m = decodeServerMessage(d.toString());
+  const dec = createSnapDecoder();
+  socket.on('message', (d, isBinary) => {
+    const m = decodeServerData(isBinary ? new Uint8Array(d as Buffer) : d.toString(), dec);
     if (m) inbox.push(m);
     waiters.splice(0).forEach((w) => w());
   });

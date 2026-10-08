@@ -2,11 +2,22 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_WEIGHTS,
   PROTOCOL_VERSION,
+  SNAP_DELTA,
+  SNAP_KEY,
+  createSnapDecoder,
   decodeClientMessage,
+  decodeFrame,
+  decodeServerData,
   decodeServerMessage,
+  deltaBody,
   encode,
+  encodeFrame,
+  encodeGame,
+  keyBody,
+  snapState,
+  type Plain,
 } from '../src/index';
-import { defaultWeights } from '@crateball/sim';
+import { defaultWeights, type Game } from '@crateball/sim';
 
 describe('istemci mesajları', () => {
   it('varsayılan kutu payları sim ile aynı', () => {
@@ -137,20 +148,6 @@ describe('oyun mesajları', () => {
     expect(decodeServerMessage('{"t":"ri","id":"abc","k":120,"b":64}')).toBeNull();
     expect(decodeServerMessage('{"t":"ri","id":"abc","k":-1,"b":1}')).toBeNull();
   });
-  it('snap içindeki tutulan girdiler doğrulanır; bozuk olan atılır, prototipe dokunulmaz', async () => {
-    const { createGame } = await import('@crateball/sim');
-    const { encodeGame, encodeSnap } = await import('../src/index');
-    const g = encodeGame(createGame(1));
-    const h = (json: string) => {
-      const m = decodeServerMessage(encodeSnap(1, 1, 0, 0, json, g));
-      return m?.t === 'snap' ? m.h : null;
-    };
-    expect(h('{"a":64,"b":3,"c":-1}')).toEqual({ b: 3 });
-    expect(h('[1,2]')).toEqual({});
-    const proto = h('{"__proto__":{"x":1},"d":2}')!;
-    expect(Object.getPrototypeOf(proto)).toBe(Object.prototype);
-    expect(proto).toEqual({ d: 2 });
-  });
   it('snapshot ganimet rastgeleliğini taşımaz (yalnızca sunucuda)', async () => {
     const { createGame } = await import('@crateball/sim');
     const { encodeGame } = await import('../src/index');
@@ -161,20 +158,134 @@ describe('oyun mesajları', () => {
     expect(json).not.toContain('123456');
     expect(g.lootRng).toBe(123456); // the server's own state is untouched
   });
-  it('snap sarmalayıcısı çözülür', async () => {
-    const { createGame } = await import('@crateball/sim');
-    const { encodeGame, encodeSnap } = await import('../src/index');
-    const g = createGame(1);
-    g.ball.x = 1 / 3;
-    const m = decodeServerMessage(encodeSnap(4, 9, 2, 3, '{"p1":8,"p2":0}', encodeGame(g)));
-    expect(m?.t === 'snap' && m.h).toEqual({ p1: 8, p2: 0 });
-    expect(m?.t === 'snap' && m.ack === 9 && m.lead === 3 && m.g.ball.x).toBe(0.333);
-    // Clock-sync feedback that is not a sane tick count is ignored (0), not trusted.
-    for (const lead of [500, -2, 1.5]) {
-      const wild = decodeServerMessage(encodeSnap(4, 9, 2, lead, '{}', encodeGame(g)));
-      expect(wild?.t === 'snap' && wild.lead).toBe(0);
+});
+
+describe('binary snapshot', () => {
+  /** A bot match in progress: crates, items, bullets, weather all turn up within a few thousand ticks. */
+  const match = async (seed: number) => {
+    const sim = await import('@crateball/sim');
+    const g = sim.createGame(seed, { ...sim.DEFAULT_SETTINGS, crates: 'chaos' });
+    for (let i = 0; i < 3; i++) {
+      sim.addPlayer(g, `r${i}`, `Kırmızı ${i}`, 'red', true);
+      sim.addPlayer(g, `b${i}`, `Mavi ${i}`, 'blue', true);
+    }
+    sim.newArenaPlan(g);
+    sim.restartMatch(g);
+    return { g, step: () => sim.step(g) };
+  };
+  const head = { tick: 4, ack: 9, q: 2, lead: 3, h: { p1: 8, p2: 0 } };
+  const asClient = (g: Game) => JSON.parse(encodeGame(g)) as unknown;
+
+  it('key frame tam olarak eski JSON snapshotun verdiği durumu verir', async () => {
+    const { g, step } = await match(1);
+    for (let i = 0; i < 500; i++) step();
+    g.lootRng = 987654;
+    const dec = createSnapDecoder();
+    const m = decodeServerData(encodeFrame(SNAP_KEY, head, 0, keyBody(snapState(g))), dec);
+    expect(m?.t).toBe('snap');
+    if (m?.t !== 'snap') return;
+    // Same values and the same key order as JSON.parse gave (prediction starts from identical states).
+    expect(JSON.stringify(m.g)).toBe(JSON.stringify(asClient(g)));
+    expect(m.g.lootRng).toBeNull();
+    expect([m.tick, m.ack, m.q, m.lead]).toEqual([4, 9, 2, 3]);
+    expect(m.h).toEqual({ p1: 8, p2: 0 });
+  });
+
+  it('delta zinciri her snapshotta eski JSON ile birebir aynı durumu kurar ve çok daha küçük', async () => {
+    for (const seed of [2, 3]) {
+      const { g, step } = await match(seed);
+      const dec = createSnapDecoder();
+      let prev: { state: Plain; tick: number } | null = null;
+      let json = 0;
+      let bin = 0;
+      for (let i = 0; i < 4000; i++) {
+        step();
+        if (g.tick % 2 !== 0) continue;
+        const state = snapState(g);
+        const frame = prev
+          ? encodeFrame(SNAP_DELTA, { ...head, tick: g.tick }, prev.tick, deltaBody(prev.state, state))
+          : encodeFrame(SNAP_KEY, { ...head, tick: g.tick }, 0, keyBody(state));
+        prev = { state, tick: g.tick };
+        const m = decodeServerData(frame, dec);
+        expect(m?.t).toBe('snap');
+        if (m?.t !== 'snap') return;
+        expect(JSON.stringify(m.g)).toBe(JSON.stringify(asClient(g)));
+        json += encodeGame(g).length + 60;
+        bin += frame.length;
+      }
+      expect(bin * 4).toBeLessThan(json);
     }
   });
+
+  it('elindeki durumla eşleşmeyen delta uygulanmaz; bozuk frame çözücüyü sıfırlar', async () => {
+    const { g, step } = await match(4);
+    const dec = createSnapDecoder();
+    const a = snapState(g);
+    decodeServerData(encodeFrame(SNAP_KEY, { ...head, tick: 10 }, 0, keyBody(a)), dec);
+    step();
+    const b = snapState(g);
+    // A delta from tick 8, but this client holds tick 10: not applied, nothing changed.
+    expect(decodeServerData(encodeFrame(SNAP_DELTA, head, 8, deltaBody(a, b)), dec)).toBeNull();
+    expect(dec.tick).toBe(10);
+    expect(decodeServerData(new Uint8Array([2, 1, 2]), dec)).toBeNull();
+    expect(dec.state).toBeNull();
+    expect(decodeServerData(new Uint8Array([7, 0, 0]), createSnapDecoder())).toBeNull();
+  });
+
+  it('sayılar, metinler, alan ekleme/silme, dizi büyüme/küçülme, tür değişimi', () => {
+    const cases: Array<[Plain, Plain]> = [
+      [
+        { a: 1, b: [1, 2, 3], c: { d: 'x' } },
+        { a: 1.5, b: [1], c: null, e: 'ğüşİöç 🎉' },
+      ],
+      [{ n: 0.001 }, { n: -123456.789 }],
+      [{ n: 5 }, { n: 4_000_000_000 }],
+      [{ n: 1e12 }, { n: 2e15 + 0.5 }],
+      [[], [{ id: 1, rocket: true }, { id: 2 }]],
+      [{ list: [{ x: 1 }, { x: 2 }] }, { list: [{ x: 1, target: 'p' }, { x: 3 }] }],
+      [{ k: true }, { k: false }],
+      [{ k: 'a' }, { k: 1 }],
+    ];
+    for (const [a, b] of cases) {
+      const dec = createSnapDecoder();
+      const f1 = encodeFrame(SNAP_KEY, head, 0, keyBody(a));
+      const f2 = encodeFrame(SNAP_DELTA, { ...head, tick: 5 }, 4, deltaBody(a, b));
+      expect(decodeFrame(f1, dec)?.state).toEqual(a);
+      expect(decodeFrame(f2, dec)?.state).toEqual(b);
+    }
+    // As JSON did: -0 is 0, non-finite is null, undefined fields are left out.
+    expect(snapState({ x: -0, y: NaN, z: Infinity, u: undefined } as unknown as Game)).toEqual({
+      x: 0,
+      y: null,
+      z: null,
+      lootRng: null,
+    });
+  });
+
+  it('tutulan girdiler ve saat geri bildirimi doğrulanır; prototipe dokunulmaz', () => {
+    const frame = (h: Record<string, number>, lead: number) =>
+      decodeServerData(
+        encodeFrame(SNAP_KEY, { ...head, h, lead }, 0, keyBody(asGameLike())),
+        createSnapDecoder(),
+      );
+    const m = frame(JSON.parse('{"__proto__":5,"d":2,"e":64}') as Record<string, number>, 500);
+    expect(m?.t === 'snap' && m.lead).toBe(0);
+    const h = m?.t === 'snap' ? m.h : {};
+    expect(Object.getPrototypeOf(h)).toBe(Object.prototype);
+    expect(h.d).toBe(2);
+    expect(h.e).toBeUndefined(); // not an input byte
+  });
+});
+
+/** The smallest state that passes as a game. */
+const asGameLike = (): Plain => ({
+  tick: 1,
+  players: [],
+  ball: {},
+  crates: [],
+  bullets: [],
+  blasts: [],
+  score: [0, 0],
 });
 
 describe('telemetri', () => {

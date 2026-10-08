@@ -3,10 +3,15 @@ import type { Logger } from 'pino';
 import type { LogBudget } from './log-budget';
 import {
   CODE_ALPHABET,
+  SNAP_DELTA,
+  SNAP_KEY,
+  deltaBody,
   encode,
-  encodeGame,
-  encodeSnap,
+  encodeFrame,
+  keyBody,
+  snapState,
   type ErrorCode,
+  type Plain,
   type RoomInfo,
   type RoomListing,
   type ServerMessage,
@@ -33,6 +38,9 @@ import type { Metrics } from './metrics';
 
 /** A snapshot every N ticks (60 Hz sim → 30 Hz snapshots). */
 export const SNAP_EVERY = 2;
+/** A key frame (the whole state) at least every N snapshots, even when deltas could go on: if a client
+ * ever failed to apply one, it is back in sync within 5 s. */
+export const KEY_EVERY = 150;
 /** Input queue: beyond this a client is too far ahead; trim back to KEEP to cap latency. */
 const QUEUE_MAX = 10;
 const QUEUE_KEEP = 4;
@@ -120,6 +128,10 @@ interface Member {
   applied: number;
   /** Set while the socket is gone: the player keeps their slot (and host role) until it fires. */
   awayTimer: ReturnType<typeof setTimeout> | null;
+  /** Tick of the last snapshot this socket was sent (-1: none, or one was skipped): a delta needs it. */
+  snapTick: number;
+  /** Deltas sent since the last key frame. */
+  sinceKey: number;
 }
 
 export interface Room {
@@ -149,13 +161,16 @@ export interface Room {
   started: boolean;
   /** Slowest tick (step + snapshot) since the last stats line. */
   stepMsMax: number;
+  /** The last snapshot's state, as clients hold it: the base of the next delta. */
+  snap: { state: Plain; tick: number } | null;
 }
 
 type Result = Room | ErrorCode;
 type ChatLine = Extract<ServerMessage, { t: 'chat' }>;
 
-/** `droppable`: a snapshot, which may be skipped for a client that is not keeping up. */
-type Send = (raw: string, droppable?: boolean) => void;
+/** `droppable`: a snapshot, which may be skipped for a client that is not keeping up. True if it went
+ * out (a skipped snapshot makes the next one a key frame). Text is JSON, bytes are a snapshot frame. */
+type Send = (raw: string | Uint8Array, droppable?: boolean) => boolean;
 
 export interface Rooms {
   create(
@@ -310,20 +325,32 @@ export function createRooms(
     for (const m of room.members.values()) m.send(raw);
   };
 
+  /** The state once per room, as a delta against the last snapshot for everyone who has that one, the
+   * whole state for the rest (new, back, or a snapshot skipped while their connection was full). */
   const broadcastSnap = (room: Room) => {
-    const json = encodeGame(room.game);
+    const tick = room.game.tick;
+    const state = snapState(room.game);
+    const prev = room.snap;
+    const delta = prev ? deltaBody(prev.state, state) : null;
+    let key: Uint8Array | null = null;
     // Every human's input in effect, authoritative: a kickoff zeroes `input` in the state while the key
     // stays held, and a relay the budget held back must not outlive the snapshot either.
-    const held: Record<string, number> = {};
+    const h: Record<string, number> = {};
     for (const m of room.members.values())
-      if (!m.spectator && room.game.players.some((p) => p.id === m.id)) held[m.id] = m.applied;
-    const heldJson = JSON.stringify(held);
-    for (const m of room.members.values())
+      if (!m.spectator && room.game.players.some((p) => p.id === m.id)) h[m.id] = m.applied;
+    for (const m of room.members.values()) {
       // Never more surplus than is actually waiting right now (a stall drained it meanwhile).
-      m.send(
-        encodeSnap(room.game.tick, m.ack, m.queue.length, Math.min(m.lead, m.queue.length), heldJson, json),
-        true,
-      );
+      const head = { tick, ack: m.ack, q: m.queue.length, lead: Math.min(m.lead, m.queue.length), h };
+      const useDelta = prev !== null && delta !== null && m.snapTick === prev.tick && m.sinceKey < KEY_EVERY;
+      let frame: Uint8Array;
+      if (useDelta) frame = encodeFrame(SNAP_DELTA, head, prev.tick, delta);
+      else frame = encodeFrame(SNAP_KEY, head, 0, (key ??= keyBody(state)));
+      if (m.send(frame, true)) {
+        m.snapTick = tick;
+        m.sinceKey = useDelta ? m.sinceKey + 1 : 0;
+      } else m.snapTick = -1;
+    }
+    room.snap = { state, tick };
   };
 
   /** Clock sync: nothing measured, no feedback (match start, reconnect, a long silence). */
@@ -587,6 +614,8 @@ export function createRooms(
       lateRelayAt: -1,
       applied: 0,
       awayTimer: null,
+      snapTick: -1,
+      sinceKey: 0,
     });
     // Someone arriving mid-match knows nobody's keys yet: everyone's schedule is resent next tick.
     if (room.state === 'playing') for (const o of room.members.values()) o.relayDirty = true;
@@ -666,6 +695,7 @@ export function createRooms(
     if (m.awayTimer) clearTimeout(m.awayTimer);
     m.awayTimer = null;
     m.send = send;
+    m.snapTick = -1; // a new connection holds no snapshot yet
     // A reloaded page restarts its sequence numbers; a fresh count avoids treating them as late.
     m.ack = 0;
     m.queue = [];
@@ -688,7 +718,8 @@ export function createRooms(
       const room = byClient.get(id);
       const m = room?.members.get(id);
       if (!room || !m) return;
-      m.send = () => {};
+      m.send = () => false;
+      m.snapTick = -1;
       m.queue = [];
       // Nothing to stand in for any more: the keys count as released from now on, and any queued change
       // already announced to the others is void.
@@ -734,6 +765,7 @@ export function createRooms(
         chatBuckets: new Map(),
         emptySince: null,
         stepMsMax: 0,
+        snap: null,
         owner,
         started: false,
       };

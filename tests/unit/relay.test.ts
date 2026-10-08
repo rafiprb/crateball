@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { decodeServerMessage } from '../../packages/protocol/src/index';
+import type { ServerMessage } from '../../packages/protocol/src/index';
+import { inboxSend } from './inbox';
 import { RELAY_BURST, STAND_IN_TICKS, createRooms } from '../../packages/server/src/rooms';
 import { createPredictor } from '../../packages/client/src/predict';
 import { KICK, MATCH, RIGHT, defaultWeights, type Game, type Settings } from '../../packages/sim/src/index';
@@ -38,8 +39,8 @@ function agree(p: Game, s: Game, what: string) {
 
 function setup() {
   const rooms = createRooms(log);
-  const inbox: Record<string, string[]> = { a: [], b: [], c: [] };
-  const sendTo = (id: string) => (raw: string) => inbox[id]!.push(raw);
+  const inbox: Record<string, Array<ServerMessage | null>> = { a: [], b: [], c: [] };
+  const sendTo = (id: string) => inboxSend(inbox[id]!);
   const room = rooms.create('a', 'A', 'R', false, settings, sendTo('a'));
   if (typeof room === 'string') throw new Error(room);
   rooms.stop();
@@ -54,8 +55,7 @@ function setup() {
   };
   const deliver = () => {
     for (const [id, p] of observers)
-      for (const raw of inbox[id]!.splice(0)) {
-        const m = decodeServerMessage(raw);
+      for (const m of inbox[id]!.splice(0)) {
         if (m?.t === 'snap') p.snapshot(m.ack, m.g, m.h);
         else if (m?.t === 'ri') p.remoteInput(m.id, m.k, m.b);
       }
@@ -90,7 +90,7 @@ describe('aktarım + tahmin, uçtan uca', () => {
     deliver();
     rooms.disconnect('b'); // …and gone before any of them was taken
     tick(12);
-    rooms.reattach('b', () => {});
+    rooms.reattach('b', () => true);
     tick(12);
     expect(room.game.players.find((p) => p.id === 'b')!.input).toBe(0);
   });
@@ -103,7 +103,7 @@ describe('aktarım + tahmin, uçtan uca', () => {
     deliver();
     room.members.get('b')!.relayTokens = 0;
     rooms.disconnect('b');
-    rooms.reattach('b', () => {});
+    rooms.reattach('b', () => true);
     tick(12);
   });
 
@@ -170,7 +170,7 @@ describe('aktarım + tahmin, uçtan uca', () => {
     for (let t = 0; t < 300; t++) {
       for (let i = 0; i < 12; i++) rooms.input('b', ++s, s % 2 ? KICK : RIGHT);
       rooms.tickAll();
-      relays += inbox.a!.splice(0).filter((r) => r.startsWith('{"t":"ri"')).length;
+      relays += inbox.a!.splice(0).filter((m) => m?.t === 'ri').length;
     }
     const ms = performance.now() - t0;
     // Budget: the burst plus 20/s, and at most one forced cancel per budgeted announcement.
@@ -200,15 +200,16 @@ describe('ilk snapshot öncesi aktarım ve tick süresi', () => {
 
   it('aktarım denetimi ve yeniden gönderim tick süresine sayılır', () => {
     const rooms = createRooms(log);
-    const slow = (raw: string) => {
-      if (!raw.startsWith('{"t":"ri"')) return;
+    const slow = (raw: string | Uint8Array) => {
+      if (typeof raw !== 'string' || !raw.startsWith('{"t":"ri"')) return true;
       const until = performance.now() + 8;
       while (performance.now() < until);
+      return true;
     };
     const room = rooms.create('a', 'A', 'R', false, settings, slow);
     if (typeof room === 'string') throw new Error(room);
     rooms.stop();
-    rooms.join(room.code, 'b', 'B', () => {});
+    rooms.join(room.code, 'b', 'B', () => true);
     rooms.start('a');
     room.stepMsMax = 0;
     rooms.input('b', 1, RIGHT);
@@ -221,11 +222,11 @@ describe('ilk snapshot öncesi aktarım ve tick süresi', () => {
 describe('maç yeniden başlarken', () => {
   it('ilk snapshot önceki maçtan basılı kalmış tuşları taşımaz', () => {
     const rooms = createRooms(log);
-    const inbox: string[] = [];
-    const room = rooms.create('a', 'A', 'R', false, settings, (r) => inbox.push(r));
+    const inbox: Array<ServerMessage | null> = [];
+    const room = rooms.create('a', 'A', 'R', false, settings, inboxSend(inbox));
     if (typeof room === 'string') throw new Error(room);
     rooms.stop();
-    rooms.join(room.code, 'b', 'B', () => {});
+    rooms.join(room.code, 'b', 'B', () => true);
     rooms.start('a');
     for (let s = 1; s <= 5; s++) {
       rooms.input('b', s, 56); // KICK | USE | RIGHT held
@@ -234,7 +235,7 @@ describe('maç yeniden başlarken', () => {
     expect(rooms.stopMatch('a')).toBeNull();
     inbox.length = 0;
     expect(rooms.start('a')).toBeNull();
-    const first = inbox.map((r) => decodeServerMessage(r)).find((m) => m?.t === 'snap');
+    const first = inbox.find((m) => m?.t === 'snap');
     expect(first?.t === 'snap' && first.h.b).toBe(0);
     expect(room.game.players.find((p) => p.id === 'b')!.input).toBe(0);
   });

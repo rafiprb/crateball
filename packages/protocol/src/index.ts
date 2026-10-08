@@ -1,6 +1,9 @@
 import type { ArenaKind, Game, ItemKind, Role, Settings, Team } from '@crateball/sim';
+import { decodeFrame, type DecodedSnap, type SnapDecoder } from './snap';
 
-export const PROTOCOL_VERSION = 12;
+export * from './snap';
+
+export const PROTOCOL_VERSION = 13;
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */
@@ -352,24 +355,43 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
   }
 }
 
-/** Server encodes the game once per tick and wraps it per client (ack differs). */
-export function encodeSnap(
-  tick: number,
-  ack: number,
-  q: number,
-  lead: number,
-  heldJson: string,
-  gameJson: string,
-): string {
-  return `{"t":"snap","tick":${tick},"ack":${ack},"q":${q},"lead":${lead},"h":${heldJson},"g":${gameJson}}`;
-}
-
-/** Positions/velocities rounded to 1/1000 px: smaller packets, harmless for prediction. */
-/** For clients: the loot randomness stays on the server (see `Game.lootRng`). */
+/** The game as JSON snapshots used to carry it (positions rounded to 1/1000 px, no loot randomness).
+ * Snapshots are binary now (snap.ts); this stays as the reference a binary state must equal. */
 export function encodeGame(g: Game): string {
   return JSON.stringify({ ...g, lootRng: null }, (_k, v: unknown) =>
     typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v,
   );
+}
+
+/**
+ * A message from the server: text frames are JSON, binary frames are snapshots (decoded against what
+ * `dec` holds, one decoder per connection). Null if unreadable, or a delta this connection cannot apply.
+ */
+export function decodeServerData(data: unknown, dec: SnapDecoder): ServerMessage | null {
+  if (typeof data === 'string') return decodeServerMessage(data);
+  const bytes = data instanceof Uint8Array ? data : data instanceof ArrayBuffer ? new Uint8Array(data) : null;
+  if (!bytes) return null;
+  let s: DecodedSnap | null;
+  try {
+    s = decodeFrame(bytes, dec);
+  } catch {
+    // A broken frame: start over from the next key frame.
+    dec.state = null;
+    dec.tick = -1;
+    return null;
+  }
+  if (!s || !isGame(s.state)) return null;
+  // The decoder keeps its copy for the next delta; prediction gets its own.
+  const g = structuredClone(s.state) as unknown as Game;
+  return {
+    t: 'snap',
+    tick: s.tick,
+    ack: s.ack,
+    q: s.q,
+    lead: isLead(s.lead) ? s.lead : 0,
+    h: decodeHeld(s.h),
+    g,
+  };
 }
 
 const isGame = (g: unknown): g is Game =>
@@ -434,18 +456,6 @@ export function decodeServerMessage(raw: string): ServerMessage | null {
     case 'ri':
       return isStr(m.id, 64) && isUint(m.k) && isUint(m.b) && m.b < 64
         ? { t: 'ri', id: m.id, k: m.k, b: m.b }
-        : null;
-    case 'snap':
-      return isUint(m.tick) && isUint(m.ack) && isGame(m.g)
-        ? {
-            t: 'snap',
-            tick: m.tick,
-            ack: m.ack,
-            q: isUint(m.q) ? m.q : 0,
-            lead: isLead(m.lead) ? m.lead : 0,
-            h: decodeHeld(m.h),
-            g: m.g,
-          }
         : null;
     default:
       return null;

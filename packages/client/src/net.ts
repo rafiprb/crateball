@@ -1,6 +1,7 @@
 import {
   PROTOCOL_VERSION,
-  decodeServerMessage,
+  createSnapDecoder,
+  decodeServerData,
   encode,
   type ClientMessage,
   type ServerMessage,
@@ -56,7 +57,13 @@ export interface Connection {
 export const BACKOFF_MS = [500, 1000, 2000, 4000, 8000, 10000];
 
 export function connect(o: ConnectionOptions): Connection {
-  const createSocket = o.createSocket ?? ((url: string) => new WebSocket(url) as unknown as SocketLike);
+  const createSocket =
+    o.createSocket ??
+    ((url: string) => {
+      const ws = new WebSocket(url);
+      ws.binaryType = 'arraybuffer'; // snapshots are binary frames
+      return ws as unknown as SocketLike;
+    });
   const schedule = o.schedule ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
   let status: NetStatus = 'connecting';
   let clientId: string | null = null;
@@ -78,6 +85,8 @@ export function connect(o: ConnectionOptions): Connection {
     setStatus('connecting');
     const s = createSocket(o.url);
     socket = s;
+    // Snapshot deltas build on the last one this connection got: a new connection starts from a key frame.
+    const snaps = createSnapDecoder();
     s.onopen = () =>
       s.send(
         encode({
@@ -88,7 +97,7 @@ export function connect(o: ConnectionOptions): Connection {
       );
     s.onmessage = (ev) => {
       heardAt = now();
-      const m = typeof ev.data === 'string' ? decodeServerMessage(ev.data) : null;
+      const m = decodeServerData(ev.data, snaps);
       if (!m) return;
       if (m.t === 'welcome') {
         clientId = m.clientId;

@@ -14,7 +14,12 @@
  * per client, snapshot gaps (a gap over 100 ms is a stall the player would see), ping RTT, errors.
  */
 import { writeFileSync } from 'node:fs';
-import { PROTOCOL_VERSION, type ServerMessage } from '../../packages/protocol/src/index';
+import {
+  PROTOCOL_VERSION,
+  createSnapDecoder,
+  decodeServerData,
+  type ServerMessage,
+} from '../../packages/protocol/src/index';
 import { DEFAULT_SETTINGS, DOWN, KICK, LEFT, RIGHT, UP, type Game } from '../../packages/sim/src/index';
 
 const argv = process.argv.slice(2);
@@ -115,11 +120,18 @@ function connect(c: Client, host: boolean, room: { code: Promise<string>; resolv
     if (input) clearInterval(input);
     if (ping) clearInterval(ping);
   };
+  ws.binaryType = 'arraybuffer';
+  // Every snapshot frame is decoded (a delta builds on the one before), as a browser does.
+  const snaps = createSnapDecoder();
   ws.onmessage = (e) => {
-    const raw = e.data as string;
-    c.win.bytes += raw.length;
-    total.bytes += raw.length;
-    if (raw.startsWith('{"t":"snap"')) {
+    if (e.data instanceof ArrayBuffer) {
+      c.win.bytes += e.data.byteLength;
+      total.bytes += e.data.byteLength;
+      const m = decodeServerData(e.data, snaps);
+      if (m?.t !== 'snap') {
+        note('snapshot not applied');
+        return;
+      }
       const t = performance.now();
       if (c.lastSnapAt) {
         const gap = t - c.lastSnapAt;
@@ -134,14 +146,14 @@ function connect(c: Client, host: boolean, room: { code: Promise<string>; resolv
       c.win.snaps++;
       total.snaps++;
       c.playing = true;
-      // Decide 10 times a second; the full parse is what a browser does every snapshot anyway.
-      if (snapN++ % 3 === 0 && c.me) {
-        const m = JSON.parse(raw) as Extract<ServerMessage, { t: 'snap' }>;
-        if (m.ack > c.seq) c.seq = m.ack;
-        c.bits = think(m.g, c.me);
-      }
+      if (m.ack > c.seq) c.seq = m.ack;
+      // Decide 10 times a second.
+      if (snapN++ % 3 === 0 && c.me) c.bits = think(m.g, c.me);
       return;
     }
+    const raw = e.data as string;
+    c.win.bytes += raw.length;
+    total.bytes += raw.length;
     if (raw.startsWith('{"t":"ri"')) return;
     const m = JSON.parse(raw) as ServerMessage;
     switch (m.t) {

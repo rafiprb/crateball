@@ -6,6 +6,7 @@ import type { SocketLike } from './net';
  */
 export function laggySocket(url: string, lagMs: number, jitterMs: number): SocketLike {
   const ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
   let lastOut = 0;
   let lastIn = 0;
   const delay = (last: number) => Math.max(last, performance.now() + lagMs + Math.random() * jitterMs);

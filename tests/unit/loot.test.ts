@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { decodeServerMessage } from '../../packages/protocol/src/index';
+import type { ServerMessage } from '../../packages/protocol/src/index';
+import { inboxSend } from './inbox';
 import { createRooms } from '../../packages/server/src/rooms';
 import { createPredictor } from '../../packages/client/src/predict';
 import { createEventTracker, type GameEvent } from '../../packages/client/src/events';
@@ -19,11 +20,11 @@ function run(kind: ItemKind, before?: (g: Game) => void) {
   const weights = Object.fromEntries(ITEM_KINDS.map((k) => [k, k === kind ? 100 : 0])) as Settings['weights'];
   const settings: Settings = { minutes: 3, scoreLimit: 5, crates: 'normal', weights, bots: false };
   const rooms = createRooms(log, { secret: () => 0x12345678 });
-  const inbox: string[] = [];
-  const room = rooms.create('a', 'A', 'R', false, settings, (r) => inbox.push(r));
+  const inbox: Array<ServerMessage | null> = [];
+  const room = rooms.create('a', 'A', 'R', false, settings, inboxSend(inbox));
   if (typeof room === 'string') throw new Error(room);
   rooms.stop();
-  rooms.join(room.code, 'b', 'B', () => {});
+  rooms.join(room.code, 'b', 'B', () => true);
   rooms.start('a');
   const g = room.game;
   g.nextCrate = 1e9; // only our crate
@@ -37,7 +38,7 @@ function run(kind: ItemKind, before?: (g: Game) => void) {
   const events: GameEvent[] = [];
   // A 3-tick (50 ms) link each way, so the prediction runs ahead of the server like in a real match.
   const LAG = 3;
-  const down: Array<[number, string]> = [];
+  const down: Array<[number, ServerMessage | null]> = [];
   const up: Array<[number, number, number]> = [];
   const fields = [
     'frozen',
@@ -67,7 +68,7 @@ function run(kind: ItemKind, before?: (g: Game) => void) {
     record();
     for (const raw of inbox.splice(0)) down.push([t + LAG, raw]);
     while (down.length > 0 && down[0]![0] <= t) {
-      const m = decodeServerMessage(down.shift()![1]);
+      const m = down.shift()![1];
       if (m?.t === 'snap') pred.snapshot(m.ack, m.g, m.h);
       else if (m?.t === 'ri') pred.remoteInput(m.id, m.k, m.b);
     }

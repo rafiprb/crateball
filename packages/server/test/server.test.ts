@@ -7,7 +7,8 @@ import WebSocket from 'ws';
 import {
   MAX_MESSAGE_BYTES,
   PROTOCOL_VERSION,
-  decodeServerMessage,
+  createSnapDecoder,
+  decodeServerData,
   encode,
   type ServerMessage,
 } from '@crateball/protocol';
@@ -15,6 +16,15 @@ import { defaultWeights, type Settings } from '@crateball/sim';
 import { createLogger, loadConfig, startServer, type RunningServer, type ServerConfig } from '../src/app';
 
 const silent = new Writable({ write: (_c, _e, cb) => cb() });
+/** A room's send callback that keeps every message as JSON text (binary snapshots decoded, with their own
+ * decoder per recipient), so tests read snapshots like any other message. */
+function sink(out: string[]) {
+  const dec = createSnapDecoder();
+  return (raw: string | Uint8Array) => {
+    out.push(typeof raw === 'string' ? raw : JSON.stringify(decodeServerData(raw, dec)));
+    return true;
+  };
+}
 let running: RunningServer | null = null;
 afterEach(async () => {
   await running?.close();
@@ -42,8 +52,9 @@ function client(url: string) {
   const socket = new WebSocket(url);
   const inbox: ServerMessage[] = [];
   const waiters: Array<() => void> = [];
-  socket.on('message', (data) => {
-    const m = decodeServerMessage(data.toString());
+  const dec = createSnapDecoder();
+  socket.on('message', (data, isBinary) => {
+    const m = decodeServerData(isBinary ? new Uint8Array(data as Buffer) : data.toString(), dec);
     if (m) inbox.push(m);
     waiters.splice(0).forEach((w) => w());
   });
@@ -347,7 +358,7 @@ describe('girdi kuyruğu', () => {
       'R',
       false,
       { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false },
-      () => {},
+      () => true,
       'k',
     );
     if (typeof room === 'string') throw new Error(room);
@@ -376,7 +387,7 @@ describe('girdi kuyruğu', () => {
       'R',
       false,
       { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false },
-      () => {},
+      () => true,
     );
     if (typeof room === 'string') throw new Error(room);
     rooms.start('a');
@@ -398,7 +409,7 @@ describe('girdi kuyruğu', () => {
       'R',
       false,
       { minutes: 3, scoreLimit: 5, crates: 'off', weights: defaultWeights(), bots: false },
-      (r) => sent.push(r),
+      sink(sent),
     );
     if (typeof room === 'string') throw new Error(room);
     rooms.start('a');
@@ -431,9 +442,9 @@ describe('saat eşitleme (uyarlanır girdi tamponu)', () => {
     const { createRooms, LEAD_BLOCK, LEAD_TARGET } = await import('../src/rooms');
     const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
     const sent: Record<string, string[]> = { a: [], b: [] };
-    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.a!.push(r));
+    const room = rooms.create('a', 'A', 'R', false, settings, sink(sent.a!));
     if (typeof room === 'string') throw new Error(room);
-    rooms.join(room.code, 'b', 'B', (r) => sent.b!.push(r));
+    rooms.join(room.code, 'b', 'B', sink(sent.b!));
     rooms.start('a');
     const lead = (id: 'a' | 'b') =>
       (JSON.parse(sent[id]!.filter((r) => r.startsWith('{"t":"snap"')).at(-1)!) as { lead: number }).lead;
@@ -495,9 +506,9 @@ describe('girdi aktarımı', () => {
     const { createRooms } = await import('../src/rooms');
     const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
     const sent: Record<string, string[]> = { a: [], b: [] };
-    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.a!.push(r));
+    const room = rooms.create('a', 'A', 'R', false, settings, sink(sent.a!));
     if (typeof room === 'string') throw new Error(room);
-    rooms.join(room.code, 'b', 'B', (r) => sent.b!.push(r));
+    rooms.join(room.code, 'b', 'B', sink(sent.b!));
     rooms.start('a');
     const relays = (id: 'a' | 'b') =>
       sent[id]!.filter((r) => r.startsWith('{"t":"ri"')).map((r) => JSON.parse(r) as Relay);
@@ -549,7 +560,7 @@ describe('girdi aktarımı: inceleme düzeltmeleri', () => {
     const mod = await import('../src/rooms');
     const rooms = mod.createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
     const sent: Record<string, string[]> = { a: [], b: [], c: [] };
-    const sendTo = (id: string) => (r: string) => sent[id]!.push(r);
+    const sendTo = (id: string) => sink(sent[id]!);
     const room = rooms.create('a', 'A', 'R', false, settings, sendTo('a'));
     if (typeof room === 'string') throw new Error(room);
     rooms.join(room.code, 'b', 'B', sendTo('b'));
@@ -718,7 +729,7 @@ describe('saat eşitleme: bayat geri bildirim', () => {
     const { createRooms, LEAD_BLOCK } = await import('../src/rooms');
     const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
     const sent: string[] = [];
-    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.push(r));
+    const room = rooms.create('a', 'A', 'R', false, settings, sink(sent));
     if (typeof room === 'string') throw new Error(room);
     rooms.start('a');
     const lead = () =>
@@ -769,9 +780,9 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
 
   it('yanlış kodla katılma denemesi mevcut odadan atmaz (#7)', async () => {
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-    asRoom(rooms.join(room.code, 'b', 'B', () => {}));
-    expect(rooms.join('ZZZZ', 'a', 'A', () => {})).toBe('room_not_found');
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
+    asRoom(rooms.join(room.code, 'b', 'B', () => true));
+    expect(rooms.join('ZZZZ', 'a', 'A', () => true)).toBe('room_not_found');
     expect(room.members.has('a')).toBe(true);
     expect(room.host).toBe('a');
     rooms.stop();
@@ -779,8 +790,8 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
 
   it('maç sırasında kimse takım değiştiremez; takas da yok (#8)', async () => {
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-    asRoom(rooms.join(room.code, 'b', 'B', () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
+    asRoom(rooms.join(room.code, 'b', 'B', () => true));
     rooms.start('a');
     expect(rooms.swap('a', 'a', 'b')).toBe('bad_message');
     expect(rooms.move('a', 'b', 'red')).toBe('bad_message');
@@ -794,7 +805,7 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
 
   it('maç başlayınca mevkiler kilitlenir', async () => {
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
     const me = () => room.game.players.find((p) => p.id === 'a')!;
     rooms.setRole('a', 'fwd');
     expect(me().role).toBe('fwd');
@@ -807,9 +818,9 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
   it('maç sırasında gelen izleyici olur; lobide takıma geçer, izleyiciye döner', async () => {
     const { info } = await import('../src/rooms');
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
     rooms.start('a');
-    asRoom(rooms.join(room.code, 'c', 'C', () => {}));
+    asRoom(rooms.join(room.code, 'c', 'C', () => true));
     expect(room.game.players.some((p) => p.id === 'c')).toBe(false);
     expect(info(room).spectators).toEqual([{ id: 'c', name: 'C' }]);
     expect(rooms.stopMatch('c')).toBe('not_host');
@@ -827,11 +838,11 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
   it('sohbet herkese gider, geçmiş yeni gelene gösterilir, flood sınırlı', async () => {
     const rooms = await make();
     const got: string[] = [];
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, (raw) => got.push(raw)));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, sink(got)));
     expect(rooms.chat('a', 'merhaba')).toBeNull();
     expect(got.some((r) => r.includes('"t":"chat"') && r.includes('merhaba'))).toBe(true);
     const late: string[] = [];
-    asRoom(rooms.join(room.code, 'b', 'B', (raw) => late.push(raw)));
+    asRoom(rooms.join(room.code, 'b', 'B', sink(late)));
     expect(late.some((r) => r.includes('merhaba'))).toBe(true);
     const results = Array.from({ length: 10 }, () => rooms.chat('a', 'spam'));
     expect(results).toContain('rate_limited');
@@ -842,12 +853,12 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     const rooms = await make();
     const { ROOMS_PER_OWNER } = await import('../src/rooms');
     const ids = ['a', 'b', 'c', 'g', 'h', ...Array.from({ length: ROOMS_PER_OWNER - 5 }, (_, i) => `x${i}`)];
-    for (const id of ids) asRoom(rooms.create(id, id, 'R', false, settings, () => {}, id, 'ip1'));
-    expect(rooms.create('d', 'd', 'R', false, settings, () => {}, 'd', 'ip1')).toBe('rate_limited');
-    expect(typeof rooms.create('e', 'e', 'R', false, settings, () => {}, 'e', 'ip2')).not.toBe('string');
+    for (const id of ids) asRoom(rooms.create(id, id, 'R', false, settings, () => true, id, 'ip1'));
+    expect(rooms.create('d', 'd', 'R', false, settings, () => true, 'd', 'ip1')).toBe('rate_limited');
+    expect(typeof rooms.create('e', 'e', 'R', false, settings, () => true, 'e', 'ip2')).not.toBe('string');
     // a's room: a (red) vs a bot. b joins red -> two bots on blue; host swaps b with a blue bot.
     const room = rooms.rooms.get(rooms.whereIs('a').room!)!;
-    asRoom(rooms.join(room.code, 'f', 'F', () => {}));
+    asRoom(rooms.join(room.code, 'f', 'F', () => true));
     const teams = () => ({
       red: room.game.players.filter((p) => p.team === 'red').length,
       blue: room.game.players.filter((p) => p.team === 'blue').length,
@@ -864,8 +875,8 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
 
   it('host takası ve takım değişimi bir takımda aynı gerçek mevkiyi iki insana vermez', async () => {
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-    for (const id of ['b', 'c', 'd']) asRoom(rooms.join(room.code, id, id.toUpperCase(), () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
+    for (const id of ['b', 'c', 'd']) asRoom(rooms.join(room.code, id, id.toUpperCase(), () => true));
     const ok = () => {
       for (const team of ['red', 'blue'] as const) {
         const roles = room.game.players
@@ -889,8 +900,8 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
   it('oyuncusuz maç başlamaz; son oyuncu maçta çıkarsa lobiye dönülür', async () => {
     const rooms = await make();
     const noBots = { ...settings, bots: false };
-    const room = asRoom(rooms.create('a', 'A', 'R', false, noBots, () => {}));
-    asRoom(rooms.join(room.code, 'b', 'B', () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, noBots, () => true));
+    asRoom(rooms.join(room.code, 'b', 'B', () => true));
     rooms.move('a', 'a', 'spec');
     rooms.move('a', 'b', 'spec');
     expect(rooms.start('a')).toBe('no_players');
@@ -904,8 +915,8 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
   it('değişmeyen mevki herkese oda güncellemesi yollamaz (izleyici spamı)', async () => {
     const rooms = await make();
     const got: string[] = [];
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, (r) => got.push(r)));
-    asRoom(rooms.join(room.code, 'c', 'C', () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, sink(got)));
+    asRoom(rooms.join(room.code, 'c', 'C', () => true));
     rooms.move('c', 'c', 'spec');
     const before = got.length;
     for (let i = 0; i < 5; i++) rooms.setRole('c', 'gk');
@@ -917,15 +928,15 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
 
   it('sohbet sınırı çıkıp girince sıfırlanmaz; geri dönen sekme geçmişi numarasıyla alır', async () => {
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-    asRoom(rooms.join(room.code, 'b', 'B', () => {}, 'tab-b'));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
+    asRoom(rooms.join(room.code, 'b', 'B', () => true, 'tab-b'));
     for (let i = 0; i < 5; i++) expect(rooms.chat('b', `m${i}`)).toBeNull();
     rooms.leave('b');
-    asRoom(rooms.join(room.code, 'b2', 'B', () => {}, 'tab-b'));
+    asRoom(rooms.join(room.code, 'b2', 'B', () => true, 'tab-b'));
     expect(rooms.chat('b2', 'again')).toBe('rate_limited');
     rooms.disconnect('b2');
     const replay: string[] = [];
-    rooms.reattach('b2', (r) => replay.push(r));
+    rooms.reattach('b2', sink(replay));
     const lines = replay.filter((r) => r.includes('"t":"chat"')).map((r) => JSON.parse(r) as { n: number });
     expect(lines.map((l) => l.n)).toEqual([1, 2, 3, 4, 5]);
     rooms.stop();
@@ -934,12 +945,12 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
   it('bağlıyken aynı odaya tekrar katılmak bir şey değiştirmez', async () => {
     const rooms = await make();
     const got: string[] = [];
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-    asRoom(rooms.join(room.code, 'b', 'B', (raw) => got.push(raw)));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
+    asRoom(rooms.join(room.code, 'b', 'B', sink(got)));
     rooms.start('a');
     room.members.get('b')!.ack = 40;
     const before = got.length;
-    expect(rooms.join(room.code, 'b', 'B', () => {})).toBe(room);
+    expect(rooms.join(room.code, 'b', 'B', () => true)).toBe(room);
     expect(room.members.get('b')!.ack).toBe(40);
     expect(got.length).toBe(before + 1); // only the joiner hears about it
     rooms.stop();
@@ -948,9 +959,9 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
   it('host oyuncuyu odadan atar; atılan geri giremez, başkası atamaz, host kendini atamaz', async () => {
     const rooms = await make();
     const got: string[] = [];
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-    asRoom(rooms.join(room.code, 'b', 'B', (raw) => got.push(raw), 'tab-b'));
-    asRoom(rooms.join(room.code, 'c', 'C', () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
+    asRoom(rooms.join(room.code, 'b', 'B', sink(got), 'tab-b'));
+    asRoom(rooms.join(room.code, 'c', 'C', () => true));
     expect(rooms.kick('b', 'c')).toBe('not_host');
     expect(rooms.kick('a', 'a')).toBe('bad_message');
     expect(rooms.kick('a', 'b')).toBeNull();
@@ -958,7 +969,7 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     expect(room.game.players.some((p) => p.id === 'b')).toBe(false);
     expect(got.some((raw) => raw.includes('"code":"kicked"'))).toBe(true);
     // Same tab after a reload: a new connection id, the same session key.
-    expect(rooms.join(room.code, 'b2', 'B', () => {}, 'tab-b')).toBe('kicked');
+    expect(rooms.join(room.code, 'b2', 'B', () => true, 'tab-b')).toBe('kicked');
     expect(rooms.kick('a', 'bot-1')).toBe('bad_message');
     rooms.stop();
   });
@@ -968,13 +979,13 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
     try {
       const { RECONNECT_GRACE_MS } = await import('../src/rooms');
       const rooms = await make();
-      const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
-      asRoom(rooms.join(room.code, 'b', 'B', () => {}));
+      const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
+      asRoom(rooms.join(room.code, 'b', 'B', () => true));
       rooms.disconnect('a');
       expect(rooms.isAway('a')).toBe(true);
       expect(room.host).toBe('a');
       vi.advanceTimersByTime(RECONNECT_GRACE_MS - 1000);
-      expect(rooms.reattach('a', () => {})).toBe(room);
+      expect(rooms.reattach('a', () => true)).toBe(room);
       expect(rooms.isAway('a')).toBe(false);
       rooms.disconnect('a');
       vi.advanceTimersByTime(RECONNECT_GRACE_MS + 1);
@@ -989,17 +1000,17 @@ describe('inceleme düzeltmeleri (sunucu)', () => {
   it('bilerek çıkılan boş oda hemen silinir; oda sayısı sınırlı (#1)', async () => {
     const { MAX_ROOMS } = await import('../src/rooms');
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
     rooms.leave('a');
     expect(rooms.rooms.has(room.code)).toBe(false);
-    for (let i = 0; i < MAX_ROOMS; i++) asRoom(rooms.create(`p${i}`, 'P', 'R', false, settings, () => {}));
-    expect(rooms.create('x', 'X', 'R', false, settings, () => {})).toBe('server_full');
+    for (let i = 0; i < MAX_ROOMS; i++) asRoom(rooms.create(`p${i}`, 'P', 'R', false, settings, () => true));
+    expect(rooms.create('x', 'X', 'R', false, settings, () => true)).toBe('server_full');
     rooms.stop();
   });
 
   it('girdi kuyruğu gelirken de sınırlı (#2)', async () => {
     const rooms = await make();
-    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => {}));
+    const room = asRoom(rooms.create('a', 'A', 'R', false, settings, () => true));
     rooms.start('a');
     for (let s = 1; s <= 10_000; s++) rooms.input('a', s, 8);
     expect(room.members.get('a')!.queue.length).toBeLessThanOrEqual(20);
@@ -1137,7 +1148,7 @@ describe('uzun sessizlik', () => {
       weights: defaultWeights(),
       bots: false,
     };
-    const room = rooms.create('a', 'A', 'R', false, settings, (r) => sent.push(r));
+    const room = rooms.create('a', 'A', 'R', false, settings, sink(sent));
     if (typeof room === 'string') throw new Error(room);
     rooms.start('a');
     const ack = () =>
@@ -1178,7 +1189,7 @@ describe('gizli ganimet (sunucu)', () => {
       'R',
       false,
       { minutes: 3, scoreLimit: 5, crates: 'normal', weights: defaultWeights(), bots: false },
-      (r) => sent.push(r),
+      sink(sent),
     );
     if (typeof room === 'string') throw new Error(room);
     rooms.start('a');
@@ -1214,53 +1225,53 @@ describe('oda sınırları (#4, #7)', () => {
     expect(MAX_MEMBERS_TOTAL).toBe(600);
     const codes: string[] = [];
     for (let i = 0; i < MAX_ROOMS; i++) {
-      const r = rooms.create(`h${i}`, 'H', 'R', false, settings, () => {}, `k${i}`, `ip${i}`);
+      const r = rooms.create(`h${i}`, 'H', 'R', false, settings, () => true, `k${i}`, `ip${i}`);
       if (typeof r === 'string') throw new Error(r);
       codes.push(r.code);
     }
-    expect(rooms.create('extra', 'E', 'R', false, settings, () => {}, 'ke', 'ipe')).toBe('server_full');
+    expect(rooms.create('extra', 'E', 'R', false, settings, () => true, 'ke', 'ipe')).toBe('server_full');
     let n = MAX_ROOMS;
     for (const code of codes)
       for (let j = 0; j < 5 && n < MAX_MEMBERS_TOTAL; j++, n++)
-        expect(typeof rooms.join(code, `m${n}`, 'M', () => {}, `km${n}`)).not.toBe('string');
-    expect(rooms.join(codes[99]!, 'late', 'L', () => {}, 'kl')).toBe('server_full');
+        expect(typeof rooms.join(code, `m${n}`, 'M', () => true, `km${n}`)).not.toBe('string');
+    expect(rooms.join(codes[99]!, 'late', 'L', () => true, 'kl')).toBe('server_full');
     rooms.stop();
   });
 
   it('atma kaydı süre dolunca kalkar ve oda başına sınırlıdır', async () => {
     let t = 1_000_000;
     const { rooms, BAN_MS, MAX_BANS } = await make(() => t);
-    const room = rooms.create('h', 'H', 'R', false, settings, () => {}, 'kh', 'ip');
+    const room = rooms.create('h', 'H', 'R', false, settings, () => true, 'kh', 'ip');
     if (typeof room === 'string') throw new Error(room);
     for (let i = 0; i < MAX_BANS + 10; i++) {
       t += 6000; // stay inside the join budget
-      expect(typeof rooms.join(room.code, `g${i}`, 'G', () => {}, `kg${i}`)).not.toBe('string');
+      expect(typeof rooms.join(room.code, `g${i}`, 'G', () => true, `kg${i}`)).not.toBe('string');
       expect(rooms.kick('h', `g${i}`)).toBeNull();
     }
     expect(room.banned.size).toBeLessThanOrEqual(MAX_BANS);
     const last = `kg${MAX_BANS + 9}`;
-    expect(rooms.join(room.code, 'again', 'G', () => {}, last)).toBe('kicked');
+    expect(rooms.join(room.code, 'again', 'G', () => true, last)).toBe('kicked');
     t += BAN_MS + 1;
-    expect(typeof rooms.join(room.code, 'again', 'G', () => {}, last)).not.toBe('string');
+    expect(typeof rooms.join(room.code, 'again', 'G', () => true, last)).not.toBe('string');
     rooms.stop();
   });
 
   it('yeni kimliklerle art arda katılma ve sohbet oda çapında sınırlı', async () => {
     const { rooms, JOIN_BURST } = await make();
-    const room = rooms.create('h', 'H', 'R', false, settings, () => {}, 'kh', 'ip');
+    const room = rooms.create('h', 'H', 'R', false, settings, () => true, 'kh', 'ip');
     if (typeof room === 'string') throw new Error(room);
     const results: string[] = [];
     for (let i = 0; i < JOIN_BURST + 3; i++) {
-      const r = rooms.join(room.code, `g${i}`, 'G', () => {}, `kg${i}`);
+      const r = rooms.join(room.code, `g${i}`, 'G', () => true, `kg${i}`);
       results.push(typeof r === 'string' ? r : 'ok');
       if (typeof r !== 'string') rooms.leave(`g${i}`);
     }
     expect(results.filter((r) => r === 'ok')).toHaveLength(JOIN_BURST);
     expect(results.at(-1)).toBe('rate_limited');
     // Chat: everyone has their own budget, the room as a whole has one too.
-    const other = rooms.create('h2', 'H', 'R', false, settings, () => {}, 'kh2', 'ip');
+    const other = rooms.create('h2', 'H', 'R', false, settings, () => true, 'kh2', 'ip');
     if (typeof other === 'string') throw new Error(other);
-    for (let i = 0; i < 11; i++) rooms.join(other.code, `c${i}`, 'C', () => {}, `kc${i}`);
+    for (let i = 0; i < 11; i++) rooms.join(other.code, `c${i}`, 'C', () => true, `kc${i}`);
     const said = [...Array(11).keys()].flatMap((i) => [0, 1].map(() => rooms.chat(`c${i}`, 'hi')));
     expect(said.filter((r) => r === null).length).toBeLessThanOrEqual(15);
     expect(said).toContain('rate_limited');
@@ -1319,5 +1330,57 @@ describe('bakım modu', () => {
     c.socket.send(encode({ t: 'create', name: 'Ali', roomName: 'R', public: false, settings }));
     expect((await until(c, 'joined')).code).toHaveLength(4);
     for (const s of [before, c, load]) s.socket.close();
+  });
+});
+
+describe('binary snapshot gönderimi', () => {
+  const settings: Settings = {
+    minutes: 3,
+    scoreLimit: 5,
+    crates: 'off',
+    weights: defaultWeights(),
+    bots: true,
+  };
+
+  it('ilk snapshot tam durum, sonra delta; atlanan snapshot, yeniden bağlanma ve 150 deltada bir tam durum', async () => {
+    const { createRooms, KEY_EVERY } = await import('../src/rooms');
+    const rooms = createRooms(createLogger(loadConfig({ NODE_ENV: 'test' }), { stdout: silent }));
+    const kinds: number[] = [];
+    let accept = true;
+    const send = (raw: string | Uint8Array) => {
+      if (typeof raw === 'string') return true;
+      if (!accept) return false;
+      kinds.push(raw[0]!);
+      return true;
+    };
+    const room = rooms.create('a', 'A', 'R', false, settings, send);
+    if (typeof room === 'string') throw new Error(room);
+    rooms.stop();
+    rooms.start('a');
+    for (let i = 0; i < 10; i++) rooms.tickAll();
+    expect(kinds[0]).toBe(1);
+    expect(kinds.slice(1).every((k) => k === 2)).toBe(true);
+    // A snapshot skipped for a full connection: the next one is the whole state again.
+    accept = false;
+    rooms.tickAll();
+    rooms.tickAll();
+    accept = true;
+    kinds.length = 0;
+    rooms.tickAll();
+    rooms.tickAll();
+    rooms.tickAll();
+    rooms.tickAll();
+    expect(kinds).toEqual([1, 2]);
+    // At most KEY_EVERY deltas in a row.
+    kinds.length = 0;
+    for (let i = 0; i < KEY_EVERY * 2 + 10; i++) rooms.tickAll();
+    expect(kinds.filter((k) => k === 1).length).toBe(1);
+    // A new connection of the same player holds nothing yet.
+    rooms.disconnect('a');
+    kinds.length = 0;
+    rooms.reattach('a', send);
+    rooms.tickAll();
+    rooms.tickAll();
+    expect(kinds[0]).toBe(1);
   });
 });
