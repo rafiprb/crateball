@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { Writable } from 'node:stream';
-import { LOAD_MS, budgetShare, codeOwner, share, type FromWorker, type ToWorker } from './cluster';
+import { LOAD_MS, codeOwner, share, type FromWorker, type ToWorker } from './cluster';
 import { createLogBudget } from './log-budget';
 import { createLogger } from './logger';
 import { SERVER_STATS_MS, createMetrics, createSampler } from './metrics';
@@ -34,7 +34,7 @@ export async function runWorker(): Promise<void> {
     budget,
     metrics,
     caps: { rooms: share(cfg.caps.rooms, k, n), members: share(cfg.caps.players, k, n) },
-    roomsPerOwner: budgetShare(ROOMS_PER_OWNER, n),
+    roomsPerOwner: Math.max(1, share(ROOMS_PER_OWNER, k, n)),
     codeOk: mine,
   });
   const wss = attachWebSocket(null, log, rooms, {
@@ -48,18 +48,19 @@ export async function runWorker(): Promise<void> {
     maxSockets: Infinity,
     tokens: createTokens(Buffer.from(init.secret, 'base64')),
     ownsCode: mine,
-    perIp: (limit) => budgetShare(limit, n),
+    perIp: (limit) => Math.max(1, share(limit, k, n)),
     onEntered: (key) => send({ t: 'entered', key }),
   });
 
   process.on('message', (m: ToWorker, handle?: unknown) => {
-    if (m.t === 'release') rooms.releaseAway(m.key);
+    if (m.t === 'release') rooms.releaseKey(m.key);
     else if (m.t === 'upgrade') {
       const socket = handle as Socket | undefined;
       // The socket died on its way over (the message arrives without it): still counted, so report it.
-      if (!socket) return send({ t: 'closed', ip: m.ip });
+      if (!socket) return send({ t: 'closed', id: m.id });
+      send({ t: 'accepted', id: m.id });
       // Counted by the coordinator from the handover: whatever happens next, it hears when this one ends.
-      socket.once('close', () => send({ t: 'closed', ip: m.ip }));
+      socket.once('close', () => send({ t: 'closed', id: m.id }));
       const req = { method: 'GET', url: m.url, headers: m.headers, socket } as unknown as IncomingMessage;
       wss.handleUpgrade(req, socket, Buffer.from(m.head, 'base64'), (ws) => wss.emit('connection', ws, req));
     }

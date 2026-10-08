@@ -195,8 +195,8 @@ export interface Rooms {
   isBanned(key: string): boolean;
   /** In a room but without a socket (inside the reconnect grace period). */
   isAway(id: string): boolean;
-  /** Frees the slots this session key holds only for a reconnect (it went on to a room elsewhere). */
-  releaseAway(key: string): void;
+  /** Frees the slots this session key holds (it went on to a room in another process). */
+  releaseKey(key: string): void;
   input(id: string, seq: number, bits: number): void;
   move(by: string, id: string, team: Seat): ErrorCode | null;
   swap(by: string, a: string, b: string): ErrorCode | null;
@@ -745,9 +745,11 @@ export function createRooms(
       return false;
     },
     isAway: (id) => !!byClient.get(id)?.members.get(id)?.awayTimer,
-    releaseAway(key) {
+    releaseKey(key) {
+      // Connected or not: the session went on to a room elsewhere (its socket here may not have closed
+      // yet; once it does, it is no member any more and nothing is held for it).
       for (const room of rooms.values())
-        for (const m of room.members.values()) if (m.key === key && m.awayTimer) leave(m.id, true);
+        for (const m of [...room.members.values()]) if (m.key === key) leave(m.id, true);
     },
     create(id, name, roomName, isPublic, settings, send, key = id, owner = id) {
       if (roomsFull() || (!byClient.has(id) && membersFull())) return 'server_full';

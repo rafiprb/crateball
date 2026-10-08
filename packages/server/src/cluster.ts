@@ -16,8 +16,10 @@
  *   (`share`): each worker runs on its own core, so its share is also what that core can carry. No worker
  *   has to wait for the others to decide.
  * - Workers report their counts twice a second; the coordinator adds them up for /health and /rooms, and
- *   writes one stats line for all of them. Every socket it hands over is reported back once when it ends
- *   (also one that never arrived), so its socket and per-address counts cannot leak.
+ *   writes one stats line for all of them. Every socket it hands over has an id: the worker acknowledges
+ *   it and reports it once when it ends (also one whose handle never came); one never acknowledged is
+ *   given up after a few seconds. So the socket and per-address counts cannot leak. A worker that stops
+ *   reporting is taken out of routing (and /health says 503), then killed and started again.
  */
 import type { IncomingHttpHeaders } from 'node:http';
 import { CODE_ALPHABET, type RoomListing } from '@crateball/protocol';
@@ -35,10 +37,6 @@ export const LOAD_MS = 500;
 export const share = (total: number, k: number, n: number): number =>
   Math.floor(total / n) + (k < total % n ? 1 : 0);
 
-/** A per-address budget for one of n workers: an address's rooms spread over the workers, so a rounded-up
- * share keeps an office fine, and the sum stays within n - 1 of the single-process budget. */
-export const budgetShare = (total: number, n: number): number => Math.max(1, Math.ceil(total / n));
-
 export interface Load {
   rooms: number;
   members: number;
@@ -51,7 +49,7 @@ export interface Load {
 export type ToWorker =
   | { t: 'init'; k: number; n: number; cfg: ServerConfig; secret: string; quiet: boolean }
   /** With the socket as the handle: finish this upgrade. `head`: bytes already read past the request. */
-  | { t: 'upgrade'; url: string; headers: IncomingHttpHeaders; head: string; ip: string }
+  | { t: 'upgrade'; id: number; url: string; headers: IncomingHttpHeaders; head: string; ip: string }
   /** That session joined a room in another worker: let go of its slot here if it is only held for a
    * reconnect (it moved on; as in one process, where joining a room leaves the old one). */
   | { t: 'release'; key: string };
@@ -60,7 +58,9 @@ export type FromWorker =
   | { t: 'ready' }
   | ({ t: 'load' } & Load)
   | { t: 'stats'; sample: Sample }
-  /** A socket it was handed is gone (also one whose upgrade failed, or whose handle never arrived). */
-  | { t: 'closed'; ip: string }
+  /** Handover `id` arrived with its socket (unacknowledged ones are given up after a few seconds). */
+  | { t: 'accepted'; id: number }
+  /** The socket of handover `id` is gone (also one whose upgrade failed, or whose handle never came). */
+  | { t: 'closed'; id: number }
   /** This session is now in a room here. */
   | { t: 'entered'; key: string };

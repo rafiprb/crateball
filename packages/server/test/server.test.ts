@@ -1500,9 +1500,9 @@ describe('çoklu oyun süreci', () => {
     const guest = await greet(`${wsUrl}?room=${code}`);
     guest.c.socket.send(encode({ t: 'join', code, name: 'G' }));
     await until(guest.c, 'joined');
-    // The guest drops (its slot is kept for a reconnect) and opens a room on the other worker.
+    // The guest opens a room on the other worker while its old socket is still closing (either order
+    // must free the old slot).
     guest.c.socket.close();
-    await new Promise((r) => setTimeout(r, 200));
     const other = codeOwner(code, 2) === 0 ? 'BBBB' : 'AAAA';
     const g2 = await greet(`${wsUrl}?room=${other}`, guest.welcome.token);
     g2.c.socket.send(encode({ t: 'create', name: 'G', roomName: 'R2', public: false, settings }));
@@ -1547,6 +1547,19 @@ describe('çoklu oyun süreci', () => {
     running = null;
     expect(Date.now() - t0).toBeLessThan(8000);
   }, 30_000);
+
+  it('cevap vermeyen oyun süreci yönlendirmeden çıkar (503), sonra öldürülüp yeniden başlatılır', async () => {
+    const { base } = await boot({ workers: 2 });
+    const pid = running!.workerPids!()[0]!;
+    process.kill(pid, 'SIGSTOP');
+    await expect
+      .poll(async () => (await fetch(`${base}/health`)).status, { timeout: 10_000, interval: 500 })
+      .toBe(503);
+    await expect
+      .poll(async () => (await fetch(`${base}/health`)).status, { timeout: 30_000, interval: 500 })
+      .toBe(200);
+    expect(running!.workerPids!()[0]).not.toBe(pid);
+  }, 45_000);
 
   it('oda sınırı tüm sunucu için sayılır', async () => {
     const { wsUrl } = await boot({ workers: 2, caps: { rooms: 1, players: 600, sockets: 1000 } });

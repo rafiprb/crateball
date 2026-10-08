@@ -82,6 +82,8 @@ const setMaintenance = (on: boolean) => {
 
 /** Servers full: a screen that retries what was refused (create or join) every FULL_RETRY_S seconds. */
 const FULL_RETRY_S = 15;
+/** A join refused as too fast (a room's arrival budget) is tried again after this long. */
+const JOIN_RETRY_MS = 3000;
 const fullEl = $<HTMLDivElement>('#full');
 const fullWait = $<HTMLSpanElement>('#full-wait');
 /** The last create or join sent from the menu: what a retry repeats. */
@@ -330,6 +332,17 @@ const conn = connect({
           moveTo = null;
           if (room) toMenu();
           showFull();
+          break;
+        }
+        if (m.code === 'rate_limited' && joinPending && lastAttempt) {
+          // A join refused for now (the room is taking many arrivals): leave a stale match and try again.
+          const again = lastAttempt;
+          joinPending = false;
+          if (room) toMenu();
+          showError('Busy right now, trying again…');
+          setTimeout(() => {
+            if (!room && lastAttempt === again) attempt(again);
+          }, JOIN_RETRY_MS);
           break;
         }
         showError(m.message);

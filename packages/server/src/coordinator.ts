@@ -20,13 +20,20 @@ interface Worker {
   ready: boolean;
   load: Load;
   stats: Sample | null;
-  /** Sockets handed to it and not closed yet, per address (given back if it dies). */
-  ips: Map<string, number>;
-  sockets: number;
+  /** Sockets handed to it and not reported closed yet, by handover id (given back if it dies). `timer`:
+   * not acknowledged yet (the handle may have been lost on the way). */
+  handoffs: Map<number, { ip: string; timer: ReturnType<typeof setTimeout> | null }>;
+  /** When it last said anything (it reports its load twice a second). */
+  heardAt: number;
 }
 
 /** A worker that has not said it is ready after this long is started again. */
 const READY_MS = 30_000;
+/** A handover not acknowledged after this long is given up (its handle was lost). */
+const ACCEPT_MS = 5000;
+/** A worker silent this long is taken out of routing (/health 503); this long, it is killed. */
+const STALE_MS = 5000;
+const HUNG_MS = 15_000;
 /** Shutdown: how long a worker gets to exit before SIGTERM, then as long again before SIGKILL. */
 const STOP_MS = 2000;
 
@@ -79,19 +86,22 @@ export async function startCoordinator(
     ready: false,
     load: emptyLoad(),
     stats: null,
-    ips: new Map(),
-    sockets: 0,
+    handoffs: new Map(),
+    heardAt: 0,
   }));
+  /** Ready and heard from lately: rooms there can be reached. */
+  const live = (w: Worker) => w.ready && Date.now() - w.heardAt < STALE_MS;
 
-  const release = (w: Worker, ip: string) => {
-    const left = (w.ips.get(ip) ?? 0) - 1;
-    if (left < 0) return;
-    if (left > 0) w.ips.set(ip, left);
-    else w.ips.delete(ip);
-    w.sockets--;
+  /** Gives back what a handover counted, exactly once per id. */
+  const release = (w: Worker, id: number) => {
+    const h = w.handoffs.get(id);
+    if (!h) return;
+    if (h.timer) clearTimeout(h.timer);
+    w.handoffs.delete(id);
     total--;
-    admission.closed(ip);
+    admission.closed(h.ip);
   };
+  let nextId = 0;
 
   let started: () => void;
   const allReady = new Promise<void>((resolve) => (started = resolve));
@@ -120,6 +130,7 @@ export async function startCoordinator(
     });
     proc.on('message', (m: FromWorker) => {
       if (w.proc !== proc) return; // an earlier, replaced process
+      w.heardAt = Date.now();
       switch (m.t) {
         case 'ready':
           w.ready = true;
@@ -143,8 +154,14 @@ export async function startCoordinator(
         case 'stats':
           w.stats = m.sample;
           break;
+        case 'accepted': {
+          const h = w.handoffs.get(m.id);
+          if (h?.timer) clearTimeout(h.timer);
+          if (h) h.timer = null;
+          break;
+        }
         case 'closed':
-          release(w, m.ip);
+          release(w, m.id);
           break;
       }
     });
@@ -156,10 +173,7 @@ export async function startCoordinator(
       w.load = emptyLoad();
       w.stats = null;
       // Its sockets died with it.
-      for (const [ip, count] of w.ips) for (let i = 0; i < count; i++) admission.closed(ip);
-      total -= w.sockets;
-      w.sockets = 0;
-      w.ips.clear();
+      for (const id of [...w.handoffs.keys()]) release(w, id);
       if (closing) return;
       log.error({ worker: w.k, code, signal }, 'oyun süreci düştü, yeniden başlatılıyor');
       respawn(w);
@@ -168,6 +182,15 @@ export async function startCoordinator(
     proc.send(init);
   };
   for (const w of workers) spawn(w);
+  // A worker that stops talking (stuck event loop) is out of routing at once and killed after a while.
+  const watch = setInterval(() => {
+    for (const w of workers)
+      if (w.ready && w.proc && Date.now() - w.heardAt > HUNG_MS) {
+        log.error({ worker: w.k }, 'oyun süreci cevap vermiyor, yeniden başlatılıyor');
+        w.proc.kill('SIGKILL');
+      }
+  }, 1000);
+  watch.unref();
 
   const sum = (f: (l: Load) => number) => workers.reduce((a, w) => a + f(w.load), 0);
 
@@ -182,7 +205,7 @@ export async function startCoordinator(
     () => workers.flatMap((w) => w.load.list),
     () => ({ rooms: sum((l) => l.rooms), playing: sum((l) => l.playing), players: sum((l) => l.members) }),
     // A worker down (restarting, or failing to): its share of the room codes cannot be reached.
-    () => workers.every((w) => w.ready),
+    () => workers.every(live),
   );
   const server = createServer((req, res) => {
     handler(req, res).catch((err: unknown) => {
@@ -208,31 +231,33 @@ export async function startCoordinator(
     // A room's own worker. The menu (where rooms are created) goes to the one with the fewest sockets
     // among those with room to spare in their share of the caps.
     const room = url.searchParams.get('room');
-    const ready = workers.filter((w) => w.ready);
+    const ready = workers.filter(live);
     const spare = ready.filter((o) => o.load.rooms < share(cfg.caps.rooms, o.k, n));
     const w =
       room && CODE_RE.test(room)
         ? workers[codeOwner(room, n)]!
         : (spare.length ? spare : ready).reduce<Worker | undefined>(
-            (best, o) => (!best || o.sockets < best.sockets ? o : best),
+            (best, o) => (!best || o.handoffs.size < best.handoffs.size ? o : best),
             undefined,
           );
-    if (!w?.ready || !w.proc) return refuse(socket, 503);
+    if (!w || !live(w) || !w.proc) return refuse(socket, 503);
     if (!admission.opened(ip)) return refuse(socket, 429);
     total++;
-    w.sockets++;
-    w.ips.set(ip, (w.ips.get(ip) ?? 0) + 1);
+    const id = ++nextId;
+    const timer = setTimeout(() => release(w, id), ACCEPT_MS);
+    timer.unref();
+    w.handoffs.set(id, { ip, timer });
     const msg: ToWorker = {
       t: 'upgrade',
+      id,
       url: req.url ?? '/ws',
       headers: req.headers,
       head: head.toString('base64'),
       ip,
     };
     w.proc.send(msg, socket, (err) => {
-      if (!err) return void socket.destroy();
-      release(w, ip);
-      socket.destroy();
+      if (err) release(w, id);
+      socket.destroy(); // the worker holds its own copy now
     });
   });
 
@@ -265,6 +290,7 @@ export async function startCoordinator(
     workerPids: () => workers.map((w) => w.proc?.pid),
     close: async () => {
       closing = true;
+      clearInterval(watch);
       stopStats();
       // Stop listening now. Not waiting for the callback: sockets handed to workers stay on the server's
       // books (Node asks the workers about them), and the workers are about to exit.
