@@ -108,11 +108,40 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
 - İstemci her tick kendi girdisini sıraya koyar, gönderir **ve tüm dünyayı (top dahil) hemen
   kendisi simüle eder**. Diğer oyuncular son bilinen girdilerini tekrarlar; botlar deterministik.
 - Snapshot gelince: o duruma geri sar → sunucunun onayladığı (`ack`) girdileri at → kalanları yeniden
-  simüle et. Eski ve yeni tahmin arasındaki fark görsel ofset olur ve ~50 ms'de söner (60 px üstü
-  ışınlanma sayılır, yumuşatılmaz). Böylece kendi vuruşun top üzerinde anında görünür.
-- Sunucu her oyuncu için tick başına bir girdi tüketir; kuyruk 8'i aşarsa 3'e kırpılır (gecikme
+  simüle et. Eski ve yeni tahmin arasındaki fark görsel ofset olur ve söner: kendi oyuncun ~50 ms, top
+  yanındayken ~90 ms, uzaktayken ~200 ms yarı ömür (kendi dokunuşun keskin, başkasının vuruşu kayarak).
+  Ofset son çizilen karedeki ara noktaya göre hesaplanır, yani düzeltme anında çizilen top yerinden
+  oynamaz (vuruşla hız değişse bile). Tek seferde 80 px (top için 250 px) üstü ışınlanma sayılır.
+  Böylece kendi vuruşun top üzerinde anında görünür.
+- Bir düzeltmenin boyu, tahminin sunucunun ne kadar önünde olduğuyla (bekleyen girdi ≈ RTT + kuyruk) ve
+  bunu ne kadar geç öğrendiğimizle büyür. Başkasının vuruşunun bize zamanında ulaşması için:
+  - **Girdi aktarımı (`ri`)**: sunucu bir oyuncunun tuş değişikliğini geldiği anda, uygulayacağı tick'le
+    (`tick + kuyruktaki yeri`) diğerlerine yollar. Tahminimizin henüz gelmediği bir tick'se zamanı gelince
+    oynanır (düzeltme yok); geçtiğimiz bir tick'se son snapshot'a geri sarılıp hemen yeniden simüle edilir.
+    Yalnızca değişiklikler gider (oyuncu başına saniyede birkaç mesaj, ~0,4 KB/s).
+  - **Saat eşitleme (uyarlanır tampon)**: istemcinin kuyruktaki fazlası eskiden hiç erimiyordu (uzun bir
+    Wi-Fi takılması `ack`'ı dondurur, kuyruk maç boyu 5-7'de kalır). Sunucu her tick'ten sonra "boşluğu"
+    (o tick'in girdisi alındıktan sonra bekleyen girdi; eksikse eksi) ölçer; 2 sn boyunca en küçüğü 1'in
+    üstündeyse snapshot'ta `lead` = fazlalık döner ve istemci tick'ini en çok %3 uzatıp fazlalığı eritir
+    (dünya zıplamaz, bir iki saniye %1-3 yavaş akar). Boşluğu sık sık 0'a inen (seğiren) bağlantıya
+    dokunulmaz. İstemci hiç hızlandırılmaz: ölçümde seğiren bağlantıya derin tampon vermek sahibinin
+    düzeltmelerini, kaçırılan tick'lerden daha çok büyüttü.
+- Sunucu her oyuncu için tick başına bir girdi tüketir; kuyruk 10'u aşarsa 4'e kırpılır (gecikme
   birikmesin). Girdi gelmezse son girdi en fazla 18 tick (~300 ms, Wi-Fi takılması) tekrarlanır;
   daha uzun sessizlikte tuşlar bırakılmış sayılır, geç gelen eski girdi onları yeniden kilitlemez.
+- Ölçüm: `tests/netsim` gerçek `rooms.ts` + dört gerçek tahminciyi sanal saatle, modellenmiş bağlantılarla
+  oynatır (`pnpm netsim 300 6`). 6 tohum × 5 dk, top
+  düzeltmesi 2 sn'lik pencere en büyüğü p95 (px) / bekleyen girdi medyanı:
+
+  | Adım | steady20 | spiky20 | far100 | bursty |
+  |---|---|---|---|---|
+  | Önce | 58 / 8,7 | 43 / 5 | 60 / 8,2 | 27 / 2,3 |
+  | + saat eşitleme | 29 / 3 | 27 / 2 | 56 / 7,5 | 25 / 2,3 |
+  | + girdi aktarımı | 24 / 3 | 17 / 2 | 46 / 7,5 | 18 / 2,7 |
+
+  Çizilen topun gerçeğe uzaklığı p95: 24 → 5, 20 → 5, 29 → 20, 10 → 2,6 px. Topun ters yöne kaymasını
+  önleyen ayrı bir sönüm kuralı denendi, ölçülebilir fark yaratmadı (uzak topta sönüm zaten neredeyse hiç
+  geri kaydırmıyor), alınmadı.
 - Bağlantı canlılığı: sunucu 5 sn'de bir ping atar, 2 cevapsızda bağlantıyı kapatır; istemci 6 sn hiçbir
   şey duymazsa yeniden bağlanır. Aynı sekme (oturum anahtarı) yeni bağlantıyla gelirse eski bağlantı
   hâlâ açık görünse de yeri devralır; eskisi 4011 ile kapanır ("başka sekmede açık").

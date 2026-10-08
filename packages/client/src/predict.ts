@@ -6,9 +6,12 @@ import { cloneGame, step, type Game } from '@crateball/sim';
  * Why: in a host-authoritative game the ball only moves on the client after a round trip, so a kick
  * feels late and the ball jumps. Here the client simulates every tick locally with its own input
  * immediately; other players repeat their last known input. When an authoritative snapshot arrives
- * we roll back to it, drop acknowledged inputs and re-simulate the rest. The visual difference
- * between the old and the new prediction becomes an offset that decays over a few frames, so
- * corrections glide instead of snapping.
+ * we roll back to it, drop acknowledged inputs and re-simulate the rest. The server also relays every
+ * other player's change of keys the moment it gets it, with the tick it will apply it at: one still in
+ * our future is simply played when we get there; one in our already-predicted past rolls back to the
+ * last snapshot and re-simulates at once, instead of waiting up to a snapshot interval. The visual
+ * difference between the old and the new prediction becomes an offset that decays over a few frames,
+ * so corrections glide instead of snapping.
  */
 
 export interface Vec {
@@ -56,6 +59,8 @@ export interface Predictor {
   /** One local tick with this input; returns the sequence number to send. */
   tick(bits: number): number | null;
   snapshot(ack: number, g: Game): void;
+  /** Relayed input: player `id` presses `bits` in the step from tick `k` on. */
+  remoteInput(id: string, k: number, bits: number): void;
   /** Interpolated + smoothed render position of a player id or 'ball'. */
   pos(id: string, alpha: number): Vec | null;
   decay(dtSec: number): void;
@@ -71,12 +76,19 @@ function positions(g: Game): Positions {
 
 export function createPredictor(): Predictor {
   let game: Game | null = null;
+  /** The last snapshot, kept to roll back to when a relayed input lands in our predicted past. */
+  let base: Game | null = null;
+  /** Relayed key changes of other players, per id, in tick order: [tick, bits]. Only those at or after
+   * `base.tick` matter; older ones are already in the snapshot. */
+  const remote = new Map<string, Array<[number, number]>>();
   let me: string | null = null;
   let seq = 0;
   let pending: Array<[number, number]> = [];
   let prev: Positions = new Map();
   let cur: Positions = new Map();
   const err: Positions = new Map();
+  /** Interpolation point of the last drawn frame (0..1 between the previous and current tick). */
+  let drawnAlpha = 1;
   let corrections = 0;
   let myCorrection = 0;
   let maxCorrection = { me: 0, ball: 0, others: 0 };
@@ -84,8 +96,65 @@ export function createPredictor(): Predictor {
   const advance = (bits: number) => {
     if (!game) return;
     prev = cur;
-    step(game, me ? new Map([[me, bits]]) : undefined);
+    const inputs = new Map<string, number>();
+    for (const [id, changes] of remote) {
+      // The newest relayed change at or before this tick (the list is short: a few per second).
+      let b: number | undefined;
+      for (const [k, v] of changes) if (k <= game.tick) b = v;
+      if (b !== undefined) inputs.set(id, b);
+    }
+    if (me) inputs.set(me, bits);
+    step(game, inputs);
     cur = positions(game);
+  };
+
+  /** Back to `base`, replay our pending inputs, and turn the change in what we show into offsets. */
+  const rebuild = () => {
+    if (!base) return;
+    const before = game ? cur : null;
+    const beforePrev = prev;
+    game = cloneGame(base);
+    cur = positions(game);
+    prev = cur;
+    for (const [, bits] of pending) advance(bits);
+    for (const id of err.keys()) if (!cur.has(id)) err.delete(id);
+    if (!before) return;
+    for (const [id, now] of cur) {
+      const old = before.get(id);
+      if (!old) continue;
+      const dx = old.x - now.x;
+      const dy = old.y - now.y;
+      // The offset keeps what is drawn right now in place: compare the two predictions where the last
+      // frame drew them, between their previous and current tick. Comparing whole ticks only would move
+      // the drawn ball by up to a tick's worth of a velocity change (a kick) at once.
+      const oldPrev = beforePrev.get(id) ?? old;
+      const nowPrev = prev.get(id) ?? now;
+      const ox = dx + (1 - drawnAlpha) * (oldPrev.x - old.x - (nowPrev.x - now.x));
+      const oy = dy + (1 - drawnAlpha) * (oldPrev.y - old.y - (nowPrev.y - now.y));
+      const e = err.get(id) ?? { x: 0, y: 0 };
+      const snapAt = id === 'ball' ? BALL_SNAP_DISTANCE : SNAP_DISTANCE;
+      const maxOffset = id === 'ball' ? BALL_MAX_OFFSET : MAX_OFFSET;
+      if (dx * dx + dy * dy > snapAt * snapAt) {
+        // A real teleport in this one correction (respawn, kickoff reset): show it as is.
+        e.x = e.y = 0;
+      } else {
+        // Small corrections stack up; cap the total offset instead of dropping it, because
+        // dropping it would jump the object by the whole accumulated amount in one frame.
+        e.x += ox;
+        e.y += oy;
+        const len = Math.sqrt(e.x * e.x + e.y * e.y);
+        if (len > maxOffset) {
+          e.x *= maxOffset / len;
+          e.y *= maxOffset / len;
+        }
+        if (dx * dx + dy * dy > 0.25) corrections++;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        const who = id === me ? 'me' : id === 'ball' ? 'ball' : 'others';
+        maxCorrection[who] = Math.max(maxCorrection[who], d);
+        if (id === me) myCorrection += d;
+      }
+      err.set(id, e);
+    }
   };
 
   return {
@@ -111,6 +180,8 @@ export function createPredictor(): Predictor {
     },
     reset() {
       game = null;
+      base = null;
+      remote.clear();
       pending = [];
       prev = new Map();
       cur = new Map();
@@ -129,47 +200,30 @@ export function createPredictor(): Predictor {
       return seq;
     },
     snapshot(ack, g) {
-      const before = game ? cur : null;
       // The server counted stand-in ticks for us (we were late): continue numbering after them.
       if (ack > seq) seq = ack;
       pending = pending.filter(([s]) => s > ack);
-      game = cloneGame(g);
-      cur = positions(game);
-      prev = cur;
-      for (const [, bits] of pending) advance(bits);
-      for (const id of err.keys()) if (!cur.has(id)) err.delete(id);
-      if (!before) return;
-      for (const [id, now] of cur) {
-        const old = before.get(id);
-        if (!old) continue;
-        const dx = old.x - now.x;
-        const dy = old.y - now.y;
-        const e = err.get(id) ?? { x: 0, y: 0 };
-        const snapAt = id === 'ball' ? BALL_SNAP_DISTANCE : SNAP_DISTANCE;
-        const maxOffset = id === 'ball' ? BALL_MAX_OFFSET : MAX_OFFSET;
-        if (dx * dx + dy * dy > snapAt * snapAt) {
-          // A real teleport in this one correction (respawn, kickoff reset): show it as is.
-          e.x = e.y = 0;
-        } else {
-          // Small corrections stack up; cap the total offset instead of dropping it, because
-          // dropping it would jump the object by the whole accumulated amount in one frame.
-          e.x += dx;
-          e.y += dy;
-          const len = Math.sqrt(e.x * e.x + e.y * e.y);
-          if (len > maxOffset) {
-            e.x *= maxOffset / len;
-            e.y *= maxOffset / len;
-          }
-          if (dx * dx + dy * dy > 0.25) corrections++;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          const who = id === me ? 'me' : id === 'ball' ? 'ball' : 'others';
-          maxCorrection[who] = Math.max(maxCorrection[who], d);
-          if (id === me) myCorrection += d;
-        }
-        err.set(id, e);
+      base = cloneGame(g);
+      for (const [id, changes] of remote) {
+        // Changes before the snapshot's tick are in it already (each player's `input`).
+        const keep = changes.filter(([k]) => k >= g.tick);
+        if (keep.length > 0) remote.set(id, keep);
+        else remote.delete(id);
       }
+      rebuild();
+    },
+    remoteInput(id, k, bits) {
+      if (!base || !game || id === me || k < base.tick) return;
+      const changes = remote.get(id) ?? [];
+      // Arrives in order from one server; a duplicate tick replaces (the server re-timed it).
+      while (changes.length > 0 && changes[changes.length - 1]![0] >= k) changes.pop();
+      changes.push([k, bits]);
+      remote.set(id, changes);
+      // Still ahead of our prediction: it is played when we get there. Already behind: re-simulate now.
+      if (k < game.tick) rebuild();
     },
     pos(id, alpha) {
+      drawnAlpha = alpha;
       const c = cur.get(id);
       if (!c) return null;
       const p = prev.get(id) ?? c;

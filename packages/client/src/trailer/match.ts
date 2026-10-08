@@ -137,6 +137,7 @@ export function replay(spec: MatchSpec, fromTick: number) {
     reset() {},
     tick: () => null,
     snapshot() {},
+    remoteInput() {},
     pos(id, alpha) {
       const b = at(g, id);
       const a = at(prev, id);
