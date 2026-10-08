@@ -168,8 +168,8 @@ export const ROLES = {
   mid: { reach: 8, kick: 1.18, zoneHalf: 252, firstTouch: 0.45 },
   /**
    * Forward, zone = from `zoneStart` px past halfway. Finisher: fastest, harder shots, and a shot that
-   * would just miss, or clip a post, is bent to `aimInside` px inside the line where the ball clears the
-   * post, when it points within `aimCos` of that.
+   * would just miss, or clip a post, is bent to pass the post `aimInside` px clear (across the ball's
+   * path, so steep shots from close in clear it too), when it points within `aimCos` of that.
    */
   fwd: { accel: 1.22, kick: 1.25, zoneStart: 80, aimCos: 0.94, aimInside: 4 },
 };

@@ -3,7 +3,7 @@ import { STATE_SCALE, decodeFrame, type DecodedSnap, type SnapDecoder } from './
 
 export * from './snap';
 
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */

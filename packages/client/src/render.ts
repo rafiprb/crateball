@@ -10,6 +10,7 @@ import {
   gunTarget,
   hasWeapon,
   kickDirection,
+  shotOnGoal,
   type Game,
   type Player,
   ARENAS,
@@ -722,20 +723,17 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     // Aim arrow: where my kick would send the ball. For a midfielder (the playmaker) it turns gold and
     // rings the teammate on an assisted pass; for a forward in their zone it turns green when the shot is
-    // on target (near misses included: the finisher bends those in) and marks the spot on the goal line.
+    // on target (near misses included: the finisher bends those in), never for one that would hit a post, and marks the spot on the goal line.
     const mine = g.players.find((p) => p.id === pr.me);
     const aim = mine && mine.dead === 0 && mine.frozen === 0 ? kickDirection(g, mine) : null;
     if (aim) {
       const rolesOn = g.settings.roles !== false;
       const showPass = aim.to !== null && mine?.role === 'mid' && rolesOn;
       let onTarget: number | null = null;
-      if (mine?.role === 'fwd' && mine.buff && rolesOn && aim.to === null) {
-        const goalX = (mine.team === 'red' ? 1 : -1) * FIELD.halfW;
-        if (aim.x * (goalX - bp.x) > 0) {
-          const y = bp.y + (aim.y / aim.x) * (goalX - bp.x);
-          if (Math.abs(y) < FIELD.goalHalf) onTarget = y;
-        }
-      }
+      // Green only when the ball goes in clean: a shot that would clip a post (steep ones from close in
+      // that are too far off to bend) stays white.
+      if (mine?.role === 'fwd' && mine.buff && rolesOn && aim.to === null)
+        onTarget = shotOnGoal(g, mine, aim);
       const color = showPass ? '#FFE066' : onTarget !== null ? '#7CFF7A' : 'rgba(255,255,255,.75)';
       if (onTarget !== null && mine) {
         const goalX = (mine.team === 'red' ? 1 : -1) * FIELD.halfW;

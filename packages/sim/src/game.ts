@@ -379,6 +379,58 @@ function kickMul(p: Player): number {
 
 const invMass = (p: Player) => (p.role === 'def' && p.buff ? ROLES.def.invMass : PLAYER.invMass);
 
+/** A ball centre this close to a post's centre touches it. */
+const POST_TOUCH = FIELD.postRadius + BALL.radius;
+
+/**
+ * Whether the ball at (bx, by), sent along the unit vector (nx, ny), goes into the goal at x = `goalX`
+ * without touching a post: its centre crosses the line inside the mouth and passes each post's centre at
+ * least `gap` away. Returns where it crosses the line, or null. Straight line only (no wind, no walls).
+ */
+function goalLineY(
+  bx: number,
+  by: number,
+  nx: number,
+  ny: number,
+  goalX: number,
+  gap: number,
+): number | null {
+  if (nx * (goalX - bx) <= 0) return null;
+  const y = by + (ny / nx) * (goalX - bx);
+  if (Math.abs(y) >= FIELD.goalHalf) return null;
+  for (const sy of [-1, 1]) {
+    const wx = goalX - bx;
+    const wy = sy * FIELD.goalHalf - by;
+    // Distance from the post's centre to the path (the post is ahead: it sits on the goal line).
+    if (Math.abs(nx * wy - ny * wx) < gap) return null;
+  }
+  return y;
+}
+
+/** Where `p`'s kick along `dir` would cross the goal line they attack, if it goes in clean (no post);
+ * else null. The client's aim arrow turns green on this. */
+export function shotOnGoal(g: Game, p: Player, dir: { x: number; y: number }): number | null {
+  return goalLineY(g.ball.x, g.ball.y, dir.x, dir.y, -side(p.team) * FIELD.halfW, POST_TOUCH);
+}
+
+/**
+ * The direction from the ball that passes the post at (goalX, postY) `gap` away on the goal's side
+ * (the inner tangent of a circle of that radius round the post), or null when the ball is inside it.
+ */
+function insidePost(bx: number, by: number, goalX: number, postY: number, gap: number) {
+  const vx = goalX - bx;
+  const vy = postY - by;
+  const l = Math.sqrt(vx * vx + vy * vy);
+  if (l <= gap) return null;
+  const sin = gap / l;
+  const cos = Math.sqrt(1 - sin * sin);
+  // Turn the line to the post by the tangent angle, toward the middle of the goal.
+  const turn = -Math.sign(postY) * Math.sign(vx);
+  const x = (vx * cos - turn * vy * sin) / l;
+  const y = (vy * cos + turn * vx * sin) / l;
+  return { x, y };
+}
+
 /**
  * Where a kick by `p` would send the ball right now, or null if the ball is out of reach.
  * Shared by the kick itself and the client's aim arrow.
@@ -396,15 +448,24 @@ export function kickDirection(g: Game, p: Player): { x: number; y: number; to: s
   const goalX = -side(p.team) * FIELD.halfW;
   if (nx * (goalX - b.x) > 0) {
     const yAtGoal = b.y + (ny / nx) * (goalX - b.x);
-    // Forward in their zone: a near miss, or a shot that would clip a post, is bent inside the nearer
-    // post (the ball's centre has to pass a post radius plus a ball radius inside it).
+    // Forward in their zone: a near miss, or a shot that would clip a post, is bent to pass the nearer
+    // post `aimInside` px clear (measured across the ball's path, so a steep shot from close in also
+    // clears it), as long as the far post is clear too.
     if (p.role === 'fwd' && p.buff) {
-      const inside = FIELD.goalHalf - FIELD.postRadius - BALL.radius - ROLES.fwd.aimInside;
-      if (Math.abs(yAtGoal) <= inside) return { x: nx, y: ny, to: null };
-      const ty = Math.max(-inside, Math.min(inside, yAtGoal)) - b.y;
-      const tx = goalX - b.x;
-      const tl = Math.sqrt(tx * tx + ty * ty) || 1;
-      if ((tx * nx + ty * ny) / tl > ROLES.fwd.aimCos) return { x: tx / tl, y: ty / tl, to: null };
+      if (goalLineY(b.x, b.y, nx, ny, goalX, POST_TOUCH) !== null) return { x: nx, y: ny, to: null };
+      const bent = insidePost(
+        b.x,
+        b.y,
+        goalX,
+        Math.sign(yAtGoal || 1) * FIELD.goalHalf,
+        POST_TOUCH + ROLES.fwd.aimInside,
+      );
+      if (
+        bent &&
+        bent.x * nx + bent.y * ny > ROLES.fwd.aimCos &&
+        goalLineY(b.x, b.y, bent.x, bent.y, goalX, POST_TOUCH) !== null
+      )
+        return { x: bent.x, y: bent.y, to: null };
     }
     if (Math.abs(yAtGoal) < FIELD.goalHalf) return { x: nx, y: ny, to: null };
   }

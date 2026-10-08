@@ -11,6 +11,7 @@ export {
   createGame,
   freeRole,
   kickDirection,
+  shotOnGoal,
   openCrate,
   setRole,
   removePlayer,

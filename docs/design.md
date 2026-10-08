@@ -40,7 +40,9 @@ oyuncu kutuya değince açılır.
   - DF (kendi kalesinden 340 px): ağır; hızla rakibe çarpınca omuz atar (ekstra itiş + 0,6 sn yarı hız), sonra
     1,5 sn bekleme.
   - MF (sahanın ortadaki %60'ı): uzun menzil, sert pas, ±15° pas yardımı, sert gelen topu yumuşak karşılar (%45).
-  - FW (orta çizginin 80 px ilerisinden): en hızlı, %25 sert şut; direğin az dışına giden şut içeri kıvrılır.
+  - FW (orta çizginin 80 px ilerisinden): en hızlı, %25 sert şut; direğin az dışına giden ya da direğe
+    değecek şut, top direğe değmeden geçecek şekilde içeri kıvrılır (en fazla ~20°; yakından çok dik açılı
+    şut kıvrılmaz). Nişan oku yalnızca top direğe değmeden girecekse yeşil yanar.
   - Tutma / yumuşak karşılama sadece sert gelen topta (top ve çarpma hızı ≥ 2 px/tik): yavaş dokunuş, top
     sürme ve topun etrafında dönme normal kalır, yani kaleci tutup çevirip pas atabilir.
   - Gerçek mevkiler takımda tek kişilik: bir insan takım arkadaşının mevkisi alınamaz (lobide düğmesi

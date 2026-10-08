@@ -23,6 +23,7 @@ import {
   hashState,
   ROLES,
   kickDirection,
+  shotOnGoal,
   openCrate,
   setRole,
   step,
@@ -503,6 +504,74 @@ describe('mevkiler', () => {
     step(g, new Map([['f', KICK]]));
     run(g, 120);
     expect(g.score).toEqual([1, 0]);
+  });
+});
+
+describe('forvet: yakın ve çapraz şutlar', () => {
+  // From near the goal line at a steep angle, aimed at the near post (or a hair inside or outside it).
+  const near = (px: number, py: number, aimY: number) => {
+    const g = createGame(1);
+    g.phase = 'play';
+    const f = addPlayer(g, 'f', 'F', 'red');
+    const tx = FIELD.halfW - px;
+    const ty = aimY - py;
+    const n = Math.hypot(tx, ty);
+    Object.assign(f, { x: px, y: py });
+    Object.assign(g.ball, { x: px + (tx / n) * 26, y: py + (ty / n) * 26 });
+    step(g);
+    return { g, f };
+  };
+
+  /** Kicks and follows the ball: did it touch a post, and did it go in? */
+  const kick = (g: ReturnType<typeof createGame>) => {
+    step(g, new Map([['f', KICK]]));
+    let post = false;
+    for (let t = 0; t < 120 && g.phase === 'play'; t++) {
+      step(g);
+      for (const sy of [-1, 1])
+        if (
+          Math.hypot(g.ball.x - FIELD.halfW, g.ball.y - sy * FIELD.goalHalf) <
+          FIELD.postRadius + BALL.radius + 0.01
+        )
+          post = true;
+    }
+    return { post, goal: g.score[0] === 1 };
+  };
+
+  it('yakın çapraz şut direğe nişan alınca içeri kıvrılır (açı sınırı içinde)', () => {
+    for (const [px, py, aimY] of [
+      [360, -150, -FIELD.goalHalf],
+      [340, 160, FIELD.goalHalf],
+      [300, -40, FIELD.goalHalf],
+    ] as const) {
+      const { g, f } = near(px, py, aimY);
+      expect(shotOnGoal(g, f, kickDirection(g, f)!), `${px},${py}`).not.toBeNull();
+      expect(kick(g), `${px},${py}`).toEqual({ post: false, goal: true });
+    }
+  });
+
+  it('yeşil yanıyorsa top direğe değmeden girer (saha önünde tarama)', () => {
+    let green = 0;
+    for (let px = 200; px <= 400; px += 25)
+      for (let py = -190; py <= 190; py += 38)
+        for (const aimY of [-90, -70, -64, -58, -45, 0, 45, 58, 64, 70, 90]) {
+          const { g, f } = near(px, py, aimY);
+          const d = kickDirection(g, f);
+          if (!d || shotOnGoal(g, f, d) === null) continue;
+          green++;
+          expect(kick(g), `${px},${py} → ${aimY}`).toEqual({ post: false, goal: true });
+        }
+    expect(green).toBeGreaterThan(100);
+  });
+
+  it('direğe çarpacak şutta yeşil yanmaz', () => {
+    // A plain player (no bend) aiming at the near post from close: the line crosses inside the mouth
+    // but the ball clips the post.
+    const { g, f } = near(370, -140, -FIELD.goalHalf + 8);
+    setRole(g, 'f', 'def');
+    const d = kickDirection(g, f)!;
+    expect(Math.abs(g.ball.y + (d.y / d.x) * (FIELD.halfW - g.ball.x))).toBeLessThan(FIELD.goalHalf);
+    expect(shotOnGoal(g, f, d)).toBeNull();
   });
 });
 
