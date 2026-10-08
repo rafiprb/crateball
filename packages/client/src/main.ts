@@ -495,7 +495,8 @@ document.body.append(matchBar);
 const keyboard = createKeyboard(window, (code) => {
   if (code === 'KeyM') setMuted(!sound.muted);
   if (code === 'KeyR' || code === 'F9') sendReport();
-  if (code === 'Enter' && room) chat.open();
+  // Not under the results screen: the chat would open behind it, typing into a box nobody sees.
+  if (code === 'Enter' && room && !results.visible) chat.open();
 });
 document.addEventListener('visibilitychange', () => keyboard.release());
 

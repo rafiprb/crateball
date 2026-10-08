@@ -60,14 +60,48 @@ export const MATCH = {
   resultsShow: sec(30),
 };
 
-/** Match stats on the results screen. */
+/**
+ * Match stats and the MVP (see `stats.ts` and docs/next.md "Scoring"). Built to resist farming: outcomes
+ * count, not intent; a scramble produces nothing; goals and assists decide the MVP.
+ */
 export const STATS = {
   /** Contact with the ball is a new touch after this long off it, so a dribble counts once. */
   touchGap: sec(0.5),
-  /** A kick is a shot when it would roll over the goal line within this far of the middle (the keeper's
-   * box); on target when that is inside the posts. */
+  /** A spell on the ball is owned once this long has passed without anyone else touching it. A touch
+   * that takes the ball off an opponent sooner than that is a scramble: no shot, pass or tackle counts. */
+  own: sec(0.5),
+  /** A kick is a shot when it would roll over the goal line within this far of the middle. */
   shotBand: 140,
+  /** ...is made at most this far from the goal line (the forward's zone), and leaves at least this fast
+   * (px/tick). A save or a block needs it still coming at `shotArrive` (not a ball rolling to a stop). */
+  shotRange: 330,
+  shotSpeed: 3.5,
+  shotArrive: 2.5,
+  /** A ball that goes in this soon after an attacker's kick, off a defender who only stood in the way
+   * (no kick of theirs), stays the attacker's goal (not an own goal). */
+  deflect: sec(1),
+  /** A keeper's save stands when no goal follows this soon. */
+  saveHold: sec(2),
+  /** An assist: the pass was touched by the scorer at most this long after the passer's last touch. */
+  assistGap: sec(3),
+  /** A completed pass travels at least this far (px), and the same pair counts once per `passRepeat`. */
+  passMin: 80,
+  passRepeat: sec(10),
+  /** Points: goal and assist per role, the role's own extras (capped at `extrasCap` in all), own goal,
+   * and a keeper's goal conceded (outside the cap). Roles off: everyone scores as `none`. */
+  points: {
+    fwd: { goal: 3, assist: 2, onTarget: 0.25 },
+    mid: { goal: 2, assist: 3, passes: 0.25 },
+    def: { goal: 2, assist: 2, tackles: 1, blocks: 1.5 },
+    gk: { goal: 2, assist: 2, saves: 1, cleanSheet: 2 },
+    none: { goal: 3, assist: 2 },
+  } as Record<Role, { goal: number; assist: number } & Partial<Record<ScoredExtra, number>>>,
+  extrasCap: 3,
+  ownGoal: -1,
+  conceded: -0.5,
 };
+/** Stats that earn a role's extra points. */
+export type ScoredExtra = 'onTarget' | 'passes' | 'tackles' | 'blocks' | 'saves' | 'cleanSheet';
 
 export type ItemKind =
   'gun' | 'mine' | 'ice' | 'dizzy' | 'boost' | 'shield' | 'power' | 'teleport' | 'bazooka';

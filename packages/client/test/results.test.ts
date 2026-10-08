@@ -43,10 +43,14 @@ describe('maç sonu ekranı', () => {
     const me = rowOf('Ayşe');
     expect(me.className).toBe('me');
     expect(me.querySelector('.mvp')?.textContent).toBe('MVP');
-    // Goals, touches (mine / everyone's), shots, saves, crates (good / bad), damage, deaths.
+    // Points, goals (scored / own), assists, shots, passes, defence, saves, crates (good / bad), damage,
+    // deaths.
     expect([...me.querySelectorAll('td')].slice(1).map((td) => td.textContent)).toEqual([
-      '2',
-      '30/40',
+      '6',
+      '2/0',
+      '0',
+      '0/0',
+      '0',
       '0/0',
       '0',
       '2/1',

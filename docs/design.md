@@ -108,20 +108,44 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
 - Ekran 30 sn açık kalır (`MATCH.resultsShow`), "Back to lobby" ya da Esc ile kapanır. Oda arkada 2 sn
   sonra lobiye dönmüş olur: isteyen hemen lobiye geçer, isteyen okumaya devam eder. Host bu arada yeni
   maçı başlatırsa ekran herkeste kapanır.
-- Sütunlar (oyuncu başına, yalnızca bu maç; `Player.stats`, sayan yer `game.ts`):
-  - Goals: atılan gol (kendi kalesine atılan sayılmaz).
-  - Touches: senin dokunuşun / maçtaki toplam dokunuş. Vuruş her zaman bir dokunuş; temas ise top son
-    başkasındaysa ya da 0,5 sn'dir topa değmiyorsan yeni dokunuş (top sürmek tek dokunuş).
-  - Shots: şut / isabetli şut. Pas yardımıyla takım arkadaşına bükülmeyen ve topu kendi hâlinde rakip kale
-    çizgisine ortadan 140 px içinde ulaştıracak vuruş şuttur (topun gidebileceği yol: hız / (1 − sönüm));
-    direklerin arasına gidiyorsa isabetli. Her gol isabetli şut sayılır (sürerek ya da direkten giren de).
-  - Saves: yalnızca kaleci (mevkiler açıkken); kendi kalesine giden topa yeni dokunuş. Diğer herkes 0.
-  - Crates: açılan iyi / kötü kutu (kötü: mine, ice, dizzy).
-  - Damage: rakibe verilen hasar (mermi, roket; canı kadar, fazlası sayılmaz) / kalkanın yuttuğu hasar.
-  - Deaths: ölüm.
-  - Top istatistikleri (dokunuş, şut, kurtarış) yalnızca top oyundayken sayılır, gol sonrası duraklamada değil.
-- MVP = gol + verilen hasar + kurtarış − ölüm (botlar dahil). Eşitlikte kazanan takımdan olan, sonra çok
-  dokunan, sonra listede önce gelen.
+- Puanlama farmlamaya dayanıklı kurulu (sayan yer `stats.ts`, sayılar `STATS`): niyete değil sonuca bakılır,
+  karambol istatistik üretmez, MVP'yi gol ve asist belirler. Hepsi yalnızca top oyundayken sayılır; oyun bu
+  sayıları hiç geri okumaz.
+  - Topa sahip olmak: bir oyuncunun topla kesintisiz zamanı (dokunuş serisi). 0,5 sn kimse dokunmazsa top
+    onundur. Rakipten 0,5 sn dolmadan alınan top karambol: o seri sahiplenene kadar şut, pas, top kapma ve
+    asist üretmez. Duvar, direk, mayın, lav, rüzgâr ve ördek dokunuş değildir, zinciri bozmaz.
+  - Şut: sahip olunan toptan, kale çizgisine en fazla 330 px uzaktan, en az 3,5 px/tik giden ve kaleye
+    ortadan 140 px içinde ulaşacak vuruş (takım arkadaşına bükülen vuruş pastır; santra şut değildir; seri
+    başına bir şut). İsabetli: gol, kurtarış ya da blokla biten şut. Her gol isabetli şut sayılır.
+  - Kurtarış (yalnızca kaleci): kaleye giden ve hâlâ hızlı (≥ 2,5 px/tik) gelen şutu durdurur, 2 sn içinde
+    gol olmaz. Geri pas, aut topu ve yavaş yuvarlanan top kurtarış değildir.
+  - Blok: kaleci olmayan biri isabetli şutu kendi ceza sahasında keser. Kurtarış ve blok, 2 sn içinde
+    gol olmazsa yazılır; şutu atanın isabetli şutu ise hemen yazılır.
+  - Gol: topa son değene yazılır; ama savunanın vuruş olmayan temasıyla, karambolde ya da hücumcunun
+    vuruşundan sonraki 1 sn içinde giren top hücumcunun golüdür (kaleci elini değdirip kaçırsa da). Kendi
+    kalesine gol: savunanın kendi vuruşu ya da kontrol ettiği topla.
+  - Asist: golcünün serisinden hemen önceki dokunuş takım arkadaşının sahip olduğu seriden, en fazla 3 sn
+    önce; arada rakip dokunuşu yok (direkten dönen top zinciri bozmaz). Kendi kalesine golde asist yok.
+  - Pas: sahip olunan toptan takım arkadaşına en az 80 px; aynı ikili 10 sn'de bir kez.
+  - Top kapma: rakip topa sahipti ve ayağındaydı (son 0,5 sn içinde, vuruş değil temas), topu alırsın ve
+    takımın 0,5 sn tutar. Şutu ya da pası kesmek top kapma değildir.
+  - Kaleci: yenen gol −0,5 (tavan dışı), maçı gol yemeden bitirirse temiz kale.
+  - Kendi kalesine gol −1. Ölüm, hasar ve kutular gösterilir ama puana girmez.
+- Puanlar (mevki katkısı toplam en fazla 3; mevkiler kapalıysa herkes "No role"):
+
+  | Mevki | Gol | Asist | Mevki katkısı |
+  |---|---|---|---|
+  | Forvet | 3 | 2 | isabetli şut 0,25 |
+  | Orta saha | 2 | 3 | pas 0,25 |
+  | Defans | 2 | 2 | top kapma 1, blok 1,5 |
+  | Kaleci | 2 | 2 | kurtarış 1, temiz kale 2 |
+  | Mevkisiz | 3 | 2 | yok |
+
+  Ağırlıklar 60 bot maçıyla bakıldı (2026-10-08): botlar pas kurmadığı ve bot defans kalesinde beklediği
+  için asist ve defans ayarı gerçek maçlarla yapılacak (maç kaydı gelince).
+- MVP: en çok puan; eşitlikte kazanan takım, sonra gol, sonra asist, sonra listede önce gelen.
+- Sütunlar: Points, Goals (atılan / kendi kalesine), Assists, Shots (hepsi / isabetli), Passes, Defence (top
+  kapma / blok), Saves (mevkiler açıkken), Crates (iyi / kötü), Damage (verilen / kalkanın yuttuğu), Deaths.
 - Ağ: istatistikler oyun durumunun parçası; delta snapshot'larda yalnızca değişen sayılar gider. Ekran, son
   düdükten sonraki ilk snapshot'taki sunucu sayılarını gösterir. Tasarım denemesi için dev'de
   `window.__game.cmd('results')` (ya da `'blue'`) uydurma bir maç sonu açar.

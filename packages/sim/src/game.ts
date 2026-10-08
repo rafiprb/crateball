@@ -14,7 +14,6 @@ import {
   PLAYER,
   REST_SPEED,
   ROLES,
-  STATS,
   TICK_HZ,
   type ItemKind,
   type Role,
@@ -38,7 +37,16 @@ import {
 } from './types';
 import { botInput } from './bot';
 import { gunTarget } from './aim';
-import { newStats } from './stats';
+import {
+  clearScoring,
+  cloneScoring,
+  finishScoring,
+  newScoring,
+  newStats,
+  scoreGoal,
+  touchBall,
+  updateScoring,
+} from './stats';
 import {
   arenaAccel,
   ballDamping,
@@ -66,6 +74,7 @@ export function createGame(seed: number, settings: Settings = DEFAULT_SETTINGS):
     kickoffTeam: 'red',
     nextCrate: CRATES.firstAfter,
     lastTouch: null,
+    scoring: newScoring(),
     players: [],
     ball: { x: 0, y: 0, vx: 0, vy: 0 },
     crates: [],
@@ -84,6 +93,7 @@ export function cloneGame(g: Game): Game {
     ...g,
     score: [g.score[0], g.score[1]],
     players: g.players.map((p) => ({ ...p, stats: { ...p.stats } })),
+    scoring: cloneScoring(g.scoring),
     ball: { ...g.ball },
     crates: g.crates.map((c) => ({ ...c })),
     bullets: g.bullets.map((b) => ({ ...b })),
@@ -196,6 +206,7 @@ function resetKickoff(g: Game, kickoffTeam: Team): void {
   g.phaseT = 0;
   g.kickoffTeam = kickoffTeam;
   g.ball = { x: 0, y: 0, vx: 0, vy: 0 };
+  clearScoring(g);
   g.bullets = [];
   g.blasts = [];
   g.crates = [];
@@ -272,6 +283,7 @@ export function step(g: Game, inputs?: ReadonlyMap<string, number>): void {
   );
   g.blasts = g.blasts.filter((b) => --b.t > 0);
   rules(g);
+  updateScoring(g);
   canonicalise(g);
 }
 
@@ -499,47 +511,8 @@ export function kickDirection(g: Game, p: Player): { x: number; y: number; to: s
   return best;
 }
 
-/** The ball is in play (not sitting in the net after a goal): only then do touches, shots and saves count. */
+/** The ball is in play (not sitting in the net after a goal): only then do touches count in the stats. */
 const live = (g: Game) => g.phase === 'play' || g.phase === 'kickoff';
-
-/**
- * Where the ball, rolling on untouched, crosses the goal line at x = `gx`: its y there, or null when it
- * is moving away or would stop first (it rolls at most speed / (1 − damping)). Walls are ignored.
- */
-function crossingY(g: Game, gx: number): number | null {
-  const b = g.ball;
-  if (b.vx === 0) return null;
-  const t = (gx - b.x) / b.vx;
-  if (t <= 0 || t * (1 - ballDamping(g, BALL.damping)) > 1) return null;
-  return b.y + b.vy * t;
-}
-
-/**
- * `p` is on the ball this tick (a kick or a contact). Returns whether that is a new touch: a kick always
- * is; a contact is when someone else had the ball last or `p` has been off it for STATS.touchGap.
- */
-function touchBall(g: Game, p: Player, kick: boolean): boolean {
-  const s = p.stats;
-  const fresh = kick || g.lastTouch !== p.id || g.tick - s.ballAt > STATS.touchGap;
-  s.ballAt = g.tick;
-  if (!fresh) return false;
-  s.touches++;
-  s.shot = 0;
-  return true;
-}
-
-/** A kick that sends the ball at the opponents' goal is a shot; heading inside the posts, on target. */
-function countShot(g: Game, p: Player): void {
-  const y = crossingY(g, -side(p.team) * FIELD.halfW);
-  if (y === null || Math.abs(y) >= STATS.shotBand) return;
-  const s = p.stats;
-  s.shots++;
-  s.shot = 1;
-  if (Math.abs(y) < FIELD.goalHalf) {
-    s.onTarget++;
-    s.shot = 2;
-  }
-}
 
 /** Kicks the ball if it is in reach (false if not). `power`: the power kick item, spent on it. */
 function tryKick(g: Game, p: Player, power = false): boolean {
@@ -547,13 +520,11 @@ function tryKick(g: Game, p: Player, power = false): boolean {
   if (!dir) return false;
   const b = g.ball;
   const k = PLAYER.kickStrength * (power ? PLAYER.powerKickMul : 1) * kickMul(p) * BALL.invMass;
+  const before = { x: b.x, y: b.y, vx: b.vx, vy: b.vy };
   b.vx += dir.x * k;
   b.vy += dir.y * k;
-  if (live(g)) {
-    touchBall(g, p, true);
-    // A pass bent toward a teammate is not a shot.
-    if (!dir.to) countShot(g, p);
-  }
+  // A kick bent toward a teammate is a pass, never a shot.
+  if (live(g)) touchBall(g, p, { pass: dir.to !== null }, before);
   p.kickArmed = false;
   p.kickTick = g.tick;
   if (power) p.power = false;
@@ -758,12 +729,9 @@ function collide(g: Game): void {
     const b = g.ball;
     const flying = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
     const hitSpeed = Math.sqrt((b.vx - a.vx) ** 2 + (b.vy - a.vy) ** 2);
-    // A keeper's save: the ball was rolling into the own goal until this touch.
-    const ownGoalY =
-      a.role === 'gk' && rolesOn(g) && live(g) ? crossingY(g, side(a.team) * FIELD.halfW) : null;
-    const saving = ownGoalY !== null && Math.abs(ownGoalY) < FIELD.goalHalf;
+    const before = { x: b.x, y: b.y, vx: b.vx, vy: b.vy };
     if (contact(a, a.r, invMass(a), touch, b, BALL.radius, BALL.invMass, BALL.bounce)) {
-      if (live(g) && touchBall(g, a, false) && saving) a.stats.saves++;
+      if (live(g)) touchBall(g, a, null, before);
       g.lastTouch = a.id;
       // Keeper's safe hands / midfielder's soft first touch: a ball that arrives hard keeps only part
       // of its own speed, so it drops at their feet instead of bouncing away. Slow touches (running
@@ -1122,14 +1090,7 @@ function rules(g: Game): void {
   if (g.phase === 'play' && Math.abs(b.x) > FIELD.halfW + BALL.radius && Math.abs(b.y) < FIELD.goalHalf) {
     const scorer: Team = b.x > 0 ? 'red' : 'blue';
     g.score[scorer === 'red' ? 0 : 1]++;
-    const toucher = g.players.find((p) => p.id === g.lastTouch);
-    if (toucher && toucher.team === scorer) {
-      toucher.goals++;
-      // Every goal is a shot on target, also one dribbled in or one that went in off the post.
-      const s = toucher.stats;
-      if (s.shot === 0) s.shots++;
-      if (s.shot !== 2) s.onTarget++;
-    }
+    scoreGoal(g, scorer);
     g.phase = 'goal';
     g.phaseT = 0;
     return;
@@ -1140,6 +1101,7 @@ function rules(g: Game): void {
     if (r >= g.settings.scoreLimit || bl >= g.settings.scoreLimit || (timeUp && r !== bl)) {
       g.phase = 'over';
       g.phaseT = 0;
+      finishScoring(g);
       return;
     }
     resetKickoff(g, b.x > 0 ? 'blue' : 'red');
@@ -1148,6 +1110,7 @@ function rules(g: Game): void {
   if (g.phase === 'play' && g.settings.minutes > 0 && g.clock === 0 && g.score[0] !== g.score[1]) {
     g.phase = 'over';
     g.phaseT = 0;
+    finishScoring(g);
   }
 }
 

@@ -56,16 +56,30 @@ export interface Player {
   stats: Stats;
 }
 
-/** One player's match numbers for the results screen. Nothing in the game reads them back. */
+/** One player's match numbers for the results screen and the MVP (see stats.ts). The game itself never
+ * reads them back. */
 export interface Stats {
-  /** Spells on the ball: a kick, or a contact after someone else had it or after STATS.touchGap off it. */
+  /** Spells on the ball: a kick, or a contact after STATS.touchGap off it. */
   touches: number;
-  /** Kicks at the opponents' goal (see STATS.shotBand), and those of them heading inside the posts.
-   * A goal is always a shot on target, even one dribbled in. */
+  assists: number;
+  ownGoals: number;
+  /** Kicks at the opponents' goal from an owned ball (one per spell), and those of them that ended in a
+   * goal, a keeper's save or a block. A goal is always a shot on target, even one dribbled in. */
   shots: number;
   onTarget: number;
-  /** Keeper only: touches that stopped a ball rolling into the own goal. */
+  /** Keeper only: a shot on target stopped, with no goal within STATS.saveHold. */
   saves: number;
+  /** Owned ball reaching a teammate at least STATS.passMin away, no opponent touch in between. */
+  passes: number;
+  /** Took the ball off an opponent who owned it and was on it within STATS.touchGap, and the side kept
+   * it for STATS.own. */
+  tackles: number;
+  /** A shot on target stopped in the own box by someone who is not the keeper, with no goal straight
+   * after. */
+  blocks: number;
+  /** Keeper only: goals let in, and 1 when the side let in none by the final whistle. */
+  conceded: number;
+  cleanSheet: number;
   /** Crates opened: helpful ones and harmful ones (ITEM_BAD). */
   goodCrates: number;
   badCrates: number;
@@ -74,10 +88,41 @@ export interface Stats {
   /** Damage the shield took instead of you. */
   absorbed: number;
   deaths: number;
-  /** Bookkeeping, not shown: tick of the latest contact with the ball, and whether the touch that
-   * started this spell was a shot (0 no, 1 wide, 2 on target). */
+  /** Bookkeeping, not shown: tick of the latest contact with the ball; the last completed pass (to whom,
+   * when) so the same pair counts once per STATS.passRepeat. */
   ballAt: number;
-  shot: 0 | 1 | 2;
+  passTo: string;
+  passAt: number;
+}
+
+/** A player's unbroken time on the ball: from the touch that took it to the latest one. */
+export interface Spell {
+  id: string;
+  team: Team;
+  first: number;
+  last: number;
+  /** Not taken off an opponent in a scramble (their spell was shorter than STATS.own). */
+  clean: boolean;
+  /** Where the ball was at the latest touch. */
+  x: number;
+  y: number;
+  /** The latest touch was a kick. */
+  kick: boolean;
+  /** A shot already counted in this spell (one per spell). */
+  shot: boolean;
+}
+
+/** Who had the ball lately, and what is waiting for an outcome. Written by stats.ts only. */
+export interface Scoring {
+  /** The latest spells, oldest first (at most three). Cleared at every kickoff. */
+  spells: Spell[];
+  /** The latest counted shot: `done` once someone else touched the ball (its outcome known), `on` when
+   * that made it a shot on target (a save or a block). */
+  shot: { by: string; team: Team; done: boolean; on: boolean } | null;
+  /** A save or a block that stands unless a goal comes within STATS.saveHold. */
+  stop: { by: string; kind: 'save' | 'block'; at: number } | null;
+  /** A ball won off an opponent: a tackle once the side keeps it for STATS.own. */
+  tackle: { by: string; team: Team; at: number } | null;
 }
 
 export interface Body {
@@ -127,6 +172,8 @@ export interface Game {
   kickoffTeam: Team;
   nextCrate: number;
   lastTouch: string | null;
+  /** Match stats bookkeeping (stats.ts). */
+  scoring: Scoring;
   players: Player[];
   ball: Body;
   crates: Crate[];

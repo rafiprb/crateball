@@ -1,4 +1,4 @@
-import { MATCH, TICK_HZ, mvp, type Game, type Player, type Team } from '@crateball/sim';
+import { MATCH, TICK_HZ, mvp, mvpScore, type Game, type Player, type Team } from '@crateball/sim';
 import { ROLE_LABEL, h } from './ui';
 
 /**
@@ -16,16 +16,26 @@ export interface Results {
 
 type Cell = Node | string;
 
-/** Column header, the line under it, and its tooltip. */
-const COLUMNS: Array<[string, string, string]> = [
-  ['Goals', '', 'Goals scored'],
-  ['Touches', 'you / all', 'Your touches of the ball / all touches in the match'],
-  ['Shots', 'all / on target', 'Shots at goal / of them heading inside the posts'],
-  ['Saves', '', 'Keeper: balls stopped on their way into the goal'],
+/** Column header, the line under it, and its tooltip. `roles`: only shown with positions on. */
+const COLUMNS: Array<[string, string, string, boolean?]> = [
+  [
+    'Points',
+    '',
+    "MVP points: goals and assists (worth more or less by position) plus the position's own play, at most 3",
+  ],
+  ['Goals', 'scored / own', 'Goals scored / own goals'],
+  ['Assists', '', 'The pass the goal came from (the scorer got it straight from you, within 3 s)'],
+  ['Shots', 'all / on target', 'Shots at goal / of them a goal, a save or a block'],
+  ['Passes', '', 'Passes that reached a teammate'],
+  ['Defence', 'tackles / blocks', 'Balls won off an opponent / shots blocked in your box'],
+  ['Saves', '', 'Keeper: shots stopped', true],
   ['Crates', 'good / bad', 'Crates opened: helpful / harmful'],
   ['Damage', 'dealt / shielded', 'Damage dealt to opponents / damage your shield took'],
   ['Deaths', '', 'Times knocked out'],
 ];
+
+/** 2.25 → "2.25", 3 → "3", −0.5 → "−0.5". */
+const points = (n: number) => (n < 0 ? '−' : '') + String(Math.round(Math.abs(n) * 100) / 100);
 
 const TEAM_NAME: Record<Team, string> = { red: 'Red', blue: 'Blue' };
 
@@ -57,17 +67,22 @@ export function createResults(parent: HTMLElement = document.body): Results {
     if (e.key === 'Escape' && !root.hidden) hide();
   });
 
-  const row = (p: Player, total: number, me: string | null, best: string | null, roles: boolean) => {
+  const row = (g: Game, p: Player, me: string | null, best: string | null, roles: boolean) => {
     const s = p.stats;
-    const cells: Array<[Cell, boolean]> = [
-      [String(p.goals), p.goals === 0],
-      [pair(s.touches, total, '', 'of'), s.touches === 0],
+    const pts = mvpScore(g, p);
+    const all: Array<[Cell, boolean]> = [
+      [h('b', {}, points(pts)), pts === 0],
+      [pair(p.goals, s.ownGoals, '', s.ownGoals ? 'bad' : ''), p.goals + s.ownGoals === 0],
+      [String(s.assists), s.assists === 0],
       [pair(s.shots, s.onTarget), s.shots === 0],
+      [String(s.passes), s.passes === 0],
+      [pair(s.tackles, s.blocks), s.tackles + s.blocks === 0],
       [String(s.saves), s.saves === 0],
       [pair(s.goodCrates, s.badCrates, 'good', 'bad'), s.goodCrates + s.badCrates === 0],
       [pair(s.damage, s.absorbed), s.damage + s.absorbed === 0],
       [String(s.deaths), s.deaths === 0],
     ];
+    const cells = all.filter((_, i) => roles || !COLUMNS[i]![3]);
     return h(
       'tr',
       { class: p.id === me ? 'me' : '' },
@@ -102,7 +117,6 @@ export function createResults(parent: HTMLElement = document.body): Results {
       const won: Team | null = red > blue ? 'red' : blue > red ? 'blue' : null;
       const best = mvp(g);
       const roles = g.settings.roles !== false;
-      const total = g.players.reduce((n, p) => n + p.stats.touches, 0);
       // Same wording as the pitch banner: the clock ran out (or a golden goal) vs. the score limit.
       const why = g.settings.minutes > 0 && g.clock === 0 ? 'FULL TIME' : `FIRST TO ${g.settings.scoreLimit}`;
       const team = (t: Team) =>
@@ -129,16 +143,12 @@ export function createResults(parent: HTMLElement = document.body): Results {
                   'tr',
                   {},
                   h('th', { class: 'who' }, 'Player'),
-                  ...COLUMNS.map(([label, sub, title]) =>
+                  ...COLUMNS.filter((c) => roles || !c[3]).map(([label, sub, title]) =>
                     h('th', { title }, label, sub && h('small', {}, sub)),
                   ),
                 ),
               ),
-              h(
-                'tbody',
-                {},
-                ...g.players.filter((p) => p.team === t).map((p) => row(p, total, me, best, roles)),
-              ),
+              h('tbody', {}, ...g.players.filter((p) => p.team === t).map((p) => row(g, p, me, best, roles))),
             ),
           ),
         );

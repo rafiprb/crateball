@@ -964,12 +964,16 @@ fieldset.weights {
   background: #ffe066;
   color: #1b2133;
 }
+/* A grid item would grow to the table's width and push the page sideways: the table scrolls in its card. */
+.rteam {
+  min-width: 0;
+}
 .rtable {
   overflow-x: auto;
 }
 .rtable table {
   width: 100%;
-  min-width: 620px;
+  min-width: 860px;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0 4px;
@@ -1000,7 +1004,7 @@ fieldset.weights {
 }
 .rtable th.who,
 .rtable td.who {
-  width: 30%;
+  width: 22%;
   text-align: left;
   cursor: auto;
 }

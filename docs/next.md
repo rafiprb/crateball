@@ -4,10 +4,9 @@ Work agreed but not started (or not finished). Newest decisions first in each se
 
 ## In progress
 
-- **PR #2, match stats and results screen** (external contributor). Review sent back with the bugs found
-  (touches in a scramble, saves, Enter opening the lobby chat) and the scoring spec below. The netcode branch
-  has landed, so `PROTOCOL_VERSION` becomes 17 by hand (14: beach arena, 15: state precision, 16: forward
-  shots clear the post) (git will not show it as a conflict). We build the scoring on top of it (decided 2026-10-08).
+- **PR #2, match stats and results screen** (external contributor). We build the scoring on top of it
+  (decided 2026-10-08): branch `scoring`, the contributor's commit kept, protocol 17. Still to do: tell the
+  contributor (comment drafted, Rafi approves before it is posted; ask them to confirm the licence terms).
 
 ## Load test
 
@@ -101,43 +100,12 @@ and any difference shows up as constant corrections.
   the trailer), looking into cheating reports, debugging R reports.
 - After the netcode branch lands (it touches the same server files).
 
-## Scoring (MVP) spec
+## Scoring (MVP)
 
-Built to resist farming: count outcomes, not intent; a scramble produces nothing; goals and assists
-decide the MVP.
-
-- **Possession.** A player owns the ball after touching it if nobody else touches it within 0.5 s.
-  Touches alternating between teams faster than that make the ball *loose*: no shots, passes or
-  tackles are counted until a team owns it again (0.5 s alone, or a kick that travels 1.5 s untouched).
-- **Shot on target.** A kick (not a contact), by an owner or a clean strike on a loose ball, from the
-  opponent half, above a minimum speed, whose outcome is a goal, a keeper save or a defender's block in
-  the box. Wide/post/out = off target (shown, not scored). One per possession.
-- **Save (keeper only).** Stops a shot on target; no goal within 2 s; one per shot.
-- **Assist.** The scorer's dribble counts as one spell; the touch before its first touch must be a
-  teammate's, at most 3 s earlier, with no opponent touch in between. Walls, mines, lava and wind do not
-  break the chain. Only the last passer counts. No assist on own goals or straight from kickoff. Open:
-  rebound off the post counts (proposed yes); any opponent contact breaks the chain (proposed yes).
-- **Completed pass (midfield).** From possession, reaches a teammate after at least 80 px with no
-  opponent touch; the same pair counts once per 10 s.
-- **Tackle (defence).** The opponent owned the ball for 0.5 s or more, then your side owns it for 0.5 s.
-- **Block (defence).** Stops a shot on target in the box before the keeper.
-- **Points.**
-
-  | Role | Goal | Assist | Role extras (capped at 3 points) |
-  |---|---|---|---|
-  | Forward | 3 | 2 | shot on target 0.5 |
-  | Midfield | 2 | 3 | completed pass 0.25 |
-  | Defence | 2 | 2 | tackle 0.5, block 1 |
-  | Keeper | 2 | 2 | save 1, clean sheet +2; goal conceded −0.5 (outside the cap) |
-  | No role | 3 | 2 | none |
-
-  Own goal −1. Deaths, damage and crates are shown but never scored. Ties: winning side, then goals,
-  then assists. Roles off: everyone scores as "no role". Nothing counts during kickoff, the goal pause
-  or after the whistle. Stats stay write-only (the sim never reads them).
-- Tests for every rule, including the farming cases: two players kicking it back and forth in front of
-  goal for 10 s (0 shots, 0 tackles), teammates rubbing passes side by side (0 passes), a roll toward
-  goal from your own half (no shot), a keeper fumbling and catching again (1 save).
-- Tune the weights on recorded matches (see above) so a good player in any role has a similar chance.
+Built on the `scoring` branch; the rules as built are in docs/design.md ("Maç sonu ekranı"). Decided on
+2026-10-08: a rebound off the post keeps the assist chain; any opponent contact breaks it. Weights looked
+at over 60 bot matches; tune them again on recorded human matches (see above), especially assists and
+defence, which bots barely produce.
 
 ## Gameplay and UI
 
