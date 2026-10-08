@@ -145,11 +145,48 @@ describe('sahil: quack olayları', () => {
     g.kickoffs = 4;
     g.score = [2, 1];
     track(next(g, () => {}));
-    // Next match: kickoff 1 again, 0-0, the same duck from zero.
+    // Next match (the server's restartMatch counts it): kickoff 1 again, the same duck from zero.
     let m = beach();
+    m.matches = g.matches + 1;
     m.tick = g.tick + 10;
     track(m);
     m = next(m, (d) => (d.bumps = 1));
     expect(quacks(track(m))).toHaveLength(1);
+  });
+});
+
+describe('sahil: düzeltme sonrası', () => {
+  it('tick geri düzeltilse de (aynı maç) çalınmış quack tekrar çalmaz', () => {
+    const track = createEventTracker();
+    const g = createGame(1);
+    g.phase = 'play';
+    g.kickoffs = 1;
+    g.arena = { ...g.arena, kind: 'beach', ducks: [] };
+    g.arena.ducks.push({
+      id: 0,
+      x: 0,
+      y: -170,
+      vx: 0,
+      vy: 0,
+      hx: 1,
+      hy: 0,
+      turn: 0,
+      cd: 0,
+      stun: 0,
+      bumps: 0,
+      hard: 0,
+    });
+    g.tick = 100;
+    track(g);
+    const a = cloneGame(g);
+    a.tick = 105;
+    a.arena.ducks[0]!.bumps = 1;
+    expect(track(a).filter((e) => e.type === 'quack')).toHaveLength(1);
+    const back = cloneGame(g);
+    back.tick = 102;
+    track(back);
+    const again = cloneGame(a);
+    again.tick = 106;
+    expect(track(again).filter((e) => e.type === 'quack')).toHaveLength(0);
   });
 });

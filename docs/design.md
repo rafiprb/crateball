@@ -111,8 +111,9 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
 
 - Sunucu otoriter, 60 Hz sim, 30 Hz snapshot. Snapshot'lar binary (protocol 13, `packages/protocol/src/snap.ts`):
   genelde bir öncekine göre yalnızca değişenler (delta), yeni bağlanana ve en az 5 sn'de bir tam durum (key frame).
-  Codec şemasız: sim'e alan eklemek codec değişikliği istemez. Sayılar eskisi gibi 1/1000'e yuvarlanır; istemcinin
-  elindeki durum eski JSON snapshot'la bit bit aynıdır. Oyuncu başına ~800 kbit/s yerine ~50 kbit/s.
+  Codec şemasız: sim'e alan eklemek codec değişikliği istemez. Sayılar 1/100.000 hassasiyetle taşınır ve sim
+  durumu her adımdan sonra aynı hassasiyete yuvarlar (`canon.ts`): sunucunun devam ettiği durum istemcinin
+  aldığıyla bit bit aynıdır, yuvarlama farkından düzeltme doğmaz. Oyuncu başına ~800 kbit/s yerine ~50 kbit/s.
 - İstemci her tick kendi girdisini sıraya koyar, gönderir **ve tüm dünyayı (top dahil) hemen
   kendisi simüle eder**. Diğer oyuncular son bilinen girdilerini tekrarlar; botlar deterministik.
 - Snapshot gelince: o duruma geri sar → sunucunun onayladığı (`ack`) girdileri at → kalanları yeniden

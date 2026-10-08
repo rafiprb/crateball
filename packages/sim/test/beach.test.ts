@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ARENAS,
+  STATE_SCALE,
   FIELD,
   addPlayer,
   cloneGame,
@@ -103,7 +104,7 @@ describe('sahil', () => {
 describe('sahil (inceleme düzeltmeleri)', () => {
   it('ördek durumu her tick snapshotun yuvarladığı gibi: sunucu ile istemci aynı ördekten devam eder', () => {
     const g = beachGame(41);
-    const exact = (v: number) => Math.round(v * 1000) / 1000 === v && !Object.is(v, -0);
+    const exact = (v: number) => Math.round(v * STATE_SCALE) / STATE_SCALE === v && !Object.is(v, -0);
     for (let t = 0; t < 2000; t++) {
       step(g);
       for (const d of g.arena.ducks)

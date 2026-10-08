@@ -951,14 +951,22 @@ describe('sahalar', () => {
 
   it('rüzgâr: yönü zamanla döner ve topu iter', () => {
     const g = onArena('wind', 2);
-    const w0 = { ...g.arena.wind };
     g.ball = { x: 0, y: 0, vx: 0, vy: 0 };
     run(g, 120);
     expect(Math.hypot(g.ball.x, g.ball.y)).toBeGreaterThan(5);
-    run(g, 60 * 20);
-    const w1 = g.arena.wind;
-    expect(Math.hypot(w1.x, w1.y)).toBeCloseTo(1, 6);
-    expect(Math.abs(w1.x - w0.x) + Math.abs(w1.y - w0.y)).toBeGreaterThan(0.1);
+    // The turn is a random walk: over a minute every seed swings the direction clearly (the state is
+    // rounded each tick, canon.ts, which must not freeze its small steps).
+    for (let seed = 1; seed <= 5; seed++) {
+      const w = onArena('wind', seed);
+      const w0 = { ...w.arena.wind };
+      let most = 0;
+      for (let t = 0; t < 60 * 60; t++) {
+        step(w);
+        most = Math.max(most, Math.abs(w.arena.wind.x - w0.x) + Math.abs(w.arena.wind.y - w0.y));
+      }
+      expect(Math.hypot(w.arena.wind.x, w.arena.wind.y)).toBeCloseTo(1, 4);
+      expect(most).toBeGreaterThan(0.1);
+    }
   });
 
   it('sahalarla birlikte de deterministik', () => {

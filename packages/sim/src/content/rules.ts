@@ -1,5 +1,11 @@
 /** Every gameplay constant lives here. Units: pixels and ticks (60 ticks per second). */
 export const TICK_HZ = 60;
+/**
+ * Numbers in the game state are kept to 1/STATE_SCALE (canon.ts rounds after every step) and snapshots
+ * carry them exactly at that precision: server and clients always hold the same state. Fine enough for the
+ * slowest accumulators (the wind's turn rate moves in steps of 0.0004).
+ */
+export const STATE_SCALE = 100_000;
 export const sec = (s: number) => Math.round(s * TICK_HZ);
 
 export const FIELD = {

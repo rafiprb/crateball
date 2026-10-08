@@ -23,6 +23,11 @@ describe('istemci mesajları', () => {
   it('varsayılan kutu payları sim ile aynı', () => {
     expect(DEFAULT_WEIGHTS).toEqual(defaultWeights());
   });
+  it('snapshot hassasiyeti simin durum hassasiyetiyle aynı', async () => {
+    const sim = await import('@crateball/sim');
+    const { STATE_SCALE } = await import('../src/index');
+    expect(STATE_SCALE).toBe(sim.STATE_SCALE);
+  });
   it('hello gidiş-dönüş (token ile ve tokensız)', () => {
     const a = { t: 'hello', protocolVersion: PROTOCOL_VERSION } as const;
     const b = { t: 'hello', protocolVersion: PROTOCOL_VERSION, sessionToken: 'abc' } as const;

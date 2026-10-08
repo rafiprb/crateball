@@ -18,6 +18,7 @@ import {
   type Settings,
 } from './content/rules';
 import { nextRandom } from './rng';
+import { canonicalise } from './canon';
 import {
   DOWN,
   KICK,
@@ -69,6 +70,7 @@ export function createGame(seed: number, settings: Settings = DEFAULT_SETTINGS):
     arena: classicArena(),
     arenaPlan: [],
     kickoffs: 0,
+    matches: 0,
   };
 }
 
@@ -226,6 +228,8 @@ export function restartMatch(g: Game): void {
   g.clock = g.settings.minutes * 60 * TICK_HZ;
   for (const p of g.players) p.goals = 0;
   resetKickoff(g, 'red');
+  g.matches++;
+  canonicalise(g);
 }
 
 /** Advance one tick. `inputs` overrides stored inputs by player id (absent → repeat last). */
@@ -260,6 +264,7 @@ export function step(g: Game, inputs?: ReadonlyMap<string, number>): void {
   );
   g.blasts = g.blasts.filter((b) => --b.t > 0);
   rules(g);
+  canonicalise(g);
 }
 
 function controlPlayer(g: Game, p: Player): void {
@@ -698,10 +703,6 @@ function ballHitsDucks(g: Game): void {
   }
 }
 
-/** Duck state rounded as snapshots round it, every tick: the server goes on from exactly the state its
- * clients get, so the steering (which turns on signs) cannot take the two different ways. */
-const quantise = (v: number) => Math.round(v * 1000) / 1000 + 0;
-
 /**
  * Beach: the ducks paddle, move, and meet the ball (it bounces off a duck like off a heavy rubber toy),
  * the players (who shove them aside) and each other (a nudge, no quack). A bump fast enough makes the duck
@@ -729,16 +730,7 @@ function updateDucks(g: Game): void {
   for (let i = 0; i < ducks.length; i++)
     for (let j = i + 1; j < ducks.length; j++)
       contact(ducks[i]!, b.duckRadius, 1, 1, ducks[j]!, b.duckRadius, 1, 0.3);
-  for (const d of ducks) {
-    keepDuckInWater(d);
-    d.x = quantise(d.x);
-    d.y = quantise(d.y);
-    d.vx = quantise(d.vx);
-    d.vy = quantise(d.vy);
-    d.hx = quantise(d.hx);
-    d.hy = quantise(d.hy);
-    d.turn = quantise(d.turn);
-  }
+  for (const d of ducks) keepDuckInWater(d);
   for (const p of alive) confinePlayer(g, p);
   confineBall(g.ball);
 }

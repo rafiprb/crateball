@@ -6,7 +6,7 @@ Work agreed but not started (or not finished). Newest decisions first in each se
 
 - **PR #2, match stats and results screen** (external contributor). Review sent back with the bugs found
   (touches in a scramble, saves, Enter opening the lobby chat) and the scoring spec below. The netcode branch
-  has landed, so `PROTOCOL_VERSION` becomes 15 by hand (14 is the beach arena) (git will not show it as a conflict).
+  has landed, so `PROTOCOL_VERSION` becomes 16 by hand (14: beach arena, 15: state precision) (git will not show it as a conflict).
 
 ## Load test
 

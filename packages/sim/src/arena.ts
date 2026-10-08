@@ -96,16 +96,14 @@ function spawnDucks(a: Arena, rand: Rand): void {
       const hx = rand() * 2 - 1;
       const hy = rand() * 2 - 1;
       const n = Math.sqrt(hx * hx + hy * hy) || 1;
-      // Rounded as snapshots round (see game.ts updateDucks): server and clients start from the same duck.
-      const q = (v: number) => Math.round(v * 1000) / 1000 + 0;
       const duck: Duck = {
         id: i,
-        x: q(x),
-        y: q(y),
+        x,
+        y,
         vx: 0,
         vy: 0,
-        hx: q(hx / n),
-        hy: q(hy / n),
+        hx: hx / n,
+        hy: hy / n,
         turn: 0,
         cd: 0,
         stun: 0,

@@ -113,6 +113,8 @@ export interface Game {
   arenaPlan: ArenaKind[];
   /** Kickoffs played so far in this match (index into arenaPlan). */
   kickoffs: number;
+  /** Matches started in this room (each restartMatch): tells a new match from a rollback. */
+  matches: number;
 }
 
 /** A rain puddle: overlapping circles that form, last and dry out (all in ticks). */

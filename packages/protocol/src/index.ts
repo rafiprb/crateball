@@ -1,9 +1,9 @@
 import type { ArenaKind, Game, ItemKind, Role, Settings, Team } from '@crateball/sim';
-import { decodeFrame, type DecodedSnap, type SnapDecoder } from './snap';
+import { STATE_SCALE, decodeFrame, type DecodedSnap, type SnapDecoder } from './snap';
 
 export * from './snap';
 
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */
@@ -357,11 +357,11 @@ export function decodeClientMessage(raw: string): ClientMessage | null {
   }
 }
 
-/** The game as JSON snapshots used to carry it (positions rounded to 1/1000 px, no loot randomness).
+/** The game as a client holds it, as JSON (numbers rounded to 1/STATE_SCALE, no loot randomness).
  * Snapshots are binary now (snap.ts); this stays as the reference a binary state must equal. */
 export function encodeGame(g: Game): string {
   return JSON.stringify({ ...g, lootRng: null }, (_k, v: unknown) =>
-    typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v,
+    typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * STATE_SCALE) / STATE_SCALE : v,
   );
 }
 

@@ -4,7 +4,7 @@
  *
  * The codec knows nothing about the game's shape: it walks plain data (objects, arrays, numbers, strings,
  * booleans, null), so a new field in the sim needs no change here. What a client gets is exactly what
- * `JSON.parse(encodeGame(g))` used to give: numbers that are not whole are rounded to 1/1000 (positions to
+ * `JSON.parse(encodeGame(g))` gives: numbers that are not whole are rounded to 1/STATE_SCALE (positions to
  * a thousandth of a pixel), non-finite numbers become null, undefined fields are left out, and the loot
  * randomness is not sent. Prediction therefore starts from bit-identical states as before.
  *
@@ -14,6 +14,10 @@
  * makes its next one a key frame).
  */
 import type { Game } from '@crateball/sim';
+
+/** Numbers travel at 1/STATE_SCALE, the precision the sim keeps its state at (the sim's STATE_SCALE; a
+ * test keeps the two equal: protocol takes only types from the sim). */
+export const STATE_SCALE = 100_000;
 
 /** JSON-shaped data: what a snapshot state is made of. */
 export type Plain = null | boolean | number | string | Plain[] | { [k: string]: Plain };
@@ -27,7 +31,7 @@ const T_NULL = 0;
 const T_FALSE = 1;
 const T_TRUE = 2;
 const T_INT = 3;
-const T_MILLI = 4;
+const T_FIXED = 4;
 const T_F64 = 5;
 const T_STR = 6;
 const T_ARR = 7;
@@ -52,7 +56,7 @@ const isObj = (v: unknown): v is PlainObj => typeof v === 'object' && v !== null
 function num(v: number): number | null {
   if (!Number.isFinite(v)) return null;
   if (v === 0) return 0; // -0 too, as JSON wrote it
-  return Number.isInteger(v) ? v : Math.round(v * 1000) / 1000;
+  return Number.isInteger(v) ? v : Math.round(v * STATE_SCALE) / STATE_SCALE;
 }
 
 function plain(v: unknown): Plain | undefined {
@@ -191,8 +195,8 @@ function writeNumber(w: Writer, v: number) {
     w.u8(T_INT);
     w.int(v);
   } else if (Math.abs(v) < DELTA_MAX) {
-    w.u8(T_MILLI);
-    w.int(Math.round(v * 1000));
+    w.u8(T_FIXED);
+    w.int(Math.round(v * STATE_SCALE));
   } else {
     w.u8(T_F64);
     w.f64(v);
@@ -240,8 +244,8 @@ function readValueTagged(r: Reader, tag: number, depth: number): Plain {
       return true;
     case T_INT:
       return r.int();
-    case T_MILLI:
-      return r.int() / 1000;
+    case T_FIXED:
+      return r.int() / STATE_SCALE;
     case T_F64:
       return r.f64();
     case T_STR:
@@ -295,9 +299,9 @@ export function writePatch(w: Writer, prev: Plain, cur: Plain): boolean {
   if (prev === cur) return false;
   if (typeof prev === 'number' && typeof cur === 'number') {
     if (Math.abs(prev) < DELTA_MAX && Math.abs(cur) < DELTA_MAX) {
-      // Both as a client holds them (rounded to 1/1000): the difference in thousandths is exact.
+      // Both as a client holds them (rounded to 1/STATE_SCALE): the difference in those units is exact.
       w.u8(P_NUM);
-      w.int(Math.round(cur * 1000) - Math.round(prev * 1000));
+      w.int(Math.round(cur * STATE_SCALE) - Math.round(prev * STATE_SCALE));
       return true;
     }
   } else if (Array.isArray(prev) && Array.isArray(cur)) {
@@ -347,7 +351,7 @@ export function readPatch(r: Reader, prev: Plain, depth = 0): Plain {
   switch (tag) {
     case P_NUM: {
       if (typeof prev !== 'number') throw new Error('snapshot: number patch on a non-number');
-      return (Math.round(prev * 1000) + r.int()) / 1000;
+      return (Math.round(prev * STATE_SCALE) + r.int()) / STATE_SCALE;
     }
     case P_ARR: {
       if (!Array.isArray(prev)) throw new Error('snapshot: array patch on a non-array');
