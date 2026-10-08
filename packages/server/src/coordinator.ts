@@ -224,10 +224,12 @@ export async function startCoordinator(
     const refused = admission.check(ip, Array.isArray(origin) ? origin[0] : origin);
     if (refused !== null) return refuse(socket, refused);
     // A room's own worker. The menu (where rooms are created) goes to the one with the fewest sockets
-    // among those with room to spare in their share of the caps.
+    // among those with rooms and players to spare in their share of the caps.
     const room = url.searchParams.get('room');
     const ready = workers.filter(live);
-    const spare = ready.filter((o) => o.load.rooms < share(cfg.caps.rooms, o.k, n));
+    const spare = ready.filter(
+      (o) => o.load.rooms < share(cfg.caps.rooms, o.k, n) && o.load.members < share(cfg.caps.players, o.k, n),
+    );
     const w =
       room && CODE_RE.test(room)
         ? workers[codeOwner(room, n)]!

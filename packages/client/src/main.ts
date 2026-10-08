@@ -68,9 +68,9 @@ let queueAvg = 0;
 let joinPending = false;
 /** The server said this room is in another of its processes: reconnecting there to join it. */
 let moveTo: string | null = null;
-/** A room we are on our way into, if any: sent elsewhere, or a join refused for now and to be retried. */
-const pendingJoin = (): string | null =>
-  moveTo ?? (lastAttempt?.t === 'join' && !room ? lastAttempt.code : null);
+/** A room we are on our way into, if any: sent elsewhere, or a join refused for now and to be retried.
+ * It stays the target until `joined`, a refusal for good or Back (whatever room a reconnect shows). */
+const pendingJoin = (): string | null => moveTo ?? (lastAttempt?.t === 'join' ? lastAttempt.code : null);
 
 /** Server under maintenance: a full screen over everything except a match still being played. */
 let maintenance = false;
@@ -400,6 +400,7 @@ const ui = createUi(
     meta: (roomName, isPublic) => conn.send({ t: 'meta', name: roomName, public: isPublic }),
     join: (c) => attempt({ t: 'join', code: c, name: ui.name }),
     leave: () => {
+      lastAttempt = null; // the player's own choice: no join is on its way any more
       conn.send({ t: 'leave' });
       toMenu();
     },
