@@ -112,8 +112,10 @@ export function connect(o: ConnectionOptions): Connection {
         if (m.version) o.onServerVersion?.(m.version);
         o.onMaintenance?.(m.maintenance === true);
         attempts = 0;
-        setStatus('open');
+        // What was sent while offline goes first, in order: the 'open' handler may send more (a rejoin),
+        // which must not overtake an older message such as a leave.
         for (const q of queued.splice(0)) s.send(encode(q));
+        setStatus('open');
       } else if (m.t === 'error' && m.code === 'version_mismatch') {
         stopped = true;
         setStatus('version_mismatch');

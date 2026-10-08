@@ -32,6 +32,19 @@ Measure before deciding anything about capacity (no scaling work without numbers
 ## Launch readiness
 
 - **Caps from the load test.** Configurable by env now; set the defaults just under the measured capacity.
+- **Server picker + gate at the door** (agreed 2026-10-08, after the load test; prototype at scratchpad
+  `servers.html`). Each game process shows as a server ("Istanbul 1-3"; stable names, not renumbered if
+  the count changes). Menu: an optional picker, "Auto" (emptiest) by default, each server with a fill bar
+  and ping. Find Room lists every server's rooms with a server tag (a small player base must not feel
+  split); invite links and room codes still pick the server by themselves.
+  - Capacity unit becomes "connected people", menu included, counted once at the coordinator (the only
+    door): leaving a room never loses your seat, and there is no "the total has room but this worker is
+    full" case for people browsing. Idle in the menu for ~10 min: back to the queue.
+  - Two limits: the door (total, from the load test) and per worker what one core carries (also from the
+    load test, above an even share, e.g. door 150, worker 70). A worker at its limit refusing a join is
+    correct: it would lag everyone there. A refused create reconnects to a server with room.
+  - Queue per server ("Istanbul 2 is full: 4th in line; Istanbul 3 has room, switch?"), and one shared
+    line when every server is full. Later regions fit the same screen (Istanbul, Frankfurt).
 - **Admission queue when the server is full.** Lives wherever the caps are counted (the server today,
   the coordinator later). A full room (6/6) is not this: that stays spectate-then-take-a-seat.
   - Two thresholds: up to 90% everyone gets in; from 90% new rooms and quick play queue while joins

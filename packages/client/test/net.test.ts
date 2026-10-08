@@ -78,3 +78,24 @@ describe('başka sunucu sürecine taşınma', () => {
     expect(conn.attempts).toBe(0);
   });
 });
+
+describe('çevrimdışıyken sıraya giren mesajlar', () => {
+  it('bağlantı açılınca, açılışta gönderilenlerden önce ve sırayla gider', () => {
+    const sent: string[] = [];
+    let sock!: SocketLike;
+    const conn = connect({
+      url: 'ws://x',
+      createSocket: () =>
+        (sock = { send: (d) => sent.push(d), close: () => {}, onopen: null, onmessage: null, onclose: null }),
+      onStatus: (st) => {
+        if (st === 'open') conn.send({ t: 'join', code: 'BCDE', name: 'A' });
+      },
+    });
+    conn.send({ t: 'leave' });
+    sock.onopen?.();
+    sock.onmessage?.({
+      data: JSON.stringify({ t: 'welcome', protocolVersion: 13, clientId: 'c', serverTime: 1 }),
+    });
+    expect(sent.map((d) => (JSON.parse(d) as { t: string }).t)).toEqual(['hello', 'leave', 'join']);
+  });
+});
