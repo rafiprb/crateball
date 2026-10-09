@@ -154,6 +154,37 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   düdükten sonraki ilk snapshot'taki sunucu sayılarını gösterir. Tasarım denemesi için dev'de
   `window.__game.cmd('results')` (ya da `'blue'`) uydurma bir maç sonu açar.
 
+## Gol tekrarları
+
+- Maç sonu ekranında "▶ Watch the goals" butonu açılır: maçın golleri bir listede, seçilen gol oyunun kendi
+  çizimiyle oynar (oynat/durdur, baştan, 0.5×/1×, çubuktan istenen ana atlama, çubukta GOAL işareti).
+  İzlerken sonuç ekranının geri sayımı durur.
+- Her gol, golden 10-11 sn öncesinden bir sonraki santraya kadar kaydedilir. Klip, golden en az 10 sn
+  önceki son anlık durumdan başlar (saniyede bir alınır); santra daha yakınsa santradan. Maçı bitiren gol
+  son düdükte biter. Yalnızca goller kaydedilir, maçın tamamı değil.
+- Kayıt bir video değildir. Klibin ilk anındaki oyun durumu, insanların tuşları, sunucunun gizli kutu
+  çekilişleri ve maç ortasında biri çıkarsa o andaki durum saklanır. İstemci aynı sim'i aynen yürütür ve
+  yol boyunca sunucunun durum hash'leriyle karşılaştırır. Tutmayan gol oynatılmaz ("This goal can't be
+  replayed."). Gol başına yaklaşık 5 KB tutar (`packages/protocol/src/replay.ts`).
+- Sunucu hiçbir şey yazmaz. Her oda son ~11 saniyeyi (saniyede bir anlık durum) ve maçın kliplerini
+  bellekte tutar (`packages/server/src/replays.ts`). Son düdükte maçın gollerini odadaki herkese tek bir
+  ikili mesajla bir kez gönderir. Sonraki maç başlayınca ya da oda kapanınca hepsi silinir. Disk, temizleme
+  ya da hile incelemesi yok.
+- Oyuncunun tarayıcısı, maçı oynadığı son 10 maçı saklar (IndexedDB, maç başına ~30 KB). Menüde "Recent
+  matches" altında listelenir: kazandın/kaybettin, skor, ne zaman oynandığı, gol sayısı. Yalnızca
+  kolaylık içindir: gizli pencere, site verisini silmek ya da Safari'nin 7 gün kuralı listeyi boşaltabilir.
+  Maçı bitmeden terk eden oyuncu o maçın gollerini almaz.
+- İndirme: "Download this goal" (~5 KB) ve "All N goals". `.crateball` dosyası yalnızca oyunun içinde
+  açılır:
+  - dosyayı oyunun sayfasına sürükleyip bırakmak her tarayıcıda çalışır;
+  - Chrome ya da Edge'de oyunu uygulama olarak yükleyen oyuncu dosyaya çift tıklayarak açar (manifest
+    `file_handlers`);
+  - Steam sürümünde çift tıklama çalışır. Windows'ta oyun her açılışta uzantıyı kullanıcı için kaydeder,
+    macOS'ta uygulamanın Info.plist'inde tanımlıdır. Oyun zaten açıksa dosya aynı pencerede açılır.
+- Maç sırasında açılan dosya maç bitince açılır.
+- Bir tekrar yalnızca yapıldığı protokol sürümünde oynar. Başka sürümden gelen dosyada "Can't play this
+  replay" çıkar; eski sürümden kalan son maçlar listeden düşer.
+
 ## Ses ve efektler
 
 - Ses: WebAudio ile kodla üretilir (dosya yok): vuruş, düdük, gol, ateş, isabet, kutu içeriğine göre

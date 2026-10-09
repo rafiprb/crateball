@@ -13,6 +13,7 @@ import { createResults } from './results';
 import { createSound } from './sound';
 import { createTelemetry } from './telemetry';
 import { createUi } from './ui';
+import { createWatch } from './watch';
 
 const $ = <T extends HTMLElement>(sel: string) => {
   const el = document.querySelector<T>(sel);
@@ -76,6 +77,12 @@ const pendingJoin = (): string | null => moveTo ?? (lastAttempt?.t === 'join' ? 
 
 /** Server under maintenance: a full screen over everything except a match still being played. */
 let maintenance = false;
+const watch = createWatch({
+  sound,
+  results,
+  playing: () => room?.state === 'playing',
+  say: (text) => showError(text),
+});
 const maintenanceEl = $<HTMLDivElement>('#maintenance');
 const showMaintenance = () => {
   maintenanceEl.hidden = !(maintenance && room?.state !== 'playing');
@@ -153,6 +160,7 @@ const toMenu = () => {
   history.replaceState(null, '', `/${params.has('debug') ? '?debug' : ''}`);
   ui.menu();
   showMaintenance();
+  watch.idle();
 };
 
 const lag = import.meta.env.DEV ? Number(params.get('lag') ?? 0) : 0;
@@ -339,6 +347,10 @@ const conn = connect({
       case 'ri':
         if (room?.state === 'playing') pred.remoteInput(m.id, m.k, m.b);
         break;
+      case 'replays':
+        // The final whistle's goals (a spectator keeps them too, without a side).
+        watch.received(m.bytes, pred.game?.players.find((p) => p.id === pred.me)?.team ?? null);
+        break;
       case 'pong':
         rtt = performance.now() - m.id;
         break;
@@ -403,8 +415,12 @@ function onRoom(r: RoomInfo) {
   if (r.state === 'playing') {
     ui.hide();
     // The next match is on: whoever was still reading the last one's results is needed on the pitch.
-    if (!wasPlaying) results.hide();
+    if (!wasPlaying) {
+      results.hide();
+      watch.matchStarted();
+    }
   } else {
+    watch.idle();
     if (wasPlaying) pred.reset();
     ui.lobby(r, pred.me);
     chat.mount(document.getElementById('chat-slot'), typing);
@@ -432,7 +448,7 @@ const ui = createUi(
     start: () => conn.send({ t: 'start' }),
     mute: setMuted,
   },
-  { name: params.get('name') ?? undefined, muted: mutedPref },
+  { name: params.get('name') ?? undefined, muted: mutedPref, menuExtra: () => watch.menuSection() },
 );
 if (pathCode && CODE_RE.test(pathCode) && !rejoin) ui.invite(pathCode);
 else ui.menu(pathCode && CODE_RE.test(pathCode) ? pathCode : undefined);
@@ -501,7 +517,7 @@ const keyboard = createKeyboard(window, (code) => {
   if (code === 'KeyM') setMuted(!sound.muted);
   if (code === 'KeyR' || code === 'F9') sendReport();
   // Not under the results screen: the chat would open behind it, typing into a box nobody sees.
-  if (code === 'Enter' && room && !results.visible) chat.open();
+  if (code === 'Enter' && room && !results.visible && !watch.visible) chat.open();
 });
 document.addEventListener('visibilitychange', () => keyboard.release());
 

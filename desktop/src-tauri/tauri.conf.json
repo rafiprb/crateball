@@ -43,6 +43,15 @@
     "publisher": "RafiBuilds",
     "copyright": "RafiBuilds",
     "shortDescription": "3v3 arcade football with crates",
+    "fileAssociations": [
+      {
+        "ext": ["crateball"],
+        "name": "Crateball replay",
+        "description": "Goal replays from Crateball",
+        "role": "Viewer",
+        "mimeType": "application/x-crateball"
+      }
+    ],
     "icon": [
       "../icons/icon-32.png",
       "../icons/icon-128.png",

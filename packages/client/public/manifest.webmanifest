@@ -1,0 +1,20 @@
+{
+  "name": "Crateball",
+  "short_name": "Crateball",
+  "description": "3v3 arcade football with crates that drop guns, mines and ice.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d1330",
+  "theme_color": "#141A33",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": { "application/x-crateball": [".crateball"] }
+    }
+  ]
+}

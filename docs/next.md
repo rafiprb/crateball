@@ -29,7 +29,6 @@ Measure before deciding anything about capacity (no scaling work without numbers
 
 ## Launch readiness
 
-- **Caps from the load test.** Configurable by env now; set the defaults just under the measured capacity.
 - **Server picker + gate at the door** (agreed 2026-10-08, after the load test; prototype at scratchpad
   `servers.html`). Each game process shows as a server ("Istanbul 1-3"; stable names, not renumbered if
   the count changes). Menu: an optional picker, "Auto" (emptiest) by default, each server with a fill bar
@@ -90,19 +89,23 @@ in the coordinator or Redis, clients connecting straight to the room's server; a
 Rewriting the backend in Go is not planned: the sim would exist twice (TS client prediction + Go server)
 and any difference shows up as constant corrections.
 
-## Match recording and replays
+## Goal replays
 
-- Record every match: seed, settings, the server-only loot RNG seed and each player's input per tick
-  (about 360 B/s for 6 players; a few KB per match compressed). Keep 30 days on disk.
-- Uses: backtest the scoring on real matches, goal replays / clips with the game's own renderer (as in
-  the trailer), looking into cheating reports, debugging R reports.
-- After the netcode branch lands (it touches the same server files).
+Live since 2026-10-09 (protocol 18); how it works is in docs/design.md ("Gol tekrarları"). Decided on
+2026-10-09: only goals are kept, never whole matches; nothing on the server's disk (no purge, no cheat
+review for now). Players keep their last 10 matches in the browser and download `.crateball` files that open
+only in the game.
+
+- The Steam builds need a new upload for double-click to work there (Desktop workflow artifacts; the upload
+  is the owner's).
+- Later, if needed: server-side recording for cheat reports or for tuning the scoring on real matches (the
+  same clip format covers a whole match).
 
 ## Scoring (MVP)
 
 Live since 2026-10-09 (protocol 17, PR #2's results screen kept); the rules as built are in docs/design.md ("Maç sonu ekranı"). Decided on
 2026-10-08: a rebound off the post keeps the assist chain; any opponent contact breaks it. Weights looked
-at over 60 bot matches; tune them again on recorded human matches (see above), especially assists and
+at over 60 bot matches; tune them again from how real matches feel (no recordings), especially assists and
 defence, which bots barely produce.
 
 ## Gameplay and UI

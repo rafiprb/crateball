@@ -108,6 +108,32 @@ describe('maç sonu ekranı', () => {
     expect(r.visible).toBe(false);
   });
 
+  it('gol tekrarı butonu: gol sayısıyla çıkar, izlerken geri sayım durur', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+    const r = createResults();
+    const watch = vi.fn();
+    // The goals may arrive just before the screen comes up.
+    r.goals(2, watch);
+    r.show(finished(), 'a');
+    const btn = $('.goalsbtn') as HTMLButtonElement;
+    expect(btn.hidden).toBe(false);
+    expect(btn.textContent).toBe('▶ Watch the goals2');
+    btn.click();
+    expect(watch).toHaveBeenCalledOnce();
+    r.hold(true);
+    vi.advanceTimersByTime((MATCH.resultsShow / TICK_HZ) * 1000 + 5000);
+    expect(r.visible).toBe(true);
+    r.hold(false);
+    vi.advanceTimersByTime((MATCH.resultsShow / TICK_HZ) * 1000 - 3000);
+    expect(r.visible).toBe(true);
+    vi.advanceTimersByTime(3500);
+    expect(r.visible).toBe(false);
+    // Leaving the room: the next room's results come without the last match's goals.
+    r.forget();
+    r.show(finished(900), 'a');
+    expect(($('.goalsbtn') as HTMLButtonElement).hidden).toBe(true);
+  });
+
   it('maç bitmeden açılmaz', () => {
     const r = createResults();
     const g = finished();
