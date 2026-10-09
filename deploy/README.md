@@ -9,6 +9,7 @@ gitignored files on the laptop and in GitHub's repository secrets). Moving to a 
 | Game and Caddy (compose, Caddyfile, Dockerfile, the deploy script) | `scripts/install-deploy.sh` → `/etc/crateball`, `/usr/local/bin/crateball-deploy` |
 | Monitoring agent (Grafana Alloy) | `scripts/monitoring.sh` → `/opt/crateball-monitoring` |
 | Grafana dashboard | `deploy/monitoring/dashboard.json` (import in Grafana) |
+| Grafana alerts → Telegram | `node scripts/alerts.mjs` (rules in the script; secrets in `.alerts.env`, template `deploy/monitoring/alerts.env.example`) |
 | Server caps, game processes | `/etc/crateball/.env` (optional; see `deploy/compose.yml`) |
 | Maintenance mode | `sh scripts/maintenance.sh on\|off\|status` |
 

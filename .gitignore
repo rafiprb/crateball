@@ -16,3 +16,6 @@ playwright-report/
 # Rendered trailers (scripts/trailer.mjs)
 marketing/out/
 .grafana.env
+
+# Grafana alerting and Telegram tokens (scripts/alerts.mjs); stays on this machine
+.alerts.env

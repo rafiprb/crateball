@@ -54,9 +54,10 @@ Measure before deciding anything about capacity (no scaling work without numbers
   - No per-IP limits (offices share one IP). The queue itself is capped (for example 1000); beyond
     that the client says to try again later. Lobby browsers and spectators count against the socket
     cap, not players; keep the socket cap above the player cap so the queue can connect.
-- **Grafana alerts** (Alerting, contact point chosen by the owner: Telegram, Discord/Slack or e-mail):
-  players above 80% of the cap, server not answering for 2 min, slowest tick above 10 ms, disk or
-  memory nearly full. Shipped as an importable file like the dashboard.
+- **Grafana alerts:** live since 2026-10-09, to Telegram (@crateballbot): server full and at 80% of the
+  player cap, slowest tick above 10 ms, a game process crashing, an error burst, no data from the server
+  for 5 min, CPU, memory and disk. `scripts/alerts.mjs`. Still missing: an outside check of the site
+  (Grafana Synthetic Monitoring on /health); "no data" also fires if only the monitoring agent stops.
 
 ## Capacity
 
