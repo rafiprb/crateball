@@ -376,7 +376,7 @@ add({
       o.font = '600 22px Nunito, sans-serif';
       o.textAlign = 'center';
       o.fillStyle = CREAM;
-      o.fillText('© 2026 RafiBuilds. Gameplay recorded with bots.', CX, OUT_H - SAFE.y - 30);
+      o.fillText('Gameplay recorded with bots.', CX, OUT_H - SAFE.y - 30);
       o.fillText(
         'Steam is a trademark and/or registered trademark of Valve Corporation in the U.S. and/or other countries.',
         CX,
