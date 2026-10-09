@@ -51,7 +51,7 @@ export function newMatch(spec: MatchSpec): Game {
 
 /** What a shot is about: the event that has to happen on screen while its label is up. */
 export type Key =
-  'loot' | 'gun' | 'rocket' | 'teleport' | 'mine' | 'ice' | 'dizzy' | 'erupt' | 'goal' | 'save';
+  'loot' | 'gun' | 'rocket' | 'teleport' | 'mine' | 'ice' | 'dizzy' | 'erupt' | 'goal' | 'save' | 'duck';
 
 export const KEYS: Record<Key, (e: GameEvent) => boolean> = {
   /** A crate opening with something good inside. */
@@ -66,6 +66,8 @@ export const KEYS: Record<Key, (e: GameEvent) => boolean> = {
   erupt: (e) => e.type === 'item' && e.kind === 'erupt',
   goal: (e) => e.type === 'goal',
   save: (e) => e.type === 'item' && e.kind === 'save',
+  /** Beach: a duck hit hard (feathers fly). */
+  duck: (e) => e.type === 'quack' && e.hard,
 };
 
 /** Where an event happened, if it has a place. */

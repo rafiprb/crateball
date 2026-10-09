@@ -158,7 +158,7 @@ add({
   enter: 'flash',
   subject: TOP_SUBJECT,
   clear: [TOP_RECT],
-  shot: shot(classic(14), 'goal', 865, beats(3), [1.3, 1.42]),
+  shot: shot(classic(1), 'goal', 946, beats(3), [1.3, 1.42]),
   over(o, lt) {
     band(o, lt);
     // Three words on three beats, spaced by their measured widths.
@@ -179,7 +179,7 @@ add({
   enter: 'cut',
   subject: TOP_SUBJECT,
   clear: [TOP_RECT],
-  shot: shot(only(9, ['gun', 'bazooka', 'teleport'], false), 'loot', 970, beats(2), [1.75, 1.95]),
+  shot: shot(only(9, ['gun', 'bazooka', 'teleport'], false), 'loot', 681, beats(2), [1.75, 1.95]),
   over: (o, lt) => statement(o, lt, 'THEN OPEN', 'THE CRATES', GOLD),
 });
 
@@ -199,13 +199,13 @@ const feature = (b: number, f: Feature, enter: Segment['enter']) =>
   });
 const loot: Feature[] = [
   {
-    shot: shot(only(6, ['gun']), 'gun', 2238, beats(2), [1.9, 2.05]),
+    shot: shot(only(6, ['gun']), 'gun', 401, beats(2), [1.9, 2.05]),
     label: 'GUNS',
     small: 'CRATE LOOT',
     color: GOLD,
   },
   {
-    shot: shot(only(7, ['bazooka']), 'rocket', 1922, beats(2), [1.7, 1.85]),
+    shot: shot(only(7, ['bazooka']), 'rocket', 450, beats(2), [1.7, 1.85]),
     label: 'BAZOOKAS',
     small: 'CRATE LOOT',
     color: ORANGE,
@@ -214,7 +214,7 @@ const loot: Feature[] = [
     shot: shot(
       { seed: 30, arena: 'classic', items: ['teleport', 'shield'] },
       'teleport',
-      2319,
+      2193,
       beats(2),
       [1.85, 2.0],
     ),
@@ -232,26 +232,20 @@ add({
   enter: 'cut',
   subject: TOP_SUBJECT,
   clear: [TOP_RECT],
-  shot: shot(only(6, ['dizzy']), 'dizzy', 1972, beats(2), [1.9, 2.05]),
+  shot: shot(only(6, ['dizzy']), 'dizzy', 394, beats(2), [1.9, 2.05]),
   over: (o, lt) => statement(o, lt, 'SOME CRATES', 'BITE BACK', RED),
 });
 const traps: Feature[] = [
   {
-    shot: shot(only(2, ['mine']), 'mine', 757, beats(2), [2.0, 2.15]),
+    shot: shot(only(2, ['mine']), 'mine', 474, beats(2), [2.0, 2.15]),
     label: 'BOOM',
     small: 'TRAP CRATE',
     color: RED,
   },
-  {
-    shot: shot(only(5, ['ice']), 'ice', 1741, beats(2), [1.9, 2.05]),
-    label: 'FREEZE',
-    small: 'TRAP CRATE',
-    color: BLUE,
-  },
 ];
 traps.forEach((f, i) => feature(SECTION.traps + 1 + i, f, 'cut'));
 
-// ── Arenas, then positions ──────────────────────────────────────────────────────────────────────
+// ── Arenas ──────────────────────────────────────────────────────────────────────
 const arenas: Feature[] = [
   {
     shot: shot({ seed: 5, arena: 'volcano' }, 'erupt', 1071, beats(3), [1.55, 1.7]),
@@ -260,28 +254,16 @@ const arenas: Feature[] = [
     color: ORANGE,
   },
   {
-    shot: shot(
-      { seed: 2, arena: 'rain', items: ['bazooka'], chaos: true },
-      'rocket',
-      2857,
-      beats(2),
-      [1.55, 1.7],
-    ),
-    label: 'RAIN',
+    shot: shot({ seed: 9, arena: 'beach' }, 'duck', 3503, beats(2), [1.8, 1.95]),
+    label: 'BEACH',
     small: 'ARENA',
-    color: BLUE,
+    color: GOLD,
   },
   {
-    shot: shot({ seed: 7, arena: 'ice' }, 'goal', 1494, beats(3), [1.45, 1.6]),
+    shot: shot({ seed: 7, arena: 'ice' }, 'goal', 940, beats(3), [1.45, 1.6]),
     label: 'ICE RINK',
     small: 'ARENA',
     color: CREAM,
-  },
-  {
-    shot: shot(classic(4), 'save', 1543, beats(2), [1.8, 1.95]),
-    label: 'KEEPERS',
-    small: 'POSITIONS',
-    color: GOLD,
   },
 ];
 arenas.forEach((f, i) => feature(SECTION.arenas + i, f, 'cut'));
@@ -291,7 +273,7 @@ add({
   t0: bar(SECTION.brk),
   t1: bar(SECTION.drop2),
   enter: 'flash',
-  shot: shot(classic(3), 'goal', 3996, beats(3), [1.6, 1.95], 0.4),
+  shot: shot(classic(3), 'goal', 1413, beats(3), [1.6, 1.95], 0.4),
   blur: (lt) => 10 * easeOut((lt - BAR) / 0.5),
   over(o, lt) {
     const k = easeOut((lt - BAR) / 0.5);
@@ -304,14 +286,14 @@ add({
 
 // ── Drop 2: half-bar cuts ───────────────────────────────────────────────────────────────────────
 const drop2: Shot[] = [
-  shot({ seed: 6, arena: 'classic', chaos: true }, 'goal', 4582, beats(1), [1.5, 1.6]),
-  shot(only(9, ['gun'], false), 'gun', 1001, beats(1), [1.9, 2.0]),
-  shot(only(1, ['bazooka']), 'rocket', 887, beats(1), [1.7, 1.8]),
-  shot({ seed: 1, arena: 'volcano' }, 'goal', 1825, beats(1), [1.45, 1.55]),
-  shot({ seed: 16, arena: 'classic', items: ['mine', 'boost'] }, 'mine', 416, beats(1), [1.9, 2.0]),
-  shot({ seed: 27, arena: 'classic', items: ['teleport', 'shield'] }, 'teleport', 1936, beats(1), [1.7, 1.8]),
-  shot({ seed: 9, arena: 'wind' }, 'goal', 1229, beats(1), [1.45, 1.55]),
-  shot({ seed: 4, arena: 'classic', chaos: true }, 'goal', 2232, beats(1), [1.5, 1.6]),
+  shot({ seed: 6, arena: 'classic', chaos: true }, 'goal', 1954, beats(1), [1.5, 1.6]),
+  shot({ seed: 36, arena: 'beach' }, 'goal', 3282, beats(1), [1.5, 1.6]),
+  shot(only(1, ['bazooka']), 'rocket', 388, beats(1), [1.7, 1.8]),
+  shot({ seed: 1, arena: 'volcano' }, 'goal', 5160, beats(1), [1.45, 1.55]),
+  shot({ seed: 16, arena: 'classic', items: ['mine', 'boost'] }, 'mine', 769, beats(1), [1.9, 2.0]),
+  shot({ seed: 27, arena: 'classic', items: ['teleport', 'shield'] }, 'teleport', 1582, beats(1), [1.7, 1.8]),
+  shot({ seed: 9, arena: 'wind' }, 'goal', 4794, beats(1), [1.45, 1.55]),
+  shot({ seed: 10, arena: 'classic', chaos: true }, 'goal', 1046, beats(1), [1.5, 1.6]),
 ];
 drop2.forEach((s, i) =>
   add({

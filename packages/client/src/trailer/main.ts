@@ -328,55 +328,80 @@ function underText(s: Segment, q: { x: number; y: number }, margin = 40): boolea
  * and none of them under the segment's text.
  */
 function check(): string[] {
+  return SEGMENTS.flatMap((s, n) => checkSegment(s, n));
+}
+
+function checkSegment(s: Segment, n: number): string[] {
   const problems: string[] = [];
-  SEGMENTS.forEach((s, n) => {
-    const sh = s.shot;
-    if (!sh?.key) return;
-    const name = `#${n} ${sh.key} @${s.t0.toFixed(2)}s`;
-    const p = plan(s);
-    const frames = Math.round((s.t1 - s.t0) * FPS);
-    if (!p?.key) {
-      problems.push(`${name}: the key event never happens`);
-      return;
-    }
-    // On the beat (within two frames), so the music hits with it.
-    const kt = s.t0 + p.key.frame / FPS;
-    const off = kt - Math.round(kt / BEAT) * BEAT;
-    if (Math.abs(off) > 2 / FPS)
-      problems.push(`${name}: key event ${(off * 1000).toFixed(0)} ms off the beat`);
-    const at = p.key.frame / frames;
-    if (at < 0.12 || at > 0.85) problems.push(`${name}: key event at ${(at * 100).toFixed(0)}% of the shot`);
-    for (const pt of p.key.points) {
-      if (pt.frame >= frames) continue;
-      const q = onScreen(view(s, p, Math.round(pt.frame)), pt.x, pt.y);
-      const where = `(${q.x.toFixed(0)}, ${q.y.toFixed(0)}) at ${(s.t0 + pt.frame / FPS).toFixed(2)}s`;
-      if (q.x < 100 || q.x > OUT_W - 100 || q.y < 100 || q.y > OUT_H - 100)
-        problems.push(`${name}: off screen ${where}`);
-      if (underText(s, q)) problems.push(`${name}: under the text ${where}`);
-    }
-    // Every explosion stays out of the text, too.
-    for (const b of p.booms) {
-      if (b.frame >= frames) continue;
-      const q = onScreen(view(s, p, Math.round(b.frame)), b.x, b.y);
-      if (underText(s, q))
-        problems.push(`${name}: explosion under the text at ${(s.t0 + b.frame / FPS).toFixed(2)}s`);
-    }
-    // And the play: the players near the ball may not spend more than a fifth of the shot behind the
-    // text (the far side of the pitch can; the statements have a backing band for that).
-    let covered = 0;
-    let total = 0;
-    p.run.forEach((m, i) => {
-      const f = p.frameOf(i);
-      if (f >= frames || i % 3) return;
-      total++;
-      const v = view(s, p, Math.round(f));
-      const { pts } = play(m, f, p.key?.points ?? []);
-      if (pts.some((pl) => underText(s, onScreen(v, pl.x, pl.y), 0))) covered++;
-    });
-    if (total && covered / total > 0.2)
-      problems.push(`${name}: players behind the text ${((covered / total) * 100).toFixed(0)}% of the shot`);
+  const sh = s.shot;
+  if (!sh?.key) return problems;
+  const name = `#${n} ${sh.key} @${s.t0.toFixed(2)}s`;
+  const p = plan(s);
+  const frames = Math.round((s.t1 - s.t0) * FPS);
+  if (!p?.key) {
+    problems.push(`${name}: the key event never happens`);
+    return problems;
+  }
+  // On the beat (within two frames), so the music hits with it.
+  const kt = s.t0 + p.key.frame / FPS;
+  const off = kt - Math.round(kt / BEAT) * BEAT;
+  if (Math.abs(off) > 2 / FPS) problems.push(`${name}: key event ${(off * 1000).toFixed(0)} ms off the beat`);
+  const at = p.key.frame / frames;
+  if (at < 0.12 || at > 0.85) problems.push(`${name}: key event at ${(at * 100).toFixed(0)}% of the shot`);
+  for (const pt of p.key.points) {
+    if (pt.frame >= frames) continue;
+    const q = onScreen(view(s, p, Math.round(pt.frame)), pt.x, pt.y);
+    const where = `(${q.x.toFixed(0)}, ${q.y.toFixed(0)}) at ${(s.t0 + pt.frame / FPS).toFixed(2)}s`;
+    if (q.x < 100 || q.x > OUT_W - 100 || q.y < 100 || q.y > OUT_H - 100)
+      problems.push(`${name}: off screen ${where}`);
+    if (underText(s, q)) problems.push(`${name}: under the text ${where}`);
+  }
+  // Every explosion stays out of the text, too.
+  for (const b of p.booms) {
+    if (b.frame >= frames) continue;
+    const q = onScreen(view(s, p, Math.round(b.frame)), b.x, b.y);
+    if (underText(s, q))
+      problems.push(`${name}: explosion under the text at ${(s.t0 + b.frame / FPS).toFixed(2)}s`);
+  }
+  // And the play: the players near the ball may not spend more than a fifth of the shot behind the
+  // text (the far side of the pitch can; the statements have a backing band for that).
+  let covered = 0;
+  let total = 0;
+  p.run.forEach((m, i) => {
+    const f = p.frameOf(i);
+    if (f >= frames || i % 3) return;
+    total++;
+    const v = view(s, p, Math.round(f));
+    const { pts } = play(m, f, p.key?.points ?? []);
+    if (pts.some((pl) => underText(s, onScreen(v, pl.x, pl.y), 0))) covered++;
   });
+  if (total && covered / total > 0.2)
+    problems.push(`${name}: players behind the text ${((covered / total) * 100).toFixed(0)}% of the shot`);
   return problems;
+}
+
+/**
+ * Key ticks that would pass check() for segment `n` (same key and timing; same match unless `seed` is
+ * given), for when the sim has changed and a shot's moment no longer happens: `story.ts` then takes one.
+ */
+function anchor(n: number, ticks = 6000, want = 6, seed?: number): number[] {
+  const s = SEGMENTS[n]!;
+  const sh = s.shot!;
+  const lead = (sh.keyTick ?? 0) - sh.from;
+  const saved = { from: sh.from, keyTick: sh.keyTick, spec: sh.spec };
+  if (seed !== undefined) sh.spec = { ...sh.spec, seed };
+  const ok: number[] = [];
+  let last = -Infinity;
+  for (const c of scan(sh.spec, ticks, sh.key!)) {
+    if (c.phase === 'over' || c.tick < lead + 10 || c.tick - last < 60) continue;
+    last = c.tick;
+    sh.keyTick = c.tick;
+    sh.from = c.tick - lead;
+    if (checkSegment(s, n).length === 0) ok.push(c.tick);
+    if (ok.length >= want) break;
+  }
+  Object.assign(sh, saved);
+  return ok;
 }
 
 async function audio(): Promise<string> {
@@ -411,6 +436,7 @@ window.trailer = {
   scan: (spec: MatchSpec, ticks: number, key: Key) => scan(spec, ticks, key),
   dryRun: (spec: MatchSpec, from: number, ticks: number) => dryRun(spec, from, ticks),
   check,
+  anchor,
   segments: () => SEGMENTS.map((s) => ({ t0: s.t0, t1: s.t1, key: s.shot?.key ?? null })),
   frames,
   fps: FPS,

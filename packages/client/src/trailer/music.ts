@@ -12,11 +12,11 @@ export const SECTION = {
   build: 1,
   drop: 3,
   traps: 6,
-  arenas: 9,
-  brk: 13,
-  drop2: 15,
-  outro: 19,
-  end: 22.5,
+  arenas: 8,
+  brk: 11,
+  drop2: 13,
+  outro: 17,
+  end: 20.5,
 } as const;
 
 const ROOTS = [57, 53, 48, 55]; // A3 F3 C3 G3 (MIDI), one per bar
@@ -142,27 +142,67 @@ export function renderMusic(ctx: BaseAudioContext, dest: AudioNode): void {
     return f;
   };
 
-  // Title (bar 0): the trailer opens on one big hit, then it rings out.
+  /** A reversed cymbal: noise swelling up to `end`, where it stops dead (it pulls into the next hit). */
+  const swell = (end: number, dur: number, vol: number) => {
+    const s = ctx.createBufferSource();
+    s.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.setValueAtTime(1200, end - dur);
+    f.frequency.exponentialRampToValueAtTime(6000, end);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.001, end - dur);
+    g.gain.exponentialRampToValueAtTime(vol, end - 0.01);
+    g.gain.linearRampToValueAtTime(0, end);
+    s.connect(f).connect(g).connect(bus);
+    s.start(end - dur, Math.random());
+    s.stop(end + 0.02);
+  };
+
+  // Title (bar 0): one big hit; the chord holds under the logo and a reversed cymbal pulls into the build,
+  // so the energy never dips between the hit and the first shot.
   kick(at(SECTION.title), 1);
   crash(at(SECTION.title), 0.34);
   noise(at(SECTION.title), 0.9, 0.22, 'lowpass', 300);
-  synth(at(SECTION.title), BAR, [45, ...CHORDS[0]!.map((n) => n + 12)], {
+  synth(at(SECTION.title), BAR * 1.1, [45, ...CHORDS[0]!.map((n) => n + 12)], {
     vol: 0.07,
     cutoff: 2400,
     voices: 4,
     detune: 20,
     echo: true,
   });
-  // Build (bars 1-2): kick on every beat, the chords opening up, then a riser and a snare roll.
+  swell(at(SECTION.build), BEAT * 2, 0.16);
+  // Build (bars 1-2): a sixteenth-note arpeggio whose filter opens all the way to the drop; the beat
+  // steps up each bar (half-time kicks, then four on the floor with sixteenth hats and a pumping bass).
+  const ARP = [0, 1, 2, 1, 2, 0, 1, 2];
   for (let b: number = SECTION.build; b < SECTION.drop; b++) {
-    const f = synth(at(b), BAR, CHORDS[b % 4]!, { vol: 0.07, cutoff: 600 + b * 300, voices: 3 });
-    f.frequency.linearRampToValueAtTime(900 + b * 450, at(b + 1));
-    for (let i = 0; i < 8; i++) hat(at(b, i / 2), 0.08);
-    for (let i = 0; i < 4; i++) kick(at(b, i), b === SECTION.drop - 1 ? 0.6 : 0.45);
+    const k = (b - SECTION.build) / (SECTION.drop - SECTION.build);
+    const ch = CHORDS[b % 4]!;
+    const f = synth(at(b), BAR, ch, { vol: 0.06, cutoff: 700 + k * 900, voices: 3 });
+    f.frequency.linearRampToValueAtTime(1100 + k * 1400, at(b + 1));
+    for (let i = 0; i < 16; i++) {
+      const lift = k + i / 32;
+      synth(at(b, i / 4), BEAT * 0.22, [ch[ARP[i % 8]!]! + 12], {
+        vol: 0.03 + 0.025 * lift,
+        cutoff: 900 + 3600 * lift,
+        type: 'square',
+        voices: 2,
+        detune: 7,
+        echo: true,
+      });
+    }
+    const last = b === SECTION.drop - 1;
+    for (let i = 0; i < 4; i++) if (last || i % 2 === 0) kick(at(b, i), last ? 0.7 : 0.55);
+    for (let i = 0; i < (last ? 16 : 8); i++) hat(at(b, last ? i / 4 : i / 2), last ? 0.06 : 0.08);
     for (let i = 0; i < 4; i++)
-      synth(at(b, i), BEAT * 0.5, [ROOTS[b % 4]! - 12], { vol: 0.1, cutoff: 300, voices: 1 });
+      synth(at(b, last ? i + 0.5 : i), BEAT * 0.45, [ROOTS[b % 4]! - 12], {
+        vol: 0.12,
+        cutoff: 300 + k * 200,
+        voices: 1,
+      });
   }
-  // Riser: noise sweeping up through the last bar, and a snare roll speeding up.
+  // Riser through the last bar, a snare roll from its second beat speeding up, and a reversed cymbal
+  // landing on the drop.
   {
     const t = at(SECTION.drop - 1);
     const s = ctx.createBufferSource();
@@ -175,12 +215,14 @@ export function renderMusic(ctx: BaseAudioContext, dest: AudioNode): void {
     f.frequency.exponentialRampToValueAtTime(9000, t + BAR);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.02, t);
-    g.gain.linearRampToValueAtTime(0.35, t + BAR);
+    g.gain.linearRampToValueAtTime(0.3, t + BAR);
     g.gain.linearRampToValueAtTime(0, t + BAR + 0.02);
     s.connect(f).connect(g).connect(bus);
     s.start(t);
     s.stop(t + BAR + 0.05);
-    for (let i = 0; i < 16; i++) clap(at(SECTION.drop - 1, i / 4), 0.12 + i * 0.02);
+    for (let i = 0; i < 2; i++) clap(at(SECTION.drop - 1, 1 + i / 2), 0.12 + i * 0.03);
+    for (let i = 0; i < 8; i++) clap(at(SECTION.drop - 1, 2 + i / 4), 0.2 + i * 0.03);
+    swell(at(SECTION.drop), BEAT, 0.22);
   }
 
   // Drops: four on the floor, claps on 2 and 4, off-beat hats, pumping bass, chord stabs, lead.
@@ -246,8 +288,8 @@ export function renderMusic(ctx: BaseAudioContext, dest: AudioNode): void {
   drop(SECTION.drop2, SECTION.drop2 + 2, true);
   drop(SECTION.drop2 + 2, SECTION.outro, true, false, LEAD2);
 
-  // The gaps before the drops.
-  for (const b of [SECTION.drop, SECTION.drop2]) {
+  // The gap before the second drop (after the break). The first one runs straight in off the build.
+  for (const b of [SECTION.drop2]) {
     const t = at(b);
     out.gain.setValueAtTime(1, t - BEAT * 0.5);
     out.gain.linearRampToValueAtTime(0, t - BEAT * 0.5 + 0.01);
