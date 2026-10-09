@@ -158,7 +158,12 @@ const store = {
 /** A phone or tablet: only a coarse pointer (finger) and no fine one (mouse/trackpad). */
 const touchOnly = () => matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
 
-export function createUi(root: HTMLElement, act: UiActions, opts: { name?: string; muted: boolean }): Ui {
+export function createUi(
+  root: HTMLElement,
+  act: UiActions,
+  /** `menuExtra`: more for the bottom of the menu (the recent matches). */
+  opts: { name?: string; muted: boolean; menuExtra?: () => Child },
+): Ui {
   let name = opts.name ?? store.get('name') ?? '';
   if (opts.name) store.set('name', opts.name);
   let screen = 'none';
@@ -438,6 +443,7 @@ export function createUi(root: HTMLElement, act: UiActions, opts: { name?: strin
         button('Find Room', () => needName() && find()),
         h('div', { class: 'row' }, code, button('Join with Code', joinCode)),
         h('label', { class: 'check' }, mute, 'Mute sounds (M)'),
+        opts.menuExtra?.(),
       );
       if (prefill) code.focus();
     },

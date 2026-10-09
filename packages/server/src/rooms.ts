@@ -35,6 +35,7 @@ import {
   type Team,
 } from '@crateball/sim';
 import type { Metrics } from './metrics';
+import { createRecorder, type Recorder } from './replays';
 
 /** A snapshot every N ticks (60 Hz sim → 30 Hz snapshots). */
 export const SNAP_EVERY = 2;
@@ -163,6 +164,9 @@ export interface Room {
   stepMsMax: number;
   /** The last snapshot's state, as clients hold it: the base of the next delta. */
   snap: { state: Plain; tick: number } | null;
+  /** Goal replays of the current match (replays.ts), and whether they went out at its final whistle. */
+  replays: Recorder;
+  replaysSent: boolean;
 }
 
 type Result = Room | ErrorCode;
@@ -504,9 +508,18 @@ export function createRooms(
     }
     // Fresh secret loot randomness every step: snapshots carry the public `rng` (weather, spawns), so loot
     // must not follow from it, nor from any state a client could reconstruct from past openings.
-    g.lootRng = secret();
+    const lootSeed = secret();
+    g.lootRng = lootSeed;
+    room.replays.before(g, inputs);
     step(g, inputs);
+    room.replays.after(g, lootSeed);
     if (g.tick % SNAP_EVERY === 0) broadcastSnap(room);
+    if (g.phase === 'over' && !room.replaysSent) {
+      // The final whistle: everyone here gets the match's goals (once; they keep them themselves).
+      room.replaysSent = true;
+      const bytes = room.replays.bundle(g, now());
+      if (bytes) for (const m of room.members.values()) m.send(bytes);
+    }
     room.stepMsMax = Math.max(room.stepMsMax, performance.now() - t0);
     if (g.tick % ROOM_STATS_EVERY === 0) {
       const starved = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.starved]));
@@ -625,6 +638,7 @@ export function createRooms(
     });
     // Someone arriving mid-match knows nobody's keys yet: everyone's schedule is resent next tick.
     if (room.state === 'playing') for (const o of room.members.values()) o.relayDirty = true;
+    room.replays.touched();
     room.emptySince = null;
     byClient.set(id, room);
     rebalance(room);
@@ -677,6 +691,7 @@ export function createRooms(
     byClient.delete(id);
     room.members.delete(id);
     removePlayer(room.game, id);
+    room.replays.touched();
     if (room.members.size === 0) {
       room.state = 'lobby';
       // Walked away on purpose: nobody needs the room. Dropped: keep it a while so a refresh finds it.
@@ -735,6 +750,7 @@ export function createRooms(
       resetSlack(m);
       const p = room.game.players.find((o) => o.id === id);
       if (p) p.input = 0;
+      room.replays.touched();
       if (m.awayTimer) clearTimeout(m.awayTimer);
       m.awayTimer = setTimeout(() => leave(id, true), RECONNECT_GRACE_MS);
       lim(() => log.info({ room: room.code, id }, 'oyuncu koptu, yeri tutuluyor'));
@@ -772,6 +788,8 @@ export function createRooms(
         emptySince: null,
         stepMsMax: 0,
         snap: null,
+        replays: createRecorder(),
+        replaysSent: false,
         owner,
         started: false,
       };
@@ -904,6 +922,8 @@ export function createRooms(
       // The arena order is drawn as the match starts, from the pool the host picked.
       newArenaPlan(room.game);
       restartMatch(room.game);
+      room.replays.reset();
+      room.replaysSent = false;
       room.state = 'playing';
       room.started = true;
       // Nothing from the last match carries over: no queued or held keys at the new kickoff.

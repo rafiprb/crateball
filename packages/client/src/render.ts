@@ -154,7 +154,13 @@ export interface Renderer {
   resize(w: number, h: number, dpr: number): void;
   /** `banners: false` leaves out the centre-screen words (GOAL!, the countdown) and the wind pill: the
    * trailer frames its own shots and would cut them in half. */
-  draw(p: Predictor, alpha: number, fx: Particles, hud: { rtt: number | null; banners?: boolean }): void;
+  draw(
+    p: Predictor,
+    alpha: number,
+    fx: Particles,
+    /** `replay`: a goal replay (a REPLAY tag instead of the ping, no controls line). */
+    hud: { rtt: number | null; banners?: boolean; replay?: boolean },
+  ): void;
   /** A chat line from a player: shown in a speech bubble above them for a few seconds. */
   say(id: string, text: string): void;
 }
@@ -885,7 +891,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
   };
 
-  const drawHud = (g: Game, pr: Predictor, w: number, banners = true) => {
+  const drawHud = (g: Game, pr: Predictor, w: number, banners = true, replay = false) => {
     const mid = w / 2;
     ctx.fillStyle = 'rgba(20,24,40,.82)';
     ctx.beginPath();
@@ -916,16 +922,18 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (bits.length) text(bits.join('  ·  '), mid, h - 44, 18, '#FFF4E0', 800);
     } else if (pr.me)
       text('Spectating — you can join a team when the match is over', mid, h - 44, 18, '#FFF4E0', 800);
-    ctx.globalAlpha = 0.6;
-    ctx.textAlign = 'left';
-    ctx.font = '600 12px Nunito, system-ui, sans-serif';
-    ctx.fillStyle = '#FFF4E0';
-    ctx.fillText(
-      'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Chat: Enter · Report a glitch: R',
-      12,
-      h - 14,
-    );
-    ctx.globalAlpha = 1;
+    if (!replay) {
+      ctx.globalAlpha = 0.6;
+      ctx.textAlign = 'left';
+      ctx.font = '600 12px Nunito, system-ui, sans-serif';
+      ctx.fillStyle = '#FFF4E0';
+      ctx.fillText(
+        'Move: WASD/Arrows · Kick: Space/X · Use item: E/Shift · Chat: Enter · Report a glitch: R',
+        12,
+        h - 14,
+      );
+      ctx.globalAlpha = 1;
+    }
     let banner = '';
     let color = '#FFF4E0';
     if (g.phase === 'goal') {
@@ -1014,9 +1022,17 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       text(`First to ${g.settings.scoreLimit}`, mid, below + 30, 20, '#FFF4E0', 800);
   };
 
-  const drawPing = (rtt: number | null, w: number) => {
-    const label = rtt === null ? 'offline' : `${Math.round(rtt)} ms`;
-    const color = rtt === null ? COLORS.red : rtt < 80 ? '#7CFF7A' : rtt < 150 ? '#FFE066' : COLORS.red;
+  const drawPing = (rtt: number | null, w: number, replay: boolean) => {
+    const label = replay ? 'REPLAY' : rtt === null ? 'offline' : `${Math.round(rtt)} ms`;
+    const color = replay
+      ? '#FFE066'
+      : rtt === null
+        ? COLORS.red
+        : rtt < 80
+          ? '#7CFF7A'
+          : rtt < 150
+            ? '#FFE066'
+            : COLORS.red;
     ctx.fillStyle = 'rgba(20,24,40,.82)';
     ctx.beginPath();
     ctx.roundRect(w - 104, 14, 92, 28, 10);
@@ -1062,8 +1078,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.setTransform(scale, 0, 0, scale, cx + sx, cy + sy);
       drawWorld(g, pr, alpha, now, fx);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawHud(g, pr, canvas.width / dpr, hudInfo.banners);
-      drawPing(hudInfo.rtt, canvas.width / dpr);
+      drawHud(g, pr, canvas.width / dpr, hudInfo.banners, hudInfo.replay);
+      drawPing(hudInfo.rtt, canvas.width / dpr, hudInfo.replay ?? false);
     },
   };
 }

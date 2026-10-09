@@ -1,9 +1,10 @@
 import type { ArenaKind, Game, ItemKind, Role, Settings, Team } from '@crateball/sim';
+import { REPLAY_MAX_BYTES, isReplay } from './replay';
 import { STATE_SCALE, decodeFrame, type DecodedSnap, type SnapDecoder } from './snap';
 
 export * from './snap';
-
-export const PROTOCOL_VERSION = 17;
+export * from './replay';
+export { PROTOCOL_VERSION } from './version';
 /** A seat in the room: a team, or watching. */
 export type Seat = Team | 'spec';
 /** 4 letters, no look-alikes (I/O). */
@@ -145,7 +146,10 @@ export type ServerMessage =
   /** Input relay: player `id` changed its keys to `b`, applied on the server in the step from tick `k`.
    * Sent the moment it reaches the server (only changes), so other clients' predictions learn of a kick
    * before the snapshot that contains it. */
-  | { t: 'ri'; id: string; k: number; b: number };
+  | { t: 'ri'; id: string; k: number; b: number }
+  /** The goals of the match that just ended (replay.ts), sent once at the final whistle. Kept as the raw
+   * bytes: the client stores and offers them for download as they are. */
+  | { t: 'replays'; bytes: Uint8Array };
 
 type Obj = Record<string, unknown>;
 const ERROR_CODES: readonly string[] = [
@@ -194,11 +198,14 @@ function cleanText(v: unknown, max: number): string | null {
   if (typeof v !== 'string') return null;
   // Control and format characters out (C0/C1, zero-width, right-to-left overrides that flip how a
   // name reads); the zero-width joiner stays, emoji sequences need it.
+  // No lone surrogates either (escaped in JSON, or cut in half by the length limit): UTF-8 cannot carry
+  // them, so a binary snapshot would hand clients a different name than the server holds.
   const s = [...v]
-    .filter((c) => c === '\u200D' || !/[\p{Cc}\p{Cf}]/u.test(c))
+    .filter((c) => c === '\u200D' || !/[\p{Cc}\p{Cf}\p{Cs}]/u.test(c))
     .join('')
     .trim()
-    .slice(0, max);
+    .slice(0, max)
+    .replace(/[\uD800-\uDBFF]$/, '');
   return s || null;
 }
 
@@ -373,6 +380,7 @@ export function decodeServerData(data: unknown, dec: SnapDecoder): ServerMessage
   if (typeof data === 'string') return decodeServerMessage(data);
   const bytes = data instanceof Uint8Array ? data : data instanceof ArrayBuffer ? new Uint8Array(data) : null;
   if (!bytes) return null;
+  if (isReplay(bytes)) return bytes.length <= REPLAY_MAX_BYTES ? { t: 'replays', bytes } : null;
   let s: DecodedSnap | null;
   try {
     s = decodeFrame(bytes, dec);

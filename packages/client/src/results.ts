@@ -14,26 +14,30 @@ export interface Results {
   hide(): void;
   /** Leaving the room: the next room's matches are new ones even at the same tick. */
   forget(): void;
+  /** The match's goals can be watched (`count` 0: not, or not yet): a button on the screen, now or when it
+   * comes up. */
+  goals(count: number, watch: () => void): void;
+  /** While the goals are being watched the countdown stands still. */
+  hold(on: boolean): void;
 }
 
 type Cell = Node | string;
 
-/** Column header, the line under it, and its tooltip. `roles`: only shown with positions on. */
-const COLUMNS: Array<[string, string, string, boolean?]> = [
+/** Column header and its tooltip (what a pair "a/b" in it means). `roles`: only shown with positions on. */
+const COLUMNS: Array<[string, string, boolean?]> = [
   [
     'Points',
-    '',
     "MVP points: goals and assists (worth more or less by position) plus the position's own play, at most 3",
   ],
-  ['Goals', 'scored / own', 'Goals scored / own goals'],
-  ['Assists', '', 'The pass the goal came from (the scorer got it straight from you, within 3 s)'],
-  ['Shots', 'all / on target', 'Shots at goal / of them a goal, a save or a block'],
-  ['Passes', '', 'Passes that reached a teammate'],
-  ['Defence', 'tackles / blocks', 'Balls won off an opponent / shots blocked in your box'],
-  ['Saves', '', 'Keeper: shots stopped', true],
-  ['Crates', 'good / bad', 'Crates opened: helpful / harmful'],
-  ['Damage', 'dealt / shielded', 'Damage dealt to opponents / damage your shield took'],
-  ['Deaths', '', 'Times knocked out'],
+  ['Goals', 'Goals scored / own goals'],
+  ['Assists', 'The pass the goal came from (the scorer got it straight from you, within 3 s)'],
+  ['Shots', 'Shots at goal / of them a goal, a save or a block'],
+  ['Passes', 'Passes that reached a teammate'],
+  ['Defence', 'Balls won off an opponent / shots blocked in your box'],
+  ['Saves', 'Keeper: shots stopped', true],
+  ['Crates', 'Crates opened: helpful / harmful'],
+  ['Damage', 'Damage dealt to opponents / damage your shield took'],
+  ['Deaths', 'Times knocked out'],
 ];
 
 /** 2.25 → "2.25", 3 → "3", −0.5 → "−0.5". */
@@ -60,12 +64,21 @@ export function createResults(parent: HTMLElement = document.body): Results {
   let shownFor: string | null = null;
   let closeAt = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
+  /** Time left when the countdown was put on hold (null: running). */
+  let held: number | null = null;
+  let goals: { count: number; watch: () => void } = { count: 0, watch: () => {} };
+  const goalsBtn = h('button', { type: 'button', class: 'goalsbtn', onclick: () => goals.watch() });
+  const showGoals = () => {
+    goalsBtn.hidden = goals.count === 0;
+    goalsBtn.replaceChildren('▶ Watch the goals', h('span', { class: 'count' }, String(goals.count)));
+  };
 
   /** Everything behind the screen while it is up: out of reach of Tab, clicks and Enter. */
   let behind: Element[] = [];
   const hide = () => {
     if (timer) clearInterval(timer);
     timer = null;
+    held = null;
     root.hidden = true;
     for (const el of behind) el.removeAttribute('inert');
     behind = [];
@@ -89,7 +102,7 @@ export function createResults(parent: HTMLElement = document.body): Results {
       [pair(s.damage, s.absorbed), s.damage + s.absorbed === 0],
       [String(s.deaths), s.deaths === 0],
     ];
-    const cells = all.filter((_, i) => roles || !COLUMNS[i]![3]);
+    const cells = all.filter((_, i) => roles || !COLUMNS[i]![2]);
     return h(
       'tr',
       { class: p.id === me ? 'me' : '' },
@@ -119,6 +132,20 @@ export function createResults(parent: HTMLElement = document.body): Results {
     hide,
     forget() {
       shownFor = null;
+      goals = { count: 0, watch: () => {} };
+      showGoals();
+    },
+    goals(count, watch) {
+      goals = { count, watch };
+      showGoals();
+    },
+    hold(on) {
+      if (root.hidden) return;
+      if (on && held === null) held = closeAt - performance.now();
+      else if (!on && held !== null) {
+        closeAt = performance.now() + held;
+        held = null;
+      }
     },
     show(g, me) {
       const end = `${g.matches}:${g.tick - g.phaseT}`;
@@ -155,9 +182,7 @@ export function createResults(parent: HTMLElement = document.body): Results {
                   'tr',
                   {},
                   h('th', { class: 'who' }, 'Player'),
-                  ...COLUMNS.filter((c) => roles || !c[3]).map(([label, sub, title]) =>
-                    h('th', { title }, label, sub && h('small', {}, sub)),
-                  ),
+                  ...COLUMNS.filter((c) => roles || !c[2]).map(([label, title]) => h('th', { title }, label)),
                 ),
               ),
               h(
@@ -181,19 +206,25 @@ export function createResults(parent: HTMLElement = document.body): Results {
           h('p', { class: 'why' }, `${red} – ${blue}  ·  ${why}`),
           team('red'),
           team('blue'),
-          h('footer', {}, back, countdown),
+          h('footer', {}, back, goalsBtn, countdown),
         ),
       );
       root.hidden = false;
       for (const el of behind) el.removeAttribute('inert');
-      behind = [...parent.children].filter((el) => el !== root && !el.hasAttribute('inert'));
+      // Dialogs (the goals popup) keep themselves modal above it.
+      behind = [...parent.children].filter(
+        (el) => el !== root && !el.hasAttribute('inert') && !(el instanceof HTMLDialogElement),
+      );
       for (const el of behind) el.setAttribute('inert', '');
       // Whatever had the keyboard (the chat box, mid-message) lets go: Enter and Esc are the screen's now.
       if (document.activeElement instanceof HTMLElement && !root.contains(document.activeElement))
         document.activeElement.blur();
       back.focus();
+      showGoals();
       closeAt = performance.now() + (MATCH.resultsShow / TICK_HZ) * 1000;
+      held = null;
       const tick = () => {
+        if (held !== null) return;
         const left = Math.ceil((closeAt - performance.now()) / 1000);
         if (left <= 0) hide();
         else countdown.textContent = `Closes in ${left} s`;

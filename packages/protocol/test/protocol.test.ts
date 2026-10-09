@@ -342,3 +342,45 @@ describe('telemetri', () => {
     ).toBeNull();
   });
 });
+
+describe('gol tekrarları (biçim)', () => {
+  it('soketteki tekrar çerçevesi snapshot sanılmaz, baytları olduğu gibi gelir', async () => {
+    const { encodeReplays } = await import('../src/index');
+    const state = { tick: 5, players: [], ball: {}, crates: [], bullets: [], blasts: [], score: [1, 0] };
+    const bytes = encodeReplays({
+      at: 1,
+      score: [1, 0],
+      goals: [
+        {
+          tick: 9,
+          team: 'red',
+          by: 'Ayşe',
+          assist: null,
+          ownGoal: false,
+          second: 3,
+          arena: 'classic',
+          start: 5,
+          end: 12,
+          state: { ...state, arena: {}, settings: {}, scoring: {} },
+          ids: ['a'],
+          inputs: [0, 0, 4],
+          loot: [],
+          jumps: [],
+          hashes: [7, 1],
+        },
+      ],
+    });
+    const dec = createSnapDecoder();
+    const m = decodeServerData(bytes, dec);
+    expect(m?.t).toBe('replays');
+    expect(m?.t === 'replays' && m.bytes).toEqual(bytes);
+    // The snapshot decoder is untouched: the next delta still applies.
+    expect(dec.tick).toBe(-1);
+  });
+  it('durum hash’i anahtar sırasına bakmaz, değere bakar', async () => {
+    const { stateHash } = await import('../src/index');
+    expect(stateHash({ a: 1, b: [true, null, 'x'] })).toBe(stateHash({ b: [true, null, 'x'], a: 1 }));
+    expect(stateHash({ a: 1 })).not.toBe(stateHash({ a: 1.00001 }));
+    expect(stateHash({ a: '1' })).not.toBe(stateHash({ a: 1 }));
+  });
+});

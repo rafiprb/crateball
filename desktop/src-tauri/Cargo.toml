@@ -13,6 +13,10 @@ tauri = { version = "2.12", features = [] }
 tauri-plugin-opener = "2.7"
 tauri-plugin-single-instance = "2.5"
 
+# Windows: the .crateball file type is registered per user on start (Steam installs no installer).
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
 # Small binary: the app only opens a window.
 [profile.release]
 codegen-units = 1
