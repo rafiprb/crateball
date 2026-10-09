@@ -81,10 +81,12 @@ const RULES = [
     uid: 'crateball-tick',
     title: 'Oyun yavaşlıyor',
     ds: 'logs',
-    expr: stat('tickMsMax'),
-    above: 10,
-    for: '2m',
-    summary: `En yavaş tick ${n()} ms (bütçe 16.7 ms). Oyuncular yakında takılma görür.`,
+    // The average, not the slowest tick: single 10-35 ms ticks come every few minutes even with one
+    // player (they alerted 4 times on launch day) and nobody feels them. The average is ~1 ms.
+    expr: stat('tickMsAvg'),
+    above: 8,
+    for: '5m',
+    summary: `Ortalama tick ${n()} ms (bütçe 16.7 ms, normalde 1 ms civarı). Oyuncular yakında takılma görür.`,
   },
   {
     uid: 'crateball-crash',
