@@ -56,8 +56,9 @@ Measure before deciding anything about capacity (no scaling work without numbers
     cap, not players; keep the socket cap above the player cap so the queue can connect.
 - **Grafana alerts:** live since 2026-10-09, to Telegram (@crateballbot): server full and at 80% of the
   player cap, slowest tick above 10 ms, a game process crashing, an error burst, no data from the server
-  for 5 min, CPU, memory and disk. `scripts/alerts.mjs`. Still missing: an outside check of the site
-  (Grafana Synthetic Monitoring on /health); "no data" also fires if only the monitoring agent stops.
+  for 5 min, CPU, memory and disk, the site unreachable from outside. `scripts/alerts.mjs`. The last one
+  needs its Synthetic Monitoring check made in the Grafana UI (HTTP, job `crateball-health`, /health);
+  "no data from the server" also fires if only the monitoring agent stops.
 
 ## Capacity
 

@@ -32,6 +32,8 @@ const INSTANCE = 'crateball-prod';
 const FOLDER = { uid: 'crateball', title: 'Crateball' };
 const GROUP = 'production';
 const RECEIVER = 'Crateball Telegram';
+/** Synthetic Monitoring check on the site from outside (its job name in Grafana). */
+const SITE_JOB = 'crateball-health';
 
 // One line per alert: "ALARM: …" when it fires, "DÜZELDİ: …" when it clears.
 const MESSAGE =
@@ -112,6 +114,18 @@ const RULES = [
     summary: '5 dakikadır sunucudan hiç veri gelmiyor: sunucu kapalı ya da izleme ajanı durmuş.',
   },
   {
+    // Grafana Synthetic Monitoring, HTTP check with job name crateball-health on /health from two probes
+    // (made in the Grafana UI). Fires when no probe got through for 3 minutes.
+    uid: 'crateball-site',
+    title: 'Site dışarıdan açılmıyor',
+    ds: 'prom',
+    expr: `max(max_over_time(probe_success{job="${SITE_JOB}"}[3m]))`,
+    below: 1,
+    for: '0s',
+    summary:
+      '3 dakikadır dışarıdan hiçbir yoklama playcrateball.com/health adresine ulaşamıyor: oyuncular siteyi açamıyor.',
+  },
+  {
     uid: 'crateball-cpu',
     title: 'İşlemci dolu',
     ds: 'prom',
@@ -163,7 +177,12 @@ function rule(r, uids) {
           refId: 'C',
           type: 'threshold',
           expression: 'A',
-          conditions: [{ evaluator: { type: 'gt', params: [r.above] } }],
+          conditions: [
+            {
+              evaluator:
+                r.below === undefined ? { type: 'gt', params: [r.above] } : { type: 'lt', params: [r.below] },
+            },
+          ],
         },
       },
     ],
@@ -251,7 +270,10 @@ if (cmd === 'chat') {
   });
   console.log('gönderildi');
 } else if (cmd === 'plan') {
-  for (const r of RULES) console.log(`${r.title}: ${r.expr} > ${r.above} (${r.for})\n  ${r.summary}`);
+  for (const r of RULES)
+    console.log(
+      `${r.title}: ${r.expr} ${r.below === undefined ? `> ${r.above}` : `< ${r.below}`} (${r.for})\n  ${r.summary}`,
+    );
 } else if (cmd === 'install') {
   await install();
 } else {
