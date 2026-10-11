@@ -261,7 +261,9 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   Denendi: geç kalan istemciye negatif `lead` verip %1-2 hızlandırmak. Açlık sıfıra indi ama top
   düzeltmeleri ve kare sıçramaları azalmadı, bazı istemcilerde arttı (önde tahmin etmenin bedeli). Yani
   açlık zıplamanın sebebi değil, yakın oyuncunun tuş değişikliğinin diğerlerine geç ulaşmasının belirtisi.
-  Alınmadı.
+  Alınmadı. Topun ofsetini üstel sönüm yerine kritik sönümlü yayla kapatmak (ofset hızı 0'dan başlar; bir
+  çeşidinde top düzeltmede çizilen hızını da korur) da denendi: sıçrama ve geri kayma ölçüleri değişmedi,
+  hızı koruyan çeşit hatayı büyüttü. Alınmadı.
 - Bağlantı canlılığı: sunucu 5 sn'de bir ping atar, 2 cevapsızda bağlantıyı kapatır; istemci 6 sn hiçbir
   şey duymazsa yeniden bağlanır. Aynı sekme (oturum anahtarı) yeni bağlantıyla gelirse eski bağlantı
   hâlâ açık görünse de yeri devralır; eskisi 4011 ile kapanır ("başka sekmede açık").
