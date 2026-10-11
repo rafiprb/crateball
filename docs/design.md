@@ -255,6 +255,13 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   100 ms'lik istemcide çizilen topun o anki gerçeğe uzaklığı pek değişmez: orada hatayı ne kadar önde
   tahmin etmek zorunda olduğu belirler. Topun ters yöne kaymasını önleyen ayrı bir sönüm kuralı denendi,
   ölçülebilir fark yaratmadı (uzak topta sönüm zaten neredeyse hiç geri kaydırmıyor), alınmadı.
+- Prod (9-11 Ekim): sunucuya yakın (10-20 ms) oyuncuların tick'lerinin %20-45'i yedek girdiyle oynandı,
+  kuyrukları hep 0 (tam sınırda geliyorlar), ve aynı odadakiler topu daha sık zıplamış gördü.
+  `pnpm netsim 180 3 --prod --poll 4` bunu üretir (120-144 Hz ekran, yavaş saat, 4 ms'lik sunucu döngüsü).
+  Denendi: geç kalan istemciye negatif `lead` verip %1-2 hızlandırmak. Açlık sıfıra indi ama top
+  düzeltmeleri ve kare sıçramaları azalmadı, bazı istemcilerde arttı (önde tahmin etmenin bedeli). Yani
+  açlık zıplamanın sebebi değil, yakın oyuncunun tuş değişikliğinin diğerlerine geç ulaşmasının belirtisi.
+  Alınmadı.
 - Bağlantı canlılığı: sunucu 5 sn'de bir ping atar, 2 cevapsızda bağlantıyı kapatır; istemci 6 sn hiçbir
   şey duymazsa yeniden bağlanır. Aynı sekme (oturum anahtarı) yeni bağlantıyla gelirse eski bağlantı
   hâlâ açık görünse de yeri devralır; eskisi 4011 ile kapanır ("başka sekmede açık").
