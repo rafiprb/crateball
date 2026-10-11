@@ -72,6 +72,9 @@ export const RELAY_BURST = 20;
 export const RELAY_PER_SEC = 20;
 const TICK_MS = 1000 / TICK_HZ;
 const MAX_CATCHUP = 5;
+/** One room's step above this is logged with where the time went. */
+const SLOW_STEP_MS = 12;
+const r2 = (x: number) => Math.round(x * 100) / 100;
 /** A room stats log line every 5 s of play. */
 const ROOM_STATS_EVERY = TICK_HZ * 5;
 /** An empty room survives this long so a shared link still works after a refresh. */
@@ -510,17 +513,46 @@ export function createRooms(
     // must not follow from it, nor from any state a client could reconstruct from past openings.
     const lootSeed = secret();
     g.lootRng = lootSeed;
+    const phase = g.phase;
+    const t1 = performance.now();
     room.replays.before(g, inputs);
+    const t2 = performance.now();
     step(g, inputs);
+    const t3 = performance.now();
     room.replays.after(g, lootSeed);
+    const t4 = performance.now();
     if (g.tick % SNAP_EVERY === 0) broadcastSnap(room);
+    const t5 = performance.now();
     if (g.phase === 'over' && !room.replaysSent) {
       // The final whistle: everyone here gets the match's goals (once; they keep them themselves).
       room.replaysSent = true;
       const bytes = room.replays.bundle(g, now());
       if (bytes) for (const m of room.members.values()) m.send(bytes);
     }
-    room.stepMsMax = Math.max(room.stepMsMax, performance.now() - t0);
+    const t6 = performance.now();
+    room.stepMsMax = Math.max(room.stepMsMax, t6 - t0);
+    // A slow step stalls the room (the ticks after it run back to back and starve inputs): say where it
+    // went. Seen 20-45 ms at goals and kickoffs since goal replays, with no GC to blame.
+    if (t6 - t0 > SLOW_STEP_MS)
+      lim(() =>
+        log.warn(
+          {
+            room: room.code,
+            tick: g.tick,
+            phase: `${phase}->${g.phase}`,
+            arena: g.arena.kind,
+            ms: {
+              inputs: r2(t1 - t0),
+              recBefore: r2(t2 - t1),
+              step: r2(t3 - t2),
+              recAfter: r2(t4 - t3),
+              snap: r2(t5 - t4),
+              bundle: r2(t6 - t5),
+            },
+          },
+          'yavaş tick',
+        ),
+      );
     if (g.tick % ROOM_STATS_EVERY === 0) {
       const starved = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.starved]));
       const queued = Object.fromEntries([...room.members.values()].map((m) => [m.name, m.queue.length]));

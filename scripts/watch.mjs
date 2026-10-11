@@ -21,6 +21,8 @@ createInterface({ input: process.stdin }).on('line', (l) => {
       return out(`MAÇ BAŞLADI ${j.room}`);
     case 'maç bitti, lobiye dönüldü':
       return out(`MAÇ BİTTİ ${j.room} skor ${j.score}`);
+    case 'yavaş tick':
+      return out(`YAVAŞ TICK ${j.room} ${j.phase} ${j.arena}: ${JSON.stringify(j.ms)}`);
     case 'oyuncu raporu (R)':
       return out(
         `RAPOR ${who}: ` +

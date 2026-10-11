@@ -28,7 +28,6 @@ import { createPredictor, type Predictor } from '../../packages/client/src/predi
 import { createTickClock } from '../../packages/client/src/clock';
 
 const TICK_MS = 1000 / TICK_HZ;
-const FRAME_MS = 1000 / 60;
 
 export interface LinkSpec {
   /** Base one-way delay (ms), both directions. */
@@ -50,6 +49,8 @@ export interface ClientSpec {
   link: LinkSpec;
   /** Client clock rate error in parts per million (positive: its ticks come faster than the server's). */
   driftPpm: number;
+  /** Display refresh rate (frames per second; default 60). The loop runs ticks only on frames. */
+  frameHz?: number;
 }
 
 export interface SimOptions {
@@ -60,6 +61,9 @@ export interface SimOptions {
   warmupSeconds?: number;
   /** Inputs per uplink message (1: one per tick, as the client does; 2: every other tick, both at once). */
   inputBatch?: number;
+  /** The server loop polls every N ms (prod: a 4 ms setInterval) and runs the ticks due by then; 0 runs
+   * every tick exactly on time. */
+  serverPollMs?: number;
 }
 
 export const DEFAULT_CLIENTS: ClientSpec[] = [
@@ -81,6 +85,22 @@ export const DEFAULT_CLIENTS: ClientSpec[] = [
   { name: 'far100', team: 'red', link: { oneWayMs: 47, jitterMs: 10, stallAt: [[2000, 340]] }, driftPpm: 30 },
   // Inputs arrive in clumps (prod: a third of ticks starved).
   { name: 'bursty', team: 'blue', link: { oneWayMs: 6, jitterMs: 2, clumpMs: [16, 70] }, driftPpm: -20 },
+];
+
+/** Prod launch week: friends close to the server on 120-144 Hz displays, clocks a little slow or fast
+ * (prod: 20-45% of ticks starved at 10-20 ms RTT, `pnpm netsim --prod`). */
+export const PROD_CLIENTS: ClientSpec[] = [
+  // RTT median ~10 ms but p90 ~35 ms (prod: Wi-Fi close to the server).
+  { name: 'wifi10', team: 'red', link: { oneWayMs: 3, jitterMs: 16 }, driftPpm: -50, frameHz: 120 },
+  { name: 'wifi10f', team: 'blue', link: { oneWayMs: 3, jitterMs: 16 }, driftPpm: 40, frameHz: 144 },
+  {
+    name: 'home20',
+    team: 'red',
+    link: { oneWayMs: 10, jitterMs: 6, stall: { everyMs: 20_000, ms: [80, 250] } },
+    driftPpm: -30,
+    frameHz: 120,
+  },
+  { name: 'far60', team: 'blue', link: { oneWayMs: 28, jitterMs: 10 }, driftPpm: -20, frameHz: 60 },
 ];
 
 function rng(seed: number) {
@@ -340,7 +360,7 @@ export function runSim(o: SimOptions): ClientReport[] {
 
   // Server: 60 Hz on the reference clock.
   const prevStarved = new Map<string, number>();
-  const serverTick = () => {
+  const oneTick = () => {
     rooms.tickAll();
     recordTruth(room.game);
     for (const c of clients) {
@@ -349,15 +369,25 @@ export function runSim(o: SimOptions): ClientReport[] {
       if (now >= warm) c.starved += s >= before ? s - before : s;
       prevStarved.set(c.id, s);
     }
-    q.push(now + TICK_MS, serverTick);
+  };
+  const poll = o.serverPollMs ?? 0;
+  let due = TICK_MS;
+  const serverTick = () => {
+    // Like the prod loop: every tick that is due by now runs, back to back.
+    while (due <= now) {
+      oneTick();
+      due += TICK_MS;
+    }
+    q.push(poll > 0 ? (Math.floor(now / poll) + 1) * poll : due, serverTick);
   };
   q.push(TICK_MS, serverTick);
 
   // Clients: one frame per display refresh of their own clock; same loop as main.ts.
   for (const c of clients) {
-    const frameReal = FRAME_MS / (1 + c.spec.driftPpm / 1e6);
+    const frameMs = 1000 / (c.spec.frameHz ?? 60);
+    const frameReal = frameMs / (1 + c.spec.driftPpm / 1e6);
     const frame = () => {
-      const dt = FRAME_MS;
+      const dt = frameMs;
       c.acc = Math.min(c.acc + dt, TICK_MS * 6);
       const tickMs = c.clock.tickMs();
       while (c.acc >= tickMs) {
@@ -405,7 +435,7 @@ export function runSim(o: SimOptions): ClientReport[] {
       }
       q.push(now + frameReal, frame);
     };
-    q.push(rand() * FRAME_MS, frame);
+    q.push(rand() * frameMs, frame);
   }
 
   while (q.size > 0) {
