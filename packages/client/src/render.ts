@@ -159,7 +159,7 @@ export interface Renderer {
     alpha: number,
     fx: Particles,
     /** `replay`: a goal replay (a REPLAY tag instead of the ping, no controls line). */
-    hud: { rtt: number | null; banners?: boolean; replay?: boolean },
+    hud: { rtt: number | null; banners?: boolean; replay?: boolean; glide?: string },
   ): void;
   /** A chat line from a player: shown in a speech bubble above them for a few seconds. */
   say(id: string, text: string): void;
@@ -1048,6 +1048,15 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.fillText(label, w - 76, 29);
   };
 
+  /** The ball smoothing under test (`?glide=`), so whoever plays knows which one they are judging. */
+  const drawGlide = (glide: string, w: number) => {
+    ctx.font = "700 12px 'Baloo 2', Nunito, system-ui, sans-serif";
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(255,244,224,.75)';
+    ctx.fillText(`glide: ${glide}`, w - 14, 52);
+  };
+
   return {
     resize(w, h, ratio) {
       // Cap the backing store: a 4K screen at DPR 2 would otherwise mean two 33-megapixel canvases
@@ -1080,6 +1089,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       drawHud(g, pr, canvas.width / dpr, hudInfo.banners, hudInfo.replay);
       drawPing(hudInfo.rtt, canvas.width / dpr, hudInfo.replay ?? false);
+      if (hudInfo.glide && !hudInfo.replay) drawGlide(hudInfo.glide, canvas.width / dpr);
     },
   };
 }

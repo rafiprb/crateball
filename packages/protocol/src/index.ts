@@ -57,7 +57,12 @@ export const STAT_KEYS = [
   'drawMsMax',
   'snapMsMax',
 ] as const;
-export type ClientStats = Record<(typeof STAT_KEYS)[number], number>;
+/** Sent when set, absent otherwise: `glide` = the ball smoothing under test (0 normal, 1 soft, 2 fast). */
+const STAT_OPTIONAL = ['glide'] as const;
+export type ClientStats = Record<(typeof STAT_KEYS)[number], number> &
+  Partial<Record<(typeof STAT_OPTIONAL)[number], number>>;
+
+const statOk = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1e6;
 
 /** Every known key must be a finite, non-negative number below a sane bound; extra keys are dropped. */
 export function decodeStats(v: unknown): ClientStats | null {
@@ -65,9 +70,10 @@ export function decodeStats(v: unknown): ClientStats | null {
   const out = {} as ClientStats;
   for (const k of STAT_KEYS) {
     const n = v[k];
-    if (typeof n !== 'number' || !Number.isFinite(n) || n < 0 || n > 1e6) return null;
+    if (!statOk(n)) return null;
     out[k] = Math.round(n * 10) / 10;
   }
+  for (const k of STAT_OPTIONAL) if (statOk(v[k])) out[k] = Math.round(v[k]);
   return out;
 }
 

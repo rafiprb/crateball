@@ -327,6 +327,12 @@ describe('telemetri', () => {
       s: ok,
     });
   });
+  it('glide (top yumuşatma denemesi) isteğe bağlı: varsa tutulur, saçmaysa atılır', () => {
+    const dec = (s: object) => decodeClientMessage(JSON.stringify({ t: 'stats', s }));
+    expect(dec({ ...ok, glide: 2 })).toEqual({ t: 'stats', s: { ...ok, glide: 2 } });
+    expect(dec({ ...ok, glide: -1 })).toEqual({ t: 'stats', s: ok });
+    expect(dec({ ...ok, glide: 'fast' })).toEqual({ t: 'stats', s: ok });
+  });
   it('eksik ya da saçma sayıyı reddeder', () => {
     expect(decodeClientMessage(JSON.stringify({ t: 'stats', s: { ...ok, rtt: -1 } }))).toBeNull();
     expect(decodeClientMessage(JSON.stringify({ t: 'stats', s: { fps: 60 } }))).toBeNull();

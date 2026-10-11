@@ -7,7 +7,7 @@ import { createEventTracker } from './events';
 import { createKeyboard } from './input';
 import { connect, type NetStatus } from './net';
 import { createParticles } from './particles';
-import { createPredictor } from './predict';
+import { GLIDES, createPredictor, type Glide } from './predict';
 import { createRenderer } from './render';
 import { createResults } from './results';
 import { createSound } from './sound';
@@ -34,7 +34,24 @@ const resize = () => renderer.resize(innerWidth, innerHeight, devicePixelRatio);
 addEventListener('resize', resize);
 resize();
 
-const pred = createPredictor();
+// Ball smoothing feel test: `?glide=soft|fast` sticks in this browser until `?glide=normal`.
+const glide = ((): Glide => {
+  const asked = params.get('glide');
+  try {
+    if (asked && Object.hasOwn(GLIDES, asked)) {
+      if (asked === 'normal') localStorage.removeItem('glide');
+      else localStorage.setItem('glide', asked);
+      return asked as Glide;
+    }
+    const kept = localStorage.getItem('glide');
+    if (kept && Object.hasOwn(GLIDES, kept)) return kept as Glide;
+  } catch {
+    /* no storage: only this page load */
+    if (asked && Object.hasOwn(GLIDES, asked)) return asked as Glide;
+  }
+  return 'normal';
+})();
+const pred = createPredictor(glide);
 const clock = createTickClock();
 const results = createResults();
 const fx = createParticles();
@@ -532,6 +549,7 @@ const telemetry = createTelemetry(() => {
     serverQueue: queueAvg,
     corrections: c - lastCorrections,
     myCorrectionPx: px - lastMyPx,
+    ...(glide === 'normal' ? {} : { glide: GLIDES[glide].code }),
     ...(({ me, ball, others }) => ({
       myCorrectionMaxPx: me,
       ballCorrectionMaxPx: ball,
@@ -548,7 +566,7 @@ const telemetry = createTelemetry(() => {
 });
 const sendReport = () => {
   if (room?.state !== 'playing') return;
-  conn.send({ t: 'report', note: '', recent: telemetry.recent() });
+  conn.send({ t: 'report', note: glide === 'normal' ? '' : `glide=${glide}`, recent: telemetry.recent() });
   banner.hidden = false;
   banner.textContent = 'Report sent';
   setTimeout(() => (banner.hidden = true), 1500);
@@ -589,7 +607,10 @@ function loop(now: number) {
   if (pred.game) fx.ambient(pred.game, (id) => pred.pos(id, acc / TICK_MS), dt / 1000);
   fx.update(Math.min(dt, 50) / 1000);
   pred.decay(dt / 1000);
-  renderer.draw(pred, Math.min(1, acc / tickMs), fx, { rtt: conn.status === 'open' ? rtt : null });
+  renderer.draw(pred, Math.min(1, acc / tickMs), fx, {
+    rtt: conn.status === 'open' ? rtt : null,
+    glide: glide === 'normal' ? undefined : glide,
+  });
   stats.frameMs = performance.now() - t0;
   work.draw = Math.max(work.draw, stats.frameMs);
   stats.frame++;

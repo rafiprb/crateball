@@ -37,6 +37,19 @@ const SMOOTH_RATE = 7.5;
  * apply, so our own touches stay crisp; an opponent dribbling a few metres away still glides. */
 const BALL_FAR_RATE = 3.4;
 const BALL_NEAR_PX = 45;
+/**
+ * Feel test (`?glide=`): how fast the ball's corrections close, far from us and near. netsim cannot tell
+ * which feels better (the measures barely move between them); people playing can. The choice is shown
+ * under the ping and sent with the stats (`glide`: 0 normal, 1 soft, 2 fast) and with R reports.
+ */
+export const GLIDES = {
+  normal: { code: 0, far: BALL_FAR_RATE, near: SMOOTH_RATE },
+  /** ≈ 350 ms far, ≈ 140 ms near: corrections drift in slowly. */
+  soft: { code: 1, far: 2, near: 5 },
+  /** ≈ 90 ms far, ≈ 60 ms near: the ball goes where it really is quickly, a correction reads as a nudge. */
+  fast: { code: 2, far: 7.5, near: 12 },
+} as const;
+export type Glide = keyof typeof GLIDES;
 const SMOOTH_RATE_ME = 14;
 const SMOOTH_RATE_ME_MIN = 5.8;
 /** Below this own-player offset (px) the fast rate applies; above it the rate slows in proportion. */
@@ -75,7 +88,8 @@ function positions(g: Game): Positions {
   return m;
 }
 
-export function createPredictor(): Predictor {
+export function createPredictor(glide: Glide = 'normal'): Predictor {
+  const ballRate = GLIDES[glide];
   let game: Game | null = null;
   /** The last snapshot, kept to roll back to when a relayed input lands in our predicted past. */
   let base: Game | null = null;
@@ -265,9 +279,10 @@ export function createPredictor(): Predictor {
       const ball = cur.get('ball');
       const ballFar =
         !mine || !ball || (mine.x - ball.x) ** 2 + (mine.y - ball.y) ** 2 > BALL_NEAR_PX * BALL_NEAR_PX;
-      const kBallFar = Math.exp(-dt * BALL_FAR_RATE);
+      const kBallFar = Math.exp(-dt * ballRate.far);
+      const kBallNear = Math.exp(-dt * ballRate.near);
       for (const [id, e] of err) {
-        let f = id === 'ball' && ballFar ? kBallFar : k;
+        let f = id === 'ball' ? (ballFar ? kBallFar : kBallNear) : k;
         if (id === me) {
           const len = Math.sqrt(e.x * e.x + e.y * e.y);
           const rate =
