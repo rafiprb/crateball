@@ -9,7 +9,8 @@ import type { Departed, Game, Player, Scoring, Spell, Stats, Team } from './type
  * Everything hangs on spells: a spell is one player's unbroken time on the ball, from the touch that took
  * it to the latest one. A side owns the ball once STATS.own passes since it got it; a touch that takes
  * the ball off the other side sooner than that starts an unclean spell (a scramble), passed on to
- * teammates, and an unclean spell produces no shot, pass, tackle or assist until the side has owned it.
+ * teammates, and an unclean spell produces no shot, pass or tackle until the side has owned it (saves,
+ * blocks and assists are outcomes and count anyway).
  * Walls, posts, mines, lava, wind and ducks are never touches, so they never break a chain.
  *
  * Write-only: the game never reads any of this back, so it cannot change how a match plays.
@@ -110,8 +111,10 @@ export function touchBall(g: Game, p: Player, kick: { pass: boolean } | null, be
     spell.y = b.y;
   } else {
     const prev = spell;
-    // The ball changes feet: the shot in flight has its outcome.
-    if (sc.shot && !sc.shot.done) shotOutcome(g, p, before);
+    // The ball changes feet: the shot in flight is over, and an opponent may have stopped a ball going in.
+    const shot = sc.shot && !sc.shot.done ? sc.shot : null;
+    if (shot) shot.done = true;
+    if (prev && prev.team !== p.team) stopOutcome(g, p, prev, shot, before);
     const mate = !!prev && prev.team === p.team;
     spell = {
       id: p.id,
@@ -168,26 +171,39 @@ function countShot(g: Game, p: Player, spell: Spell): void {
   g.scoring.shot = { by: p.id, team: p.team, done: false, on: false };
 }
 
+/** The ball (as it was, `before`) is still coming hard and would roll into `team`'s goal. */
+export function goingIn(g: Game, team: Team, before: BallBefore): boolean {
+  if (before.vx * before.vx + before.vy * before.vy < STATS.shotArrive * STATS.shotArrive) return false;
+  const y = crossingY(g, before.x, before.y, before.vx, before.vy, side(team) * FIELD.halfW);
+  return y !== null && Math.abs(y) < FIELD.goalHalf;
+}
+
 /**
- * The first touch by someone else after a shot. On target when an opponent stopped a ball still coming
- * hard and going in: their keeper (a save) or anyone else in their box (a block); either stands once no
- * goal follows within STATS.saveHold. Anything else (a teammate, a defender far out, a ball going wide or
- * rolling to a stop) leaves it a shot off target.
+ * `p` took the ball off the other side (`prev`, their spell) while it was going in: their keeper's save,
+ * or a block by anyone else in their box; either stands once no goal follows within STATS.saveHold. It is
+ * an outcome, so it counts from any distance and after a scramble too (a keeper's stop is a stop however
+ * the ball got there): in prod most of what keepers stopped never counted, the shot had come from deep or
+ * first time. The kick that sent it is a shot on target: the counted shot in flight, or else the kicker's
+ * own last touch, when that was a kick (a ball that came off someone running into it is nobody's shot).
+ * A teammate's touch, a defender far out, a ball going wide or rolling to a stop: nothing.
  */
-function shotOutcome(g: Game, p: Player, before: BallBefore): void {
+function stopOutcome(g: Game, p: Player, prev: Spell, shot: Scoring['shot'], before: BallBefore): void {
+  if (!goingIn(g, p.team, before)) return;
   const sc = g.scoring;
-  const shot = sc.shot!;
-  shot.done = true;
-  if (p.team === shot.team) return;
-  if (before.vx * before.vx + before.vy * before.vy < STATS.shotArrive * STATS.shotArrive) return;
-  const y = crossingY(g, before.x, before.y, before.vx, before.vy, side(p.team) * FIELD.halfW);
-  if (y === null || Math.abs(y) >= FIELD.goalHalf) return;
   if (keeper(g, p)) sc.stops.push({ by: p.id, kind: 'save', at: g.tick });
   else if (inOwnBox(p.team, before.x, before.y)) sc.stops.push({ by: p.id, kind: 'block', at: g.tick });
   else return;
-  shot.on = true;
-  const shooter = byId(g, shot.by);
-  if (shooter) shooter.stats.onTarget++;
+  if (shot && shot.team !== p.team) {
+    shot.on = true;
+    const shooter = byId(g, shot.by);
+    if (shooter) shooter.stats.onTarget++;
+  } else if (prev.kickAt === prev.last) {
+    const kicker = byId(g, prev.id);
+    if (kicker) {
+      kicker.stats.shots++;
+      kicker.stats.onTarget++;
+    }
+  }
 }
 
 /** Saves and blocks for which `stands` holds are credited and leave the waiting list; `drop` ones go
@@ -276,12 +292,13 @@ export function scoreGoal(g: Game, scorer: Team): void {
 }
 
 /** The scorer's spell (the last of `spells`, their side's latest ones) came straight from a teammate's
- * spell with the ball owned, at most STATS.assistGap later. */
+ * spell, at most STATS.assistGap later. A first-time ball won off an opponent and laid on counts too: the
+ * goal is the outcome, and nobody farms goals (it used to need the passer's side to own the ball first). */
 function assist(g: Game, spells: Spell[]): void {
   const own = spells[spells.length - 1];
   const prev = spells[spells.length - 2];
   if (!own || !prev || prev.id === own.id) return;
-  if (own.first - prev.last > STATS.assistGap || !owned(prev, own.first)) return;
+  if (own.first - prev.last > STATS.assistGap) return;
   const by = byId(g, prev.id);
   if (by) by.stats.assists++;
 }

@@ -421,7 +421,7 @@ describe('skorlama kuralları', () => {
     expect(f.stats.assists).toBe(1);
   });
 
-  it('karambolden çıkan pas asist değil', () => {
+  it('karambolden çıkan pas da asist (gol bir sonuç); pas ve şut sayılmaz', () => {
     const { m, f, d, touch, goal } = pitch();
     touch(1000, d, 100, 0);
     touch(1000 + S, d, 105, 0);
@@ -430,7 +430,34 @@ describe('skorlama kuralları', () => {
     touch(1000 + S + 15, m, 115, 0, { kick: [6, 0], pass: true }); // m's spell is a scramble too
     touch(1000 + S + 40, f, 250, 0, { kick: SHOT });
     goal('red');
-    expect(m.stats.assists).toBe(0);
+    expect(m.stats.assists).toBe(1);
+    expect(m.stats.passes).toBe(0);
+  });
+
+  it('uzaktan, ilk dokunuşta ya da karambolden gelen top kaleciye: yine kurtarış, vuran isabetli şut', () => {
+    const { f, d, q, touch, wait } = pitch();
+    // From deep (not a counted shot when kicked).
+    touch(1000, f, -20, 0, { kick: [9, 0] });
+    expect(f.stats.shots).toBe(0);
+    touch(1040, q, 400, 0, { inV: [9, 0] });
+    wait(1040 + STATS.saveHold);
+    expect(q.stats.saves).toBe(1);
+    expect(f.stats).toMatchObject({ shots: 1, onTarget: 1 });
+    // First time off the defender (a scramble): the keeper's stop still counts.
+    touch(2000, f, 240, 0);
+    touch(2005, d, 245, 0); // takes it off f at once: d's spell is a scramble
+    touch(2010, f, 250, 0, { kick: SHOT }); // and f's first-time shot back comes out of it
+    expect(f.stats.shots).toBe(1);
+    touch(2025, q, 400, 0, { inV: SHOT });
+    wait(2025 + STATS.saveHold);
+    expect(q.stats.saves).toBe(2);
+    expect(f.stats).toMatchObject({ shots: 2, onTarget: 2 });
+    // Off someone running into it (no kick): a save, but nobody's shot.
+    touch(3000, f, 300, 0, { inV: [0, 0] });
+    touch(3030, q, 400, 0, { inV: [6, 0] });
+    wait(3030 + STATS.saveHold);
+    expect(q.stats.saves).toBe(3);
+    expect(f.stats).toMatchObject({ shots: 2, onTarget: 2 });
   });
 
   it('rakibe çarpıp giren şut şutu atanın golü; blok ya da kurtarış yazılmaz', () => {

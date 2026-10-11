@@ -113,20 +113,24 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
   sayıları hiç geri okumaz.
   - Topa sahip olmak: bir oyuncunun topla kesintisiz zamanı (dokunuş serisi). Takım topu alalı 0,5 sn
     geçince top onundur. Rakipten 0,5 sn dolmadan alınan top karambol: takım topu sahiplenene kadar şut,
-    pas, top kapma ve asist üretmez (karambolde alınan topu takım arkadaşına vermek bunu temizlemez). Duvar, direk, mayın, lav, rüzgâr ve ördek dokunuş değildir, zinciri bozmaz.
+    pas ve top kapma üretmez (kurtarış, blok ve asist sonuçtur, karambolde de sayılır) (karambolde alınan topu takım arkadaşına vermek bunu temizlemez). Duvar, direk, mayın, lav, rüzgâr ve ördek dokunuş değildir, zinciri bozmaz.
   - Şut: sahip olunan toptan, kale çizgisine en fazla 330 px uzaktan, en az 3,5 px/tik giden ve kaleye
     ortadan 140 px içinde ulaşacak vuruş (takım arkadaşına bükülen vuruş pastır; santra şut değildir; seri
     başına bir şut). İsabetli: gol, kurtarış ya da blokla biten şut. Her gol isabetli şut sayılır.
-  - Kurtarış (yalnızca kaleci): kaleye giden ve hâlâ hızlı (≥ 2,5 px/tik) gelen şutu durdurur, 2 sn içinde
-    gol olmaz. Geri pas, aut topu ve yavaş yuvarlanan top kurtarış değildir.
-  - Blok: kaleci olmayan biri isabetli şutu kendi ceza sahasında keser. Kurtarış ve blok, 2 sn içinde
-    gol olmazsa yazılır; şutu atanın isabetli şutu ise hemen yazılır.
+  - Kurtarış (yalnızca kaleci): rakipten gelen, kaleye giden ve hâlâ hızlı (≥ 2,5 px/tik) gelen topu
+    durdurur, 2 sn içinde gol olmaz. Nereden ve nasıl geldiği önemli değil (uzaktan, ilk dokunuşta,
+    karambolden): prod'da kalecilerin durdurduğu topların çoğu bu yüzden hiç sayılmıyordu (bot maçlarında
+    kaleye giden 73 toptan 39'u). Geri pas, aut topu ve yavaş yuvarlanan top kurtarış değildir. "SAVE"
+    efekti de yalnızca kaleye giden topta çıkar (önceden kalecinin tuttuğu her sert topta çıkıyordu).
+  - Blok: kaleci olmayan biri aynı topu kendi ceza sahasında keser. Kurtarış ve blok, 2 sn içinde gol
+    olmazsa yazılır. Topu gönderen vuruş isabetli şut sayılır ve hemen yazılır (sayılmış şut yoksa o
+    vuruş şut olarak da eklenir; vuruş değil de çarpıp gelen topta kimseye şut yazılmaz).
   - Gol: topa son değene yazılır; ama savunanların hiçbiri vurmadan, hücumcunun son dokunuşundan sonraki
     1 sn içinde ya da hiçbiri kontrol etmeden (karambol) giren top hücumcunun golüdür (iki savunmacıya
     çarpsa da, kaleci elini değdirip kaçırsa da). Kendi kalesine gol: savunanın kendi vuruşu ya da kontrol
     ettiği topla.
-  - Asist: golcünün serisinden hemen önceki dokunuş takım arkadaşının sahip olduğu seriden, en fazla 3 sn
-    önce; arada rakip dokunuşu yok (direkten dönen top zinciri bozmaz). Kendi kalesine golde asist yok.
+  - Asist: golcünün serisinden hemen önceki dokunuş takım arkadaşının serisinden, en fazla 3 sn önce
+    (karambolden kapıp ilk dokunuşta verilen top da; gol farmlanamaz); arada rakip dokunuşu yok (direkten dönen top zinciri bozmaz). Kendi kalesine golde asist yok.
   - Pas: sahip olunan toptan takım arkadaşına en az 80 px; her ikili 10 sn'de bir kez.
   - Top kapma: rakip topa sahipti ve ayağındaydı (son 0,5 sn içinde, vuruş değil temas), topu alırsın ve
     takımın 0,5 sn tutar. Şutu ya da pası kesmek top kapma değildir.
