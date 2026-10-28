@@ -4,7 +4,10 @@
 // moves on to the game as soon as the server answers.
 // Goal replays (.crateball files) open here when double-clicked: the file is read and handed to the game
 // page (base64 in `window.__CRATEBALL_FILES__` and a `crateball-file` event), which plays it.
+// Steam achievements: the game page adds each finished match to the player's Steam stats (steam.rs).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod steam;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -163,6 +166,8 @@ fn main() {
     let game_origin = Url::parse(&game_url).expect("CRATEBALL_URL is not a URL").origin();
     // CRATEBALL_SMOKE=<file>: write what loaded into the file and quit (build check in CI).
     let smoke = std::env::var("CRATEBALL_SMOKE").ok();
+    // Before any window: the Steam overlay hooks in at start.
+    let steam = steam::Steam::init();
 
     // Runs in every page: tells the start page where the game is, and gives the game F11 / Alt+Enter
     // (fullscreen) and F5 (reload through the start page).
@@ -194,6 +199,8 @@ addEventListener('keydown', (e) => {{
         }))
         .plugin(tauri_plugin_opener::init())
         .manage(Replays::default())
+        .manage(steam)
+        .invoke_handler(tauri::generate_handler![steam::steam_add_stats, steam::steam_unlock])
         .manage(Game(Url::parse(&game_url).expect("CRATEBALL_URL is not a URL")))
         .setup(move |app| {
             #[cfg(windows)]

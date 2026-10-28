@@ -120,5 +120,6 @@ defence, which bots barely produce.
 ## Steam
 
 - Trailer: upload `crateball-trailer.mp4` on the store page (Trailers), set it first.
-- Set the main build live when the store page is approved.
+- Achievements (docs/design.md "Steam başarımları"): a new main build has to be live for them to unlock;
+  an in-game "achievement unlocked" toast if the Steam overlay does not show over the webview.
 - Supporter pack / DLC: see the prototype; Steam ownership check later.

@@ -10,7 +10,7 @@ needs rebuilding when the wrapper changes.
 - **Built only in GitHub Actions** (`.github/workflows/desktop.yml`, runs on pushes that touch
   `desktop/` or by hand): Rust and its multi-GB build cache never go on a laptop. Each build is smoke
   tested (the window must load the game) and leaves two artifacts: `Crateball-windows` (Crateball.exe)
-  and `Crateball-macos` (universal Crateball.app, ad-hoc signed, zipped).
+  and `Crateball-macos` (universal Crateball.app, ad-hoc signed, zipped). Windows also gets `steam_api64.dll`.
 - `sh desktop/steam/fetch-builds.sh [run-id]`: download the latest (or a given) build into `out/`.
 - `sh desktop/steam/upload.sh <steam-username> [branch] [run-id]` (from the repo root): fetch and upload
   to the Crateball Demo (app 4248750, depots 4248751 Windows / 4248752 macOS). Needs `steamcmd` and `gh`.
@@ -18,6 +18,11 @@ needs rebuilding when the wrapper changes.
   4248631 / 4248632).
 
 Steam launch options: `Crateball.exe` (Windows), `Crateball.app` (macOS).
+
+Achievements (main app only, see `docs/design.md` "Steam başarımları"): `src-tauri/src/steam.rs` links the
+Steam API (`steamworks` crate), so `steam_api64.dll` / `libsteam_api.dylib` ship next to the binary (CI puts
+them there; the binary does not start without them). `node desktop/steam/achievements.mjs` writes the
+Steamworks bulk-import CSVs and icons to `out/achievements/` from the game's list.
 F11 or Alt+Enter toggles fullscreen, F5 reloads. `CRATEBALL_URL` points the app at another server
 (the game page there gets no fullscreen permission: only playcrateball.com does). Release builds only
 reach https://playcrateball.com (the bundled start page's CSP); a local dev server

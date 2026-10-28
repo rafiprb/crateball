@@ -1,6 +1,6 @@
 #!/bin/sh
 # Downloads the latest successful Desktop workflow build from main (GitHub Actions) into desktop/out:
-# out/windows/Crateball.exe and out/macos/Crateball.app. Nothing is compiled locally (Rust stays off
+# out/windows/{Crateball.exe,steam_api64.dll} and out/macos/Crateball.app. Nothing is compiled locally (Rust stays off
 # this machine). Pass a run id to pick a specific build.
 # Usage (from the repo root):  sh desktop/steam/fetch-builds.sh [run-id]
 set -eu
@@ -12,7 +12,8 @@ echo "Desktop build: https://github.com/$REPO/actions/runs/$RUN"
 rm -rf out/windows out/macos out/download
 mkdir -p out/windows out/macos
 gh run download "$RUN" --repo "$REPO" --dir out/download
-mv out/download/Crateball-windows/Crateball.exe out/windows/
+mv out/download/Crateball-windows/* out/windows/
+test -f out/windows/steam_api64.dll || { echo "build has no steam_api64.dll (older than achievements)" >&2; exit 1; }
 ditto -x -k out/download/Crateball-macos/Crateball-macos.zip out/macos/
 rm -rf out/download
 du -sh out/windows out/macos

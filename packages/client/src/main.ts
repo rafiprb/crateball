@@ -11,6 +11,7 @@ import { GLIDES, createPredictor, type Glide } from './predict';
 import { createRenderer } from './render';
 import { createResults } from './results';
 import { createSound } from './sound';
+import { recordMatch } from './steam';
 import { createTelemetry } from './telemetry';
 import { createUi } from './ui';
 import { createWatch } from './watch';
@@ -355,6 +356,9 @@ const conn = connect({
           // The final whistle: the results from the server's own numbers.
           if (m.g.phase === 'over' && !results.visible) {
             results.show(m.g, pred.me ?? conn.clientId);
+            // Steam achievements (desktop build only; once per match).
+            const me = pred.me ?? conn.clientId;
+            if (me) void recordMatch(m.g, me, room.code);
             // Keys held at the whistle are let go (the results screen takes the keyboard).
             if (results.visible) keyboard.release();
           }

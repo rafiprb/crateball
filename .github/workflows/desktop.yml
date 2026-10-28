@@ -2,6 +2,7 @@
 # here, never on a laptop. Produces Crateball-windows (Crateball.exe) and Crateball-macos (universal
 # Crateball.app, zipped so the executable bit survives) as artifacts; desktop/steam/upload.sh downloads
 # them and uploads to Steam. Each build is smoke tested: it must open the window and load the game.
+# The Steam API library (achievements) ships next to the binary: the binary does not start without it.
 name: Desktop
 
 on:
@@ -38,6 +39,16 @@ jobs:
           workspaces: desktop/src-tauri
       - run: npm ci
       - run: npm run tauri -- build --target universal-apple-darwin --bundles app
+      # Linked as @loader_path/libsteam_api.dylib: it goes beside the binary, then the app is signed again.
+      - name: Steam API library into the app
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/Crateball.app
+          LIB=$(find src-tauri/target -path '*/steamworks-sys-*/out/libsteam_api.dylib' | head -1)
+          test -n "$LIB"
+          lipo -info "$LIB"
+          cp "$LIB" "$APP/Contents/MacOS/"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
       - name: Smoke test (opens the window, loads the game, quits)
         run: |
           APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/Crateball.app
@@ -85,6 +96,12 @@ jobs:
           workspaces: desktop/src-tauri
       - run: npm ci
       - run: npm run tauri -- build --no-bundle
+      - name: Steam API library beside the exe
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Recurse src-tauri/target/release/build -Filter steam_api64.dll | Select-Object -First 1
+          if (-not $dll) { exit 1 }
+          Copy-Item $dll.FullName src-tauri/target/release/
       - name: Smoke test (opens the window, loads the game, quits)
         shell: pwsh
         run: |
@@ -100,5 +117,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Crateball-windows
-          path: desktop/src-tauri/target/release/Crateball.exe
+          path: |
+            desktop/src-tauri/target/release/Crateball.exe
+            desktop/src-tauri/target/release/steam_api64.dll
           retention-days: 30

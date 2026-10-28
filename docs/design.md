@@ -189,6 +189,27 @@ havuzdaki sahaların hepsi birer kez, aynı saha üst üste gelmez (tek saha se�
 - Bir tekrar yalnızca yapıldığı protokol sürümünde oynar. Başka sürümden gelen dosyada "Can't play this
   replay" çıkar; eski sürümden kalan son maçlar listeden düşer.
 
+## Steam başarımları
+
+- Yalnızca Steam'deki ana oyunda (4248630; demo aynı derlemeyi koşar, hiçbir şey yazmaz). Liste tek yerde:
+  `packages/client/src/achievements.ts`. Dört ömür boyu sayaç Steam istatistiği olarak tutulur: gol
+  (`GOALS`), kaleci kurtarışı (`KEEPER_SAVES`, `stats.ts` zaten yalnızca kaleciye yazar), pas (`PASSES`),
+  galibiyet (`WINS`). Her birinde 5, 10, 50, 100, 150, 200, 250, 300, 350 basamakları; golde ve galibiyette
+  bir de ilki (1): 38 başarım.
+- Son düdükte istemci (`steam.ts`) sunucunun sayılarından kendi maçını Steam'e ekler, sonra toplamların
+  ulaştığı her başarımı açar (zaten açık olan dokunulmaz; kaçan bir açma sonraki maçta tamamlanır).
+  Maç yalnızca son düdükte sahadaysan ve rakip takımda en az bir insan varsa (maç içinde çıkmış olsa da)
+  sayılır: botlara karşı tek başına oynanan maç başarım üretmez. Host'un durdurduğu maç bitmiş sayılmaz.
+  Aynı maç iki kez yazılmaz (oda kodu + maç + bitiş tick'i, Steam kabul edince tarayıcıda saklanır;
+  Steam o an yoksa ya da reddederse hiçbir şey eklenmez, sayfa yenilenince aynı maç yeniden denenir). Dört
+  sayaç her maçta (sıfırlar dahil) gider, böylece Steam dört toplamı da döner.
+- Steam tarafı masaüstü sarmalayıcıda (`desktop/src-tauri/src/steam.rs`, `steamworks` crate'i):
+  `steam_add_stats` / `steam_unlock` komutları, yalnızca oyun sayfasına izinli (`capabilities/game.json`).
+  Steam yoksa (tarayıcı, Steam dışından açılış, demo) komutlar hata döner, sayfa yok sayar.
+- İstemciye güvenilir (ücretsiz oyun; sunucu Steam kimliği bilmiyor). Steamworks'te istatistikler
+  "increment only"; tek maç bir istatistiğe en fazla 100 ekler.
+- Steamworks'e yüklenecek CSV'ler ve ikonlar listeden üretilir: `node desktop/steam/achievements.mjs`.
+
 ## Ses ve efektler
 
 - Ses: WebAudio ile kodla üretilir (dosya yok): vuruş, düdük, gol, ateş, isabet, kutu içeriğine göre

@@ -12,6 +12,8 @@ tauri-build = { version = "2.7", features = [] }
 tauri = { version = "2.12", features = [] }
 tauri-plugin-opener = "2.7"
 tauri-plugin-single-instance = "2.5"
+# Steam stats and achievements (links the Steam API library, shipped next to the binary).
+steamworks = "0.13"
 
 # Windows: the .crateball file type is registered per user on start (Steam installs no installer).
 [target.'cfg(windows)'.dependencies]
